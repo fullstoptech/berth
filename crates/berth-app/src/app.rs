@@ -4,7 +4,68 @@ use dioxus::prelude::*;
 use crate::assets;
 use crate::platform;
 use crate::scenes;
+use crate::services::{activity, engines, Services};
 use crate::state::{theme_script, use_app_state, AppState, Section};
+
+struct Boot {
+    services: Services,
+    // Dropped with the App root on quit (cancels tasks, saves snapshots).
+    _engines: Option<engines::EnginesHandle>,
+}
+
+/// Open the store and start the engine service once (P2-T1, D23).
+/// `BERTH_DATA_DIR` wins through `berth_sys::paths::data_dir`;
+/// `BERTH_MOCK=1` selects the mock world; a `BERTH_SCENE` frame is
+/// authoritative, so no live service runs under it (shots stay exact).
+fn boot_services(state: AppState) -> Boot {
+    let data_dir = berth_sys::paths::data_dir();
+    if let Err(err) = std::fs::create_dir_all(&data_dir) {
+        tracing::warn!(%err, dir = %data_dir.display(), "data dir create failed");
+    }
+    let db_path = data_dir.join("berth.db");
+    let store = match berth_store::Store::open(&db_path) {
+        Ok(store) => store,
+        Err(err) => {
+            tracing::error!(%err, path = %db_path.display(), "store open failed; using in-memory store");
+            match berth_store::Store::open_in_memory() {
+                Ok(store) => store,
+                Err(err) => {
+                    // An in-memory SQLite open failing leaves nothing
+                    // honest to run on.
+                    tracing::error!(%err, "in-memory store open failed; exiting");
+                    std::process::exit(1);
+                }
+            }
+        }
+    };
+    let store = std::sync::Arc::new(store);
+    match store.settings() {
+        Ok(settings) => {
+            let mut state = state;
+            state.settings.set(settings);
+        }
+        Err(err) => tracing::warn!(%err, "settings load failed"),
+    }
+    activity::prune_old(&store, chrono::Utc::now());
+
+    let clients = engines::client_map();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let services = Services {
+        store: std::sync::Arc::clone(&store),
+        clients: clients.clone(),
+        cancel: cancel.clone(),
+    };
+    let handle = if std::env::var_os("BERTH_SCENE").is_some() {
+        None
+    } else {
+        let mock = std::env::var("BERTH_MOCK").is_ok_and(|v| v == "1");
+        Some(engines::start(state, store, clients, cancel, mock))
+    };
+    Boot {
+        services,
+        _engines: handle,
+    }
+}
 
 /// Desktop entry point. Platform hooks that need a real window live here so
 /// the shared Shell stays renderable under dioxus-ssr (scenes).
@@ -14,6 +75,11 @@ pub fn App() -> Element {
     platform::use_traffic_lights();
     let mut state = use_app_state();
     use_context_provider(|| state);
+
+    // Services spawn once, before scene/theme forcing below (D23).
+    let boot = use_hook(|| std::rc::Rc::new(boot_services(state)));
+    let services = boot.services.clone();
+    use_context_provider(|| services);
 
     // BERTH_SCENE puts the UI into a frame's state for screenshots (D58).
     use_hook(move || {
@@ -84,7 +150,12 @@ pub fn Shell() -> Element {
         format!("{problem_count} problems")
     };
     rsx! {
-        div { class: "shell",
+        div {
+            class: "shell",
+            onkeydown: move |e| {
+                let mut state = state;
+                crate::keys::handle_root_keydown(&mut state, &e);
+            },
             div {
                 class: "titlebar",
                 onmousedown: move |e| {

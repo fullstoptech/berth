@@ -129,6 +129,18 @@ pub enum ToastTone {
     Success,
     Danger,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ActionScope {
+    Global,
+    Container,
+    Project,
+    Image,
+    Volume,
+    Network,
+    Engine,
+    Logs,
+    Assistant,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct Toast {
     pub id: uuid::Uuid,
