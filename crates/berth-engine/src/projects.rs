@@ -296,9 +296,12 @@ pub fn group(
 
 /// Project status from its services (PLAN section 6.5).
 ///
-/// `Failing` when any service is dead, restarting or unhealthy; counts in
-/// `Partial` are services (a `ServiceSummary` carries no per-replica
-/// state or exit code, so an exited service alone reads `Stopped`).
+/// `Failing` when any service is dead or restarting (Q9: an unhealthy but
+/// running service stays `Partial`/`AllRunning` — the frames call `analytics`
+/// Partial with `ingest` unhealthy, and Problems flag it per container);
+/// counts in `Partial` are services (a `ServiceSummary` carries no
+/// per-replica state or exit code, so an exited service alone reads
+/// `Stopped`).
 #[must_use]
 pub fn status(services: &[berth_core::ServiceSummary]) -> berth_core::ProjectStatus {
     use berth_core::ProjectStatus as P;
@@ -309,7 +312,7 @@ pub fn status(services: &[berth_core::ServiceSummary]) -> berth_core::ProjectSta
         matches!(
             s.state,
             berth_core::ContainerState::Dead | berth_core::ContainerState::Restarting
-        ) || s.health == Some(berth_core::Health::Unhealthy)
+        )
     });
     if failing {
         return P::Failing;
@@ -629,15 +632,16 @@ mod tests {
     }
 
     #[test]
-    fn projects_status_failing_on_restarting_dead_and_unhealthy() {
+    fn projects_status_failing_on_restarting_and_dead_unhealthy_stays_running() {
         assert_eq!(
             status(&[svc(S::Running), svc(S::Restarting)]),
             berth_core::ProjectStatus::Failing
         );
         assert_eq!(status(&[svc(S::Dead)]), berth_core::ProjectStatus::Failing);
+        // Q9: unhealthy but running is not Failing (frames: analytics Partial).
         let mut unhealthy = svc(S::Running);
         unhealthy.health = Some(berth_core::Health::Unhealthy);
-        assert_eq!(status(&[unhealthy]), berth_core::ProjectStatus::Failing);
+        assert_eq!(status(&[unhealthy]), berth_core::ProjectStatus::AllRunning);
     }
 
     const CLEAN: &str = "# branch.oid abc123\n# branch.head main\n# branch.upstream origin/main\n# branch.ab +0 -0\n";
