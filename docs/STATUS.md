@@ -4,7 +4,7 @@
 
 Phase 0 complete (P0-T1..P0-T5, acceptance run 2026-10-24; atomic commits on `phase/0-scaffold`, nothing pushed). The app opens a 1440x900 window with the integrated title bar, token-driven shell and light/dark themes; fixtures work against the local engine.
 
-- Current task: **P2-T1** (Phase 1 complete and acceptance-verified 2026-10-24 on `phase/1-engine`; Phase 2 next on `phase/2-shell`. Orchestration: `muse-wonder-full` decides and reviews; workers inherit wonder-full at medium effort because `muse-wonder` is not accessible in this environment (verified by workflow admission and a headless probe), each in an isolated worktree; nothing lands without the orchestrator re-running the done-when).
+- Current task: **P2-T3** (Phase 2 Wave A landed on `phase/2-shell`: P2-T1, T2, T4 done; Wave B next. Orchestration: `muse-wonder-full` decides and reviews; workers inherit wonder-full at medium effort because `muse-wonder` is not accessible in this environment (verified by workflow admission and a headless probe), each in an isolated worktree; nothing lands without the orchestrator re-running the done-when).
 - Workspace version: `0.0.0`.
 
 ## What works
