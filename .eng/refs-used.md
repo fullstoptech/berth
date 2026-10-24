@@ -1,0 +1,18 @@
+# References loaded in this project (appended by ref.py show)
+- 2026-10-24 skills/design/references/foundations/colour.md#Procedure: ramps whose role pairs pass `tokens_check.py`
+- 2026-10-24 skills/design/references/foundations/colour.md#Dark mode role remapping
+- 2026-10-24 skills/design/references/foundations/space-shape-elevation.md#Density modes as tokens
+- 2026-10-24 skills/design/references/foundations/typography.md#Body size and scale by archetype
+- 2026-10-24 skills/design/references/foundations/motion.md#Duration tokens by job
+- 2026-10-24 skills/design/references/components/data.md#Data table
+- 2026-10-24 skills/design/references/components/buttons.md#Icon button
+- 2026-10-24 skills/design/references/components/data.md#Badge and status
+- 2026-10-24 skills/design/references/components/navigation.md#Command palette
+- 2026-10-24 skills/design/references/product-patterns/bulk-and-inline-edit.md#Bulk action placement
+- 2026-10-24 skills/design/references/product-patterns/bulk-and-inline-edit.md#Bulk results and failures
+- 2026-10-24 skills/design/references/product-patterns/search-filter-sort.md#Applied filters
+- 2026-10-24 skills/design/references/product-patterns/pro-tool-speed.md#Speed and flow
+- 2026-10-24 skills/design/references/product-patterns/search-filter-sort.md#Filter placement and behaviour
+- 2026-10-24 skills/design/references/visual-craft/finishing-details.md#Before showing
+- 2026-10-24 skills/design/references/visual-craft/hierarchy.md#Tests
+- 2026-10-24 skills/design/references/visual-craft/finishing-details.md#Before showing: amateur tells and their fix
