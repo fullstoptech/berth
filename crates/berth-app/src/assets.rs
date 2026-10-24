@@ -5,6 +5,7 @@ use dioxus::desktop::{use_asset_handler, AssetRequest};
 
 const TOKENS_CSS: &str = include_str!("../assets/css/tokens.css");
 const SHELL_CSS: &str = include_str!("../assets/css/shell.css");
+const UI_CSS: &str = include_str!("../assets/css/ui.css");
 pub const FONTS_CSS: &str = include_str!("../assets/css/fonts.css");
 pub const ICONS_SVG: &str = include_str!("../assets/icons.svg");
 
@@ -34,7 +35,7 @@ const FONTS: &[(&str, &[u8])] = &[
 /// Document head: tokens and shell CSS. @font-face rules are deliberately
 /// rendered by the root component after the /fonts/ handler registers (D5).
 pub fn head_html() -> String {
-    format!("<style>{TOKENS_CSS}</style><style>{SHELL_CSS}</style>")
+    format!("<style>{TOKENS_CSS}</style><style>{SHELL_CSS}</style><style>{UI_CSS}</style>")
 }
 
 fn font_bytes(file: &str) -> Option<&'static [u8]> {

@@ -179,7 +179,11 @@ pub fn Shell() -> Element {
                     NavItem { icon: "cloud", label: "Registries", target: Section::Registries }
                     NavItem { icon: "activity", label: "Activity", target: Section::Activity }
                 }
-                main { class: "main" }
+                main { class: "main",
+                    if *state.dev_gallery.read() {
+                        crate::ui::PrimitivesGallery {}
+                    }
+                }
             }
         }
     }

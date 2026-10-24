@@ -168,6 +168,9 @@ pub struct AppState {
     pub harnesses: Signal<Vec<berth_core::Harness>>,
     pub toasts: Signal<Vec<Toast>>,
     pub snapshot_stale: Signal<bool>,
+    // P2-T2: dev-only primitives gallery ("Components / primitives" scene).
+    // Not a PLAN 6.11 field — architect-accepted at integration (option a).
+    pub dev_gallery: Signal<bool>,
 }
 
 /// Create the AppState signals once. Call from the root component only.
@@ -191,6 +194,7 @@ pub fn use_app_state() -> AppState {
         harnesses: use_signal(Vec::new),
         toasts: use_signal(Vec::new),
         snapshot_stale: use_signal(|| false),
+        dev_gallery: use_signal(|| false),
     }
 }
 

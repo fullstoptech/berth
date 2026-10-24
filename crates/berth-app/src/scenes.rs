@@ -16,10 +16,20 @@ fn projects_empty(state: &mut AppState) {
     state.projects.set(Vec::new());
 }
 
-const SCENES: &[Scene] = &[Scene {
-    frame: "Projects / empty / 1440",
-    setup: projects_empty,
-}];
+fn components_primitives(state: &mut AppState) {
+    state.dev_gallery.set(true);
+}
+
+const SCENES: &[Scene] = &[
+    Scene {
+        frame: "Projects / empty / 1440",
+        setup: projects_empty,
+    },
+    Scene {
+        frame: "Components / primitives",
+        setup: components_primitives,
+    },
+];
 
 pub fn scenes() -> &'static [Scene] {
     SCENES
@@ -62,7 +72,8 @@ mod tests {
     #[test]
     fn scenes_registry_contains_projects_empty() {
         assert!(find("Projects / empty / 1440").is_some());
-        assert_eq!(scenes().len(), 1);
+        assert!(find("Components / primitives").is_some());
+        assert_eq!(scenes().len(), 2);
         assert!(find("No such frame").is_none());
     }
 
@@ -75,6 +86,16 @@ mod tests {
         assert!(html.contains("Containers"));
         assert!(html.contains("No problems"));
         assert!(html.contains("/icons.svg#folder"));
+    }
+
+    #[test]
+    fn scenes_render_primitives_gallery() {
+        let html = render_scene_html("Components / primitives").expect("scene renders");
+        assert!(html.contains("Components / primitives"), "{html}");
+        assert!(html.contains("btn-primary"));
+        assert!(html.contains("status-badge"));
+        assert!(html.contains("Exited (137)"));
+        assert!(html.contains("12 of 48"));
     }
 
     #[test]

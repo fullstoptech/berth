@@ -6,6 +6,7 @@ pub mod platform;
 pub mod scenes;
 pub mod services;
 pub mod state;
+pub mod ui;
 
 #[cfg(test)]
 mod tests {
