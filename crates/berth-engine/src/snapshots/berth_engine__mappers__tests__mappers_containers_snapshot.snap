@@ -1,0 +1,159 @@
+---
+source: crates/berth-engine/src/mappers.rs
+expression: cs
+---
+[
+  {
+    "id": "[id]",
+    "engine": "colima:default",
+    "name": "berthfx-cache-1",
+    "project": null,
+    "compose_project": "berthfx",
+    "service": "cache",
+    "image": {
+      "reference": "redis:7-alpine",
+      "id": "[image-id]"
+    },
+    "command": "docker-entrypoint.sh redis-server",
+    "state": "Running",
+    "health": null,
+    "exit_code": null,
+    "restart_count": 0,
+    "created": "1970-01-01T00:00:00Z",
+    "started": null,
+    "ports": [
+      {
+        "host_ip": "127.0.0.1",
+        "host_port": 56379,
+        "container_port": 6379,
+        "proto": "Tcp"
+      }
+    ],
+    "mounts": [
+      {
+        "kind": "Volume",
+        "source": "",
+        "destination": "/data",
+        "read_only": false,
+        "volume_name": "dd299edb57bbb0e0f0bf448ea2e0e77157c3ba59a3526e8a25172f41c4fe130c"
+      }
+    ],
+    "networks": [
+      "berthfx_default"
+    ],
+    "labels": {},
+    "stats": null,
+    "platform": "Aarch64"
+  },
+  {
+    "id": "[id]",
+    "engine": "colima:default",
+    "name": "berthfx-db-1",
+    "project": null,
+    "compose_project": "berthfx",
+    "service": "db",
+    "image": {
+      "reference": "postgres:17-alpine",
+      "id": "[image-id]"
+    },
+    "command": "docker-entrypoint.sh postgres",
+    "state": "Running",
+    "health": "Healthy",
+    "exit_code": null,
+    "restart_count": 0,
+    "created": "1970-01-01T00:00:00Z",
+    "started": null,
+    "ports": [
+      {
+        "host_ip": "127.0.0.1",
+        "host_port": 56432,
+        "container_port": 5432,
+        "proto": "Tcp"
+      }
+    ],
+    "mounts": [
+      {
+        "kind": "Volume",
+        "source": "/var/lib/docker/volumes/berthfx_berthfx_pgdata/_data",
+        "destination": "/var/lib/postgresql/data",
+        "read_only": false,
+        "volume_name": "berthfx_berthfx_pgdata"
+      }
+    ],
+    "networks": [
+      "berthfx_default"
+    ],
+    "labels": {},
+    "stats": null,
+    "platform": "Aarch64"
+  },
+  {
+    "id": "[id]",
+    "engine": "colima:default",
+    "name": "berthfx-logger-1",
+    "project": null,
+    "compose_project": "berthfx",
+    "service": "logger",
+    "image": {
+      "reference": "alpine:3",
+      "id": "[image-id]"
+    },
+    "command": "sh /logger.sh",
+    "state": "Running",
+    "health": null,
+    "exit_code": null,
+    "restart_count": 0,
+    "created": "1970-01-01T00:00:00Z",
+    "started": null,
+    "ports": [],
+    "mounts": [
+      {
+        "kind": "Bind",
+        "source": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-d0f8-7be0-88dc-aa526b6181f9/fixtures/compose/berthfx/logger.sh",
+        "destination": "/logger.sh",
+        "read_only": true,
+        "volume_name": null
+      }
+    ],
+    "networks": [
+      "berthfx_default"
+    ],
+    "labels": {},
+    "stats": null,
+    "platform": "Aarch64"
+  },
+  {
+    "id": "[id]",
+    "engine": "colima:default",
+    "name": "berthfx-web-1",
+    "project": null,
+    "compose_project": "berthfx",
+    "service": "web",
+    "image": {
+      "reference": "nginx:alpine",
+      "id": "[image-id]"
+    },
+    "command": "/docker-entrypoint.sh nginx -g 'daemon off;'",
+    "state": "Running",
+    "health": "Healthy",
+    "exit_code": null,
+    "restart_count": 0,
+    "created": "1970-01-01T00:00:00Z",
+    "started": null,
+    "ports": [
+      {
+        "host_ip": "127.0.0.1",
+        "host_port": 56080,
+        "container_port": 80,
+        "proto": "Tcp"
+      }
+    ],
+    "mounts": [],
+    "networks": [
+      "berthfx_default"
+    ],
+    "labels": {},
+    "stats": null,
+    "platform": "Aarch64"
+  }
+]

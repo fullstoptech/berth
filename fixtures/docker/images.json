@@ -1,0 +1,84 @@
+[
+  {
+    "Containers": 1,
+    "Created": 1792623099,
+    "Id": "sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a",
+    "Labels": {},
+    "ParentId": "",
+    "Descriptor": {
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "digest": "sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a",
+      "size": 9218
+    },
+    "RepoDigests": [
+      "alpine@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    ],
+    "RepoTags": [
+      "alpine:3"
+    ],
+    "SharedSize": -1,
+    "Size": 13588211
+  },
+  {
+    "Containers": 1,
+    "Created": 1792628214,
+    "Id": "sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417",
+    "Labels": {
+      "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>"
+    },
+    "ParentId": "",
+    "Descriptor": {
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "digest": "sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417",
+      "size": 10333
+    },
+    "RepoDigests": [
+      "nginx@sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417"
+    ],
+    "RepoTags": [
+      "nginx:alpine"
+    ],
+    "SharedSize": -1,
+    "Size": 94080176
+  },
+  {
+    "Containers": 1,
+    "Created": 1792624762,
+    "Id": "sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb",
+    "Labels": {},
+    "ParentId": "",
+    "Descriptor": {
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "digest": "sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb",
+      "size": 10301
+    },
+    "RepoDigests": [
+      "postgres@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb"
+    ],
+    "RepoTags": [
+      "postgres:17-alpine"
+    ],
+    "SharedSize": -1,
+    "Size": 415452412
+  },
+  {
+    "Containers": 1,
+    "Created": 1792617253,
+    "Id": "sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541",
+    "Labels": {},
+    "ParentId": "",
+    "Descriptor": {
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "digest": "sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541",
+      "size": 10213
+    },
+    "RepoDigests": [
+      "redis@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541"
+    ],
+    "RepoTags": [
+      "redis:7-alpine"
+    ],
+    "SharedSize": -1,
+    "Size": 58705437
+  }
+]

@@ -1,0 +1,88 @@
+---
+source: crates/berth-engine/src/mappers.rs
+expression: d
+---
+{
+  "container": {
+    "id": "[id]",
+    "engine": "colima:default",
+    "name": "berthfx-web-1",
+    "project": null,
+    "compose_project": "berthfx",
+    "service": "web",
+    "image": {
+      "reference": "nginx:alpine",
+      "id": "[image-id]"
+    },
+    "command": "/docker-entrypoint.sh nginx -g daemon off;",
+    "state": "Running",
+    "health": "Healthy",
+    "exit_code": 0,
+    "restart_count": 0,
+    "created": "1970-01-01T00:00:00Z",
+    "started": null,
+    "ports": [
+      {
+        "host_ip": "127.0.0.1",
+        "host_port": 56080,
+        "container_port": 80,
+        "proto": "Tcp"
+      }
+    ],
+    "mounts": [],
+    "networks": [
+      "berthfx_default"
+    ],
+    "labels": {},
+    "stats": null,
+    "platform": "Aarch64"
+  },
+  "entrypoint": [
+    "/docker-entrypoint.sh"
+  ],
+  "cmd": [
+    "nginx",
+    "-g",
+    "daemon off;"
+  ],
+  "env": [
+    {
+      "key": "PATH",
+      "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    },
+    {
+      "key": "NGINX_VERSION",
+      "value": "1.31.8"
+    },
+    {
+      "key": "PKG_RELEASE",
+      "value": "1"
+    },
+    {
+      "key": "DYNPKG_RELEASE",
+      "value": "1"
+    },
+    {
+      "key": "NJS_VERSION",
+      "value": "1.0.2"
+    },
+    {
+      "key": "NJS_RELEASE",
+      "value": "1"
+    },
+    {
+      "key": "ACME_VERSION",
+      "value": "0.4.1"
+    }
+  ],
+  "working_dir": "/",
+  "user": null,
+  "restart": "No",
+  "limits": {
+    "cpus": null,
+    "memory": null,
+    "memory_swap": null
+  },
+  "health_log": [],
+  "inspect": "[inspect]"
+}

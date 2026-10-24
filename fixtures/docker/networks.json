@@ -1,0 +1,36 @@
+[
+  {
+    "Name": "berthfx_default",
+    "Id": "6b00c05a0511eef8575dfd0ae5987f5a94217d17d215f68f763582b53659df61",
+    "Created": "2026-10-24T14:44:54.122393053+02:00",
+    "Scope": "local",
+    "Driver": "bridge",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": null,
+      "Config": [
+        {
+          "Subnet": "172.28.0.0/16",
+          "Gateway": "172.28.0.1"
+        }
+      ]
+    },
+    "Internal": false,
+    "Attachable": false,
+    "Ingress": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Options": {},
+    "Labels": {
+      "com.docker.compose.config-hash": "e70ebb9026228e20db4d52e3c02b073b0386dee5ca7fc151b8aca59ad6138477",
+      "com.docker.compose.network": "default",
+      "com.docker.compose.project": "berthfx",
+      "com.docker.compose.version": "5.5.1",
+      "dev.berth.fixture": "1"
+    }
+  }
+]

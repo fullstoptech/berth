@@ -1,0 +1,20 @@
+{
+  "Volumes": [
+    {
+      "CreatedAt": "2026-10-24T14:44:54+02:00",
+      "Driver": "local",
+      "Labels": {
+        "com.docker.compose.config-hash": "2634ec93657ad63be0d1217806b3adadd5a8a03f9d11dae60fe1db9caa293f09",
+        "com.docker.compose.project": "berthfx",
+        "com.docker.compose.version": "5.5.1",
+        "com.docker.compose.volume": "berthfx_pgdata",
+        "dev.berth.fixture": "1"
+      },
+      "Mountpoint": "/var/lib/docker/volumes/berthfx_berthfx_pgdata/_data",
+      "Name": "berthfx_berthfx_pgdata",
+      "Options": null,
+      "Scope": "local"
+    }
+  ],
+  "Warnings": null
+}

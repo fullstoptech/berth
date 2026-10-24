@@ -1,0 +1,210 @@
+[
+  {
+    "Type": "container",
+    "Action": "create",
+    "Actor": {
+      "ID": "97a0568f95249a51024f20b05542873d08e1089a68420b7ace42b1e5622c0987",
+      "Attributes": {
+        "com.docker.compose.config-hash": "57b55f72b234ef388db622f5b6f6228b5852081d8645f9feb52350d647478172",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:e311ae748be7f56ae5cba304bc488f0786df68ee507513f654a5cc8597cffb42",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "berthfx",
+        "com.docker.compose.project.config_files": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-d0f8-7be0-88dc-aa526b6181f9/fixtures/compose/berthfx/compose.yaml",
+        "com.docker.compose.project.working_dir": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-d0f8-7be0-88dc-aa526b6181f9/fixtures/compose/berthfx",
+        "com.docker.compose.replace": "logger-1",
+        "com.docker.compose.service": "logger",
+        "com.docker.compose.version": "5.5.1",
+        "dev.berth.fixture": "1",
+        "image": "alpine:3",
+        "name": "53d0d2db552f_berthfx-logger-1"
+      }
+    },
+    "scope": "local",
+    "time": 1792845948,
+    "timeNano": 1792845948839841049
+  },
+  {
+    "Type": "container",
+    "Action": "start",
+    "Actor": {
+      "ID": "97a0568f95249a51024f20b05542873d08e1089a68420b7ace42b1e5622c0987",
+      "Attributes": {
+        "com.docker.compose.config-hash": "57b55f72b234ef388db622f5b6f6228b5852081d8645f9feb52350d647478172",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:e311ae748be7f56ae5cba304bc488f0786df68ee507513f654a5cc8597cffb42",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "berthfx",
+        "com.docker.compose.project.config_files": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-d0f8-7be0-88dc-aa526b6181f9/fixtures/compose/berthfx/compose.yaml",
+        "com.docker.compose.project.working_dir": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-d0f8-7be0-88dc-aa526b6181f9/fixtures/compose/berthfx",
+        "com.docker.compose.replace": "logger-1",
+        "com.docker.compose.service": "logger",
+        "com.docker.compose.version": "5.5.1",
+        "dev.berth.fixture": "1",
+        "image": "alpine:3",
+        "name": "berthfx-logger-1"
+      }
+    },
+    "scope": "local",
+    "time": 1792845959,
+    "timeNano": 1792845959122760949
+  },
+  {
+    "Type": "container",
+    "Action": "die",
+    "Actor": {
+      "ID": "53d0d2db552f9dc27917c08a776dbe2b22b948023d3187be31d7a1c16b190517",
+      "Attributes": {
+        "com.docker.compose.config-hash": "52cb8f1a842cbd1d99410964ada359145fdf716eec3e3b6e1cd6a070c26ebe35",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:e311ae748be7f56ae5cba304bc488f0786df68ee507513f654a5cc8597cffb42",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "berthfx",
+        "com.docker.compose.project.config_files": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx/compose.yaml",
+        "com.docker.compose.project.working_dir": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx",
+        "com.docker.compose.service": "logger",
+        "com.docker.compose.version": "5.5.1",
+        "dev.berth.fixture": "1",
+        "execDuration": "63",
+        "exitCode": "137",
+        "image": "alpine:3",
+        "name": "berthfx-logger-1"
+      }
+    },
+    "scope": "local",
+    "time": 1792845958,
+    "timeNano": 1792845958949141829
+  },
+  {
+    "Type": "container",
+    "Action": "stop",
+    "Actor": {
+      "ID": "53d0d2db552f9dc27917c08a776dbe2b22b948023d3187be31d7a1c16b190517",
+      "Attributes": {
+        "com.docker.compose.config-hash": "52cb8f1a842cbd1d99410964ada359145fdf716eec3e3b6e1cd6a070c26ebe35",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:e311ae748be7f56ae5cba304bc488f0786df68ee507513f654a5cc8597cffb42",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "berthfx",
+        "com.docker.compose.project.config_files": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx/compose.yaml",
+        "com.docker.compose.project.working_dir": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx",
+        "com.docker.compose.service": "logger",
+        "com.docker.compose.version": "5.5.1",
+        "dev.berth.fixture": "1",
+        "image": "alpine:3",
+        "name": "berthfx-logger-1"
+      }
+    },
+    "scope": "local",
+    "time": 1792845958,
+    "timeNano": 1792845958944984995
+  },
+  {
+    "Type": "container",
+    "Action": "kill",
+    "Actor": {
+      "ID": "53d0d2db552f9dc27917c08a776dbe2b22b948023d3187be31d7a1c16b190517",
+      "Attributes": {
+        "com.docker.compose.config-hash": "52cb8f1a842cbd1d99410964ada359145fdf716eec3e3b6e1cd6a070c26ebe35",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:e311ae748be7f56ae5cba304bc488f0786df68ee507513f654a5cc8597cffb42",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "berthfx",
+        "com.docker.compose.project.config_files": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx/compose.yaml",
+        "com.docker.compose.project.working_dir": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx",
+        "com.docker.compose.service": "logger",
+        "com.docker.compose.version": "5.5.1",
+        "dev.berth.fixture": "1",
+        "image": "alpine:3",
+        "name": "berthfx-logger-1",
+        "signal": "15"
+      }
+    },
+    "scope": "local",
+    "time": 1792845948,
+    "timeNano": 1792845948850449549
+  },
+  {
+    "Type": "container",
+    "Action": "health_status: healthy",
+    "Actor": {
+      "ID": "8f039e3b7925858dd714e5f2f47eca02b867f3c1d2778daa4391479739ef3a76",
+      "Attributes": {
+        "com.docker.compose.config-hash": "d54c95e4bd22af205e02038f18a6e83016eee35764023c64a882f2ba69cdddbe",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:41c8801e327f9c60c47aa700390ea5cf1862a6852bd27d103ba2cac41a7d6ec7",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "berthfx",
+        "com.docker.compose.project.config_files": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx/compose.yaml",
+        "com.docker.compose.project.working_dir": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx",
+        "com.docker.compose.service": "web",
+        "com.docker.compose.version": "5.5.1",
+        "dev.berth.fixture": "1",
+        "image": "nginx:alpine",
+        "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>",
+        "name": "berthfx-web-1"
+      }
+    },
+    "scope": "local",
+    "time": 1792845969,
+    "timeNano": 1792845969817137646
+  },
+  {
+    "Type": "container",
+    "Action": "health_status: healthy",
+    "Actor": {
+      "ID": "8f039e3b7925858dd714e5f2f47eca02b867f3c1d2778daa4391479739ef3a76",
+      "Attributes": {
+        "com.docker.compose.config-hash": "d54c95e4bd22af205e02038f18a6e83016eee35764023c64a882f2ba69cdddbe",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:41c8801e327f9c60c47aa700390ea5cf1862a6852bd27d103ba2cac41a7d6ec7",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "berthfx",
+        "com.docker.compose.project.config_files": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx/compose.yaml",
+        "com.docker.compose.project.working_dir": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx",
+        "com.docker.compose.service": "web",
+        "com.docker.compose.version": "5.5.1",
+        "dev.berth.fixture": "1",
+        "image": "nginx:alpine",
+        "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>",
+        "name": "berthfx-web-1"
+      }
+    },
+    "scope": "local",
+    "time": 1792845976,
+    "timeNano": 1792845976304937499
+  },
+  {
+    "Type": "container",
+    "Action": "exec_start: /bin/sh -c pg_isready -U postgres",
+    "Actor": {
+      "ID": "aac4c06875f68cd5968fa46f503ece9a995a3b815b10b025e31e65ca965371bc",
+      "Attributes": {
+        "com.docker.compose.config-hash": "6da4acd3efcea2f9e93f79a3325d8f89ca10b326117a4de162e45b54af50250f",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:a717692f944862397bd102c6abee9b3f7927adbf7ee5f3a93e50b65aea0c5396",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "berthfx",
+        "com.docker.compose.project.config_files": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx/compose.yaml",
+        "com.docker.compose.project.working_dir": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx",
+        "com.docker.compose.service": "db",
+        "com.docker.compose.version": "5.5.1",
+        "dev.berth.fixture": "1",
+        "execID": "3ee2140f835082e7d2ff7dcda8e2b44011a8f05fcd4e1331248973b68a11c63d",
+        "image": "postgres:17-alpine",
+        "name": "berthfx-db-1"
+      }
+    },
+    "scope": "local",
+    "time": 1792845935,
+    "timeNano": 1792845935297607283
+  }
+]

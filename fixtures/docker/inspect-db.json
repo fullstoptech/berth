@@ -1,0 +1,309 @@
+{
+  "Id": "aac4c06875f68cd5968fa46f503ece9a995a3b815b10b025e31e65ca965371bc",
+  "Created": "2026-10-24T12:44:54.392893925Z",
+  "Path": "docker-entrypoint.sh",
+  "Args": [
+    "postgres"
+  ],
+  "State": {
+    "Status": "running",
+    "Running": true,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 883844,
+    "ExitCode": 0,
+    "Error": "",
+    "StartedAt": "2026-10-24T12:44:55.031751602Z",
+    "FinishedAt": "0001-01-01T00:00:00Z",
+    "Health": {
+      "Status": "healthy",
+      "FailingStreak": 0,
+      "Log": [
+        {
+          "Start": "2026-10-24T14:46:24.197792421+02:00",
+          "End": "2026-10-24T14:46:24.233708876+02:00",
+          "ExitCode": 0,
+          "Output": "/var/run/postgresql:5432 - accepting connections\n"
+        },
+        {
+          "Start": "2026-10-24T14:46:26.234996154+02:00",
+          "End": "2026-10-24T14:46:26.283887066+02:00",
+          "ExitCode": 0,
+          "Output": "/var/run/postgresql:5432 - accepting connections\n"
+        },
+        {
+          "Start": "2026-10-24T14:46:28.284326042+02:00",
+          "End": "2026-10-24T14:46:28.328242788+02:00",
+          "ExitCode": 0,
+          "Output": "/var/run/postgresql:5432 - accepting connections\n"
+        },
+        {
+          "Start": "2026-10-24T14:46:30.329055254+02:00",
+          "End": "2026-10-24T14:46:30.372391792+02:00",
+          "ExitCode": 0,
+          "Output": "/var/run/postgresql:5432 - accepting connections\n"
+        },
+        {
+          "Start": "2026-10-24T14:46:32.37347479+02:00",
+          "End": "2026-10-24T14:46:32.410903911+02:00",
+          "ExitCode": 0,
+          "Output": "/var/run/postgresql:5432 - accepting connections\n"
+        }
+      ]
+    }
+  },
+  "Image": "sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb",
+  "ResolvConfPath": "/var/lib/docker/containers/aac4c06875f68cd5968fa46f503ece9a995a3b815b10b025e31e65ca965371bc/resolv.conf",
+  "HostnamePath": "/var/lib/docker/containers/aac4c06875f68cd5968fa46f503ece9a995a3b815b10b025e31e65ca965371bc/hostname",
+  "HostsPath": "/var/lib/docker/containers/aac4c06875f68cd5968fa46f503ece9a995a3b815b10b025e31e65ca965371bc/hosts",
+  "LogPath": "/var/lib/docker/containers/aac4c06875f68cd5968fa46f503ece9a995a3b815b10b025e31e65ca965371bc/aac4c06875f68cd5968fa46f503ece9a995a3b815b10b025e31e65ca965371bc-json.log",
+  "Name": "/berthfx-db-1",
+  "RestartCount": 0,
+  "Driver": "overlayfs",
+  "Platform": "linux",
+  "MountLabel": "",
+  "ProcessLabel": "",
+  "AppArmorProfile": "docker-default",
+  "ExecIDs": null,
+  "HostConfig": {
+    "Binds": [
+      "berthfx_berthfx_pgdata:/var/lib/postgresql/data:rw"
+    ],
+    "ContainerIDFile": "",
+    "LogConfig": {
+      "Type": "json-file",
+      "Config": {}
+    },
+    "NetworkMode": "berthfx_default",
+    "PortBindings": {
+      "5432/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "56432"
+        }
+      ]
+    },
+    "RestartPolicy": {
+      "Name": "no",
+      "MaximumRetryCount": 0
+    },
+    "AutoRemove": false,
+    "VolumeDriver": "",
+    "VolumesFrom": null,
+    "ConsoleSize": [
+      0,
+      0
+    ],
+    "CapAdd": null,
+    "CapDrop": null,
+    "CgroupnsMode": "private",
+    "Dns": null,
+    "DnsOptions": null,
+    "DnsSearch": null,
+    "ExtraHosts": [],
+    "GroupAdd": null,
+    "IpcMode": "private",
+    "Cgroup": "",
+    "Links": null,
+    "OomScoreAdj": 0,
+    "PidMode": "",
+    "Privileged": false,
+    "PublishAllPorts": false,
+    "ReadonlyRootfs": false,
+    "SecurityOpt": null,
+    "UTSMode": "",
+    "UsernsMode": "",
+    "ShmSize": 67108864,
+    "Runtime": "runc",
+    "Isolation": "",
+    "CpuShares": 0,
+    "Memory": 0,
+    "NanoCpus": 0,
+    "CgroupParent": "",
+    "BlkioWeight": 0,
+    "BlkioWeightDevice": null,
+    "BlkioDeviceReadBps": null,
+    "BlkioDeviceWriteBps": null,
+    "BlkioDeviceReadIOps": null,
+    "BlkioDeviceWriteIOps": null,
+    "CpuPeriod": 0,
+    "CpuQuota": 0,
+    "CpuRealtimePeriod": 0,
+    "CpuRealtimeRuntime": 0,
+    "CpusetCpus": "",
+    "CpusetMems": "",
+    "Devices": null,
+    "DeviceCgroupRules": null,
+    "DeviceRequests": null,
+    "MemoryReservation": 0,
+    "MemorySwap": 0,
+    "MemorySwappiness": null,
+    "OomKillDisable": null,
+    "PidsLimit": null,
+    "Ulimits": null,
+    "CpuCount": 0,
+    "CpuPercent": 0,
+    "IOMaximumIOps": 0,
+    "IOMaximumBandwidth": 0,
+    "MaskedPaths": [
+      "/proc/acpi",
+      "/proc/asound",
+      "/proc/interrupts",
+      "/proc/kcore",
+      "/proc/keys",
+      "/proc/latency_stats",
+      "/proc/sched_debug",
+      "/proc/scsi",
+      "/proc/timer_list",
+      "/proc/timer_stats",
+      "/sys/devices/virtual/powercap",
+      "/sys/firmware"
+    ],
+    "ReadonlyPaths": [
+      "/proc/bus",
+      "/proc/fs",
+      "/proc/irq",
+      "/proc/sys",
+      "/proc/sysrq-trigger"
+    ]
+  },
+  "Storage": {
+    "RootFS": {
+      "Snapshot": {
+        "Name": "overlayfs"
+      }
+    }
+  },
+  "Mounts": [
+    {
+      "Type": "volume",
+      "Name": "berthfx_berthfx_pgdata",
+      "Source": "/var/lib/docker/volumes/berthfx_berthfx_pgdata/_data",
+      "Destination": "/var/lib/postgresql/data",
+      "Driver": "local",
+      "Mode": "rw",
+      "RW": true,
+      "Propagation": ""
+    }
+  ],
+  "Config": {
+    "Hostname": "aac4c06875f6",
+    "Domainname": "",
+    "User": "",
+    "AttachStdin": false,
+    "AttachStdout": true,
+    "AttachStderr": true,
+    "ExposedPorts": {
+      "5432/tcp": {}
+    },
+    "Tty": false,
+    "OpenStdin": false,
+    "StdinOnce": false,
+    "Env": [
+      "POSTGRES_PASSWORD=\u2022\u2022\u2022\u2022",
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "GOSU_VERSION=1.19",
+      "LANG=en_US.utf8",
+      "PG_MAJOR=17",
+      "PG_VERSION=17.11",
+      "PG_SHA256=dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979",
+      "DOCKER_PG_LLVM_DEPS=llvm21-dev \t\tclang21",
+      "PGDATA=/var/lib/postgresql/data"
+    ],
+    "Cmd": [
+      "postgres"
+    ],
+    "Healthcheck": {
+      "Test": [
+        "CMD-SHELL",
+        "pg_isready -U postgres"
+      ],
+      "Interval": 2000000000,
+      "Timeout": 2000000000,
+      "StartPeriod": 2000000000,
+      "Retries": 15
+    },
+    "Image": "postgres:17-alpine",
+    "Volumes": {
+      "/var/lib/postgresql/data": {}
+    },
+    "WorkingDir": "/",
+    "Entrypoint": [
+      "docker-entrypoint.sh"
+    ],
+    "Labels": {
+      "com.docker.compose.config-hash": "6da4acd3efcea2f9e93f79a3325d8f89ca10b326117a4de162e45b54af50250f",
+      "com.docker.compose.container-number": "1",
+      "com.docker.compose.depends_on": "",
+      "com.docker.compose.image": "sha256:a717692f944862397bd102c6abee9b3f7927adbf7ee5f3a93e50b65aea0c5396",
+      "com.docker.compose.oneoff": "False",
+      "com.docker.compose.project": "berthfx",
+      "com.docker.compose.project.config_files": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx/compose.yaml",
+      "com.docker.compose.project.working_dir": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx",
+      "com.docker.compose.service": "db",
+      "com.docker.compose.version": "5.5.1",
+      "dev.berth.fixture": "1"
+    },
+    "StopSignal": "SIGINT"
+  },
+  "NetworkSettings": {
+    "SandboxID": "1e923ce81d741ab445d8f5fb6267a66a8ed8c64d157318da71a828dbff9ad20c",
+    "SandboxKey": "/var/run/docker/netns/1e923ce81d74",
+    "Ports": {
+      "5432/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "56432"
+        }
+      ]
+    },
+    "Networks": {
+      "berthfx_default": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "berthfx-db-1",
+          "db"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "6b00c05a0511eef8575dfd0ae5987f5a94217d17d215f68f763582b53659df61",
+        "EndpointID": "dffd2ecdd8a8abfbc572a318f227841b21e6c2257f956d1770bbd8e026c58bd1",
+        "Gateway": "172.28.0.1",
+        "IPAddress": "172.28.0.3",
+        "MacAddress": "42:cd:ef:96:36:12",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "berthfx-db-1",
+          "db",
+          "aac4c06875f6"
+        ]
+      }
+    }
+  },
+  "ImageManifestDescriptor": {
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "digest": "sha256:a717692f944862397bd102c6abee9b3f7927adbf7ee5f3a93e50b65aea0c5396",
+    "size": 2869,
+    "annotations": {
+      "com.docker.official-images.bashbrew.arch": "arm64v8",
+      "org.opencontainers.image.base.digest": "sha256:e311ae748be7f56ae5cba304bc488f0786df68ee507513f654a5cc8597cffb42",
+      "org.opencontainers.image.base.name": "alpine:3.24",
+      "org.opencontainers.image.created": "2026-10-21T23:16:53Z",
+      "org.opencontainers.image.revision": "2603e26e245e558218728ee14e0a42dcb020dc7f",
+      "org.opencontainers.image.source": "https://github.com/docker-library/postgres.git#2603e26e245e558218728ee14e0a42dcb020dc7f:17/alpine3.24",
+      "org.opencontainers.image.url": "https://hub.docker.com/_/postgres",
+      "org.opencontainers.image.version": "17.11-alpine3.24"
+    },
+    "platform": {
+      "architecture": "arm64",
+      "os": "linux",
+      "variant": "v8"
+    }
+  }
+}

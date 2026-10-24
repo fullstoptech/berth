@@ -10,8 +10,12 @@ repository.workspace = true
 berth-core.workspace = true
 berth-sys.workspace = true
 async-trait.workspace = true
+bollard.workspace = true
+bytes.workspace = true
 bytesize.workspace = true
+chrono.workspace = true
 futures.workspace = true
+secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true
@@ -21,6 +25,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 tempfile.workspace = true
 
 [lints]

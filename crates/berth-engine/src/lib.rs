@@ -1,7 +1,12 @@
+pub mod bollard_engine;
+pub mod client;
 pub mod colima;
 pub mod colima_parse;
 pub mod discovery;
+pub mod mappers;
 
+pub use bollard_engine::BollardEngine;
+pub use client::{unsupported_stream, Bs, EngineClient, ExecHandle, RegistryAuth};
 pub use colima::{ColimaCli, ColimaControl, MockColima};
 
 #[derive(Debug, thiserror::Error)]
