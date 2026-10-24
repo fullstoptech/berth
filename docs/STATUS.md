@@ -4,7 +4,7 @@
 
 Phase 0 complete (P0-T1..P0-T5, acceptance run 2026-10-24; atomic commits on `phase/0-scaffold`, nothing pushed). The app opens a 1440x900 window with the integrated title bar, token-driven shell and light/dark themes; fixtures work against the local engine.
 
-- Current task: **P1-T1** (Phase 1, branch `phase/1-engine` at phase open).
+- Current task: **P1-T4** (Phase 1 on `phase/1-engine`; from 2026-10-24 the owner runs an orchestrated swarm: `muse-wonder-full` decides and reviews, `muse-wonder` workers implement bounded tasks in isolated worktrees, commits stay atomic per reviewed task).
 - Workspace version: `0.0.0`.
 
 ## What works
@@ -23,7 +23,11 @@ $ cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnin
 
 ## Half done
 
-Nothing. Phase 0 is closed; Phase 1 has not started.
+Phase 1 in progress: P1-T1 and P1-T2 complete (uncommitted on `phase/1-engine`); P1-T3 next.
+
+- P1-T1 done-when (2026-10-24): `cargo nextest run -p berth-sys` → 24 passed (fake shell supplies dirs, hanging shell killed by timeout, disabled lookup proven not to run the shell, cancel kills `sleep 30` inside 500 ms, per-stream order kept); under a Finder PATH (`env -i … PATH=/usr/bin:/bin:/usr/sbin:/sbin`) the `which` example prints `/Users/emmanuel/.local/bin/claude`, `…/muse`, `/opt/homebrew/bin/docker`, `/opt/homebrew/bin/colima`. (Cargo itself must be invoked by absolute path under `env -i`.)
+- P1-T2 done-when (2026-10-24): `cargo nextest run -p berth-store` → 19 passed (≥ 18); `BERTH_KEYRING_TEST=1 … --run-ignored only keyring` → 1 passed; afterwards `security find-generic-password -s dev.berth -a test/roundtrip` exits 44 (item deleted). Activity origin keys are `engine`/`berth`/`plugin:<id>`.
+- P1-T3 done-when (2026-10-24): `cargo nextest run -p berth-engine colima discovery` → 17 passed (≥ 14; NDJSON + array list forms, stopped/containerd profiles, yaml rosetta/vmType, contexts from a temp home, `DOCKER_HOST` wins); `BERTH_IT=1 … --run-ignored only colima_it` prints `profile=default vm_type=Some(Vz) rosetta=Some(false) socket=Some("…/.colima/default/docker.sock")`. Fixtures in `fixtures/colima/`. `MockColima::binary()` reports a binary (in the mock world colima exists). No colima start/stop ran.
 
 - P0-T2 done-when (2026-10-24): `cargo nextest run -p berth-core` → 50 passed (≥ 45 required), workspace 61 passed; fmt and clippy clean. Mutation check: flipping `Exited(0)` tone to Danger failed `tone_map_matches_components_spec`, then restored.
 - P0-T3 done-when (2026-10-24): gen-tokens diff clean; `grep -c "<symbol"` on `icons.svg` → 56 (no hex colours in the sprite); `css-lint.sh && secret-scan.sh` exit 0 and each exits 1 on a planted violation; `data-theme="dark"` present in tokens.css. Fonts copied with an OFL.txt built from the two fonts' own copyright lines (from their TTF name tables) plus the standard OFL 1.1 text.

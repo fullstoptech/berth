@@ -9,6 +9,19 @@ repository.workspace = true
 [dependencies]
 berth-core.workspace = true
 berth-sys.workspace = true
+async-trait.workspace = true
+bytesize.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_norway.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true
