@@ -3,11 +3,14 @@ pub mod client;
 pub mod colima;
 pub mod colima_parse;
 pub mod discovery;
+pub mod git;
 pub mod mappers;
+pub mod projects;
 
 pub use bollard_engine::BollardEngine;
 pub use client::{unsupported_stream, Bs, EngineClient, ExecHandle, RegistryAuth};
 pub use colima::{ColimaCli, ColimaControl, MockColima};
+pub use git::GitCli;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
