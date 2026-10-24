@@ -1,0 +1,17 @@
+services:
+  registry:
+    image: registry:2
+    labels: [dev.berth.fixture=1]
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: berthfx
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+    ports:
+      - "127.0.0.1:56500:5000"
+    volumes:
+      - ./auth:/auth:ro
+      - berthfx_registry_data:/var/lib/registry
+
+volumes:
+  berthfx_registry_data:
+    labels: [dev.berth.fixture=1]

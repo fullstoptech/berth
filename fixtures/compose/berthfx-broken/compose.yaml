@@ -1,0 +1,44 @@
+services:
+  crash:
+    image: alpine:3
+    labels: [dev.berth.fixture=1]
+    command: ["sh", "-c", "exit 1"]
+  oom:
+    image: alpine:3
+    labels: [dev.berth.fixture=1]
+    mem_limit: 16m
+    command: ["sh", "-c", "x=''; while :; do x=\"$x$(head -c 1048576 /dev/zero | tr '\\0' x)\"; done"]
+  badimage:
+    image: berthfx/does-not-exist:1
+    labels: [dev.berth.fixture=1]
+  portclash:
+    image: nginx:alpine
+    labels: [dev.berth.fixture=1]
+    ports:
+      - "127.0.0.1:56080:80"
+  needsvar:
+    image: alpine:3
+    labels: [dev.berth.fixture=1]
+    environment:
+      BERTHFX_REQUIRED: ${BERTHFX_MISSING}
+    command: ["sleep", "30"]
+  unhealthy:
+    image: alpine:3
+    labels: [dev.berth.fixture=1]
+    command: ["sleep", "300"]
+    healthcheck:
+      test: ["CMD", "false"]
+      interval: 2s
+      timeout: 2s
+      retries: 1
+      start_period: 1s
+  badmount:
+    image: alpine:3
+    labels: [dev.berth.fixture=1]
+    command: ["sleep", "30"]
+    volumes:
+      - type: bind
+        source: /nonexistent-berthfx-path
+        target: /data
+        bind:
+          create_host_path: false

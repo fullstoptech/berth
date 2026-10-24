@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+      - name: Run the canonical gate
+        run: scripts/check.sh
