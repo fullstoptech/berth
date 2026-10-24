@@ -266,42 +266,7 @@ impl ComposeRunner for CliCompose {
     }
 }
 
-pub struct MockCompose;
-
-#[async_trait::async_trait]
-impl ComposeRunner for MockCompose {
-    fn run(
-        &self,
-        target: &berth_core::ComposeTarget,
-        _cmd: berth_core::ComposeCommand,
-        _cancel: tokio_util::sync::CancellationToken,
-    ) -> futures::stream::BoxStream<'static, Result<berth_core::ComposeEvent, EngineError>> {
-        futures::stream::iter([
-            Ok(berth_core::ComposeEvent::Progress {
-                id: target.project_name.clone(),
-                status: "Working".to_string(),
-                text: None,
-            }),
-            Ok(berth_core::ComposeEvent::Done { code: 0 }),
-        ])
-        .boxed()
-    }
-
-    async fn config(
-        &self,
-        _target: &berth_core::ComposeTarget,
-    ) -> Result<serde_json::Value, EngineError> {
-        Ok(serde_json::json!({ "services": {} }))
-    }
-
-    async fn validate(
-        &self,
-        _folder: &std::path::Path,
-        _files: &[std::path::PathBuf],
-    ) -> Result<(), EngineError> {
-        Ok(())
-    }
-}
+pub use crate::mock::compose::MockCompose;
 
 #[cfg(test)]
 mod tests {
@@ -555,7 +520,7 @@ mod tests {
 
     #[tokio::test]
     async fn compose_mock_run_streams_progress_then_done_zero() {
-        let mock = MockCompose;
+        let mock = MockCompose::new();
         let items: Vec<_> = mock
             .run(
                 &target(),
@@ -584,7 +549,7 @@ mod tests {
 
     #[tokio::test]
     async fn compose_mock_config_and_validate_succeed() {
-        let mock = MockCompose;
+        let mock = MockCompose::new();
         let config = mock.config(&target()).await.expect("mock config");
         assert!(config.get("services").is_some(), "{config}");
         mock.validate(std::path::Path::new("/work/shop"), &target().files)

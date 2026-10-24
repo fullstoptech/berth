@@ -6,6 +6,7 @@ pub mod compose;
 pub mod discovery;
 pub mod git;
 pub mod mappers;
+pub mod mock;
 pub mod projects;
 
 pub use bollard_engine::BollardEngine;
@@ -13,6 +14,7 @@ pub use client::{unsupported_stream, Bs, EngineClient, ExecHandle, RegistryAuth}
 pub use colima::{ColimaCli, ColimaControl, MockColima};
 pub use compose::{compose_args, parse_progress_json, CliCompose, ComposeRunner, MockCompose};
 pub use git::GitCli;
+pub use mock::{MockEngine, MockWorld};
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
