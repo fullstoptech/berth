@@ -14,6 +14,20 @@ pub struct ExecHandle {
 }
 
 impl ExecHandle {
+    pub(crate) fn new(
+        session: berth_core::ExecSession,
+        output: futures::stream::BoxStream<'static, Result<bytes::Bytes, EngineError>>,
+        input: tokio::sync::mpsc::Sender<bytes::Bytes>,
+        resize: tokio::sync::mpsc::Sender<(u16, u16)>,
+    ) -> Self {
+        Self {
+            session,
+            output,
+            input,
+            resize,
+        }
+    }
+
     pub async fn resize(&self, cols: u16, rows: u16) -> Result<(), EngineError> {
         self.resize
             .send((cols, rows))

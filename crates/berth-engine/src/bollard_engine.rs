@@ -1,20 +1,31 @@
-//! `BollardEngine`: the read side of `EngineClient` over a unix socket
-//! (P1-T4). Streams and actions land in P1-T5, mutations in P1-T6.
+//! `BollardEngine`: `EngineClient` over a unix socket. Read side P1-T4,
+//! streams and actions P1-T5, mutations (create/recreate/exec/files/
+//! images/volumes/networks/prune) P1-T6.
+
+use std::collections::HashMap;
 
 use bollard::container::LogOutput;
+use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecOptions, StartExecResults};
 use bollard::models::{
-    ContainerUpdateBody, RestartPolicy as BollardRestart, RestartPolicyNameEnum,
+    ContainerCreateBody, ContainerUpdateBody, EndpointSettings, HostConfig, Ipam, IpamConfig,
+    Mount, MountType, NetworkConnectRequest, NetworkCreateRequest, NetworkDisconnectRequest,
+    NetworkingConfig, PortBinding, PortMap, RestartPolicy as BollardRestart, RestartPolicyNameEnum,
+    VolumeCreateRequest,
 };
 use bollard::query_parameters::{
-    DataUsageOptions, InspectContainerOptionsBuilder, KillContainerOptionsBuilder,
-    ListContainersOptionsBuilder, ListImagesOptionsBuilder, LogsOptionsBuilder,
-    RemoveContainerOptionsBuilder, RenameContainerOptionsBuilder, RestartContainerOptionsBuilder,
-    StartContainerOptions, StatsOptionsBuilder, StopContainerOptionsBuilder,
+    CreateContainerOptionsBuilder, CreateImageOptionsBuilder, DataUsageOptions,
+    DownloadFromContainerOptionsBuilder, InspectContainerOptionsBuilder,
+    KillContainerOptionsBuilder, ListContainersOptionsBuilder, ListImagesOptionsBuilder,
+    LogsOptionsBuilder, PruneBuildOptions, RemoveContainerOptionsBuilder,
+    RemoveImageOptionsBuilder, RemoveVolumeOptions, RenameContainerOptionsBuilder,
+    RestartContainerOptionsBuilder, SearchImagesOptionsBuilder, StartContainerOptions,
+    StatsOptionsBuilder, StopContainerOptionsBuilder, UploadToContainerOptionsBuilder,
 };
 use futures::StreamExt;
+use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken as Cancel;
 
-use crate::client::{unsupported_stream, Bs, EngineClient, ExecHandle};
+use crate::client::{Bs, EngineClient, ExecHandle};
 use crate::mappers;
 use crate::EngineError;
 
@@ -42,6 +53,7 @@ fn map_err(engine_name: &str, err: bollard::errors::Error) -> EngineError {
             engine: engine_name.to_string(),
             reason: format!("socket {path} not found"),
         },
+        B::DockerStreamError { error } => EngineError::Docker(error),
         B::RequestTimeoutError => {
             EngineError::Timeout(std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS))
         }
@@ -100,6 +112,128 @@ impl BollardEngine {
             .iter()
             .map(|s| mappers::container(&self.id, s))
             .collect())
+    }
+
+    async fn start_by_id(&self, id: &str) -> Result<(), EngineError> {
+        self.docker
+            .start_container(id, None::<StartContainerOptions>)
+            .await
+            .map_err(|e| self.err(e))
+    }
+
+    async fn remove_by_id(&self, id: &str, force: bool) -> Result<(), EngineError> {
+        let options = RemoveContainerOptionsBuilder::new().force(force).build();
+        self.docker
+            .remove_container(id, Some(options))
+            .await
+            .map_err(|e| self.err(e))
+    }
+
+    /// Create from a spec against an explicit name (recreate restores the
+    /// old name itself, so it needs this separate from `EngineClient::create`).
+    async fn create_from_spec(
+        &self,
+        spec: &berth_core::ContainerSpec,
+        start: bool,
+    ) -> Result<berth_core::ContainerId, EngineError> {
+        let mut builder = CreateContainerOptionsBuilder::new().name(&spec.name);
+        if let Some(platform) = &spec.platform {
+            builder = builder.platform(platform);
+        }
+        let created = self
+            .docker
+            .create_container(Some(builder.build()), spec_to_create_body(spec))
+            .await
+            .map_err(|e| self.err(e))?;
+        let id = berth_core::ContainerId(created.id);
+        // Docker only honours one endpoint at create time reliably; the
+        // first network rides in NetworkingConfig, the rest connect here.
+        for network in spec.networks.iter().skip(1) {
+            if let Err(e) = self.connect_network(network, &id).await {
+                let _ = self.remove_by_id(&id.0, true).await;
+                return Err(e);
+            }
+        }
+        if start {
+            if let Err(e) = self.start_by_id(&id.0).await {
+                let _ = self.remove_by_id(&id.0, true).await;
+                return Err(e);
+            }
+        }
+        Ok(id)
+    }
+
+    /// D51 helper container for volume file access: `alpine:3` with the
+    /// volume mounted at [`HELPER_MOUNT`]. The archive API works on a
+    /// created (never started) container, so no process ever runs in it.
+    /// The image is never pulled here (the caller confirms that, P1-T6);
+    /// a missing helper image is a Docker error naming it.
+    async fn helper_container(&self, volume: &str, read_only: bool) -> Result<String, EngineError> {
+        if self.docker.inspect_image(HELPER_IMAGE).await.is_err() {
+            return Err(EngineError::Docker(format!(
+                "helper image {HELPER_IMAGE} is not on this engine; pull it first"
+            )));
+        }
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        let name = format!("berthfx-scratch-helper-{nanos:x}");
+        let spec = berth_core::ContainerSpec {
+            name,
+            image: berth_core::ImageRef {
+                reference: HELPER_IMAGE.to_string(),
+                id: None,
+            },
+            command: Some(vec!["sleep".to_string(), "300".to_string()]),
+            entrypoint: None,
+            env: Vec::new(),
+            ports: Vec::new(),
+            mounts: vec![berth_core::Mount {
+                kind: berth_core::MountKind::Volume,
+                source: volume.to_string(),
+                destination: HELPER_MOUNT.to_string(),
+                read_only,
+                volume_name: Some(volume.to_string()),
+            }],
+            networks: Vec::new(),
+            labels: [("dev.berth.fixture".to_string(), "1".to_string())]
+                .into_iter()
+                .collect(),
+            restart: berth_core::RestartPolicy::No,
+            limits: berth_core::Limits::default(),
+            platform: None,
+        };
+        let id = self.create_from_spec(&spec, false).await?;
+        Ok(id.0)
+    }
+
+    /// Resolve a `FileTarget` to (container id, in-container path,
+    /// helper-to-remove). `read_only` mounts the helper volume read-only.
+    async fn resolve_target(
+        &self,
+        target: &berth_core::FileTarget,
+        path: &str,
+        read_only: bool,
+    ) -> Result<(String, String, Option<String>), EngineError> {
+        match target {
+            berth_core::FileTarget::Container(id) => Ok((id.0.clone(), path.to_string(), None)),
+            berth_core::FileTarget::Volume(volume) => {
+                let helper = self.helper_container(volume, read_only).await?;
+                Ok((helper.clone(), helper_path(path), Some(helper)))
+            }
+        }
+    }
+}
+
+const HELPER_IMAGE: &str = "alpine:3";
+const HELPER_MOUNT: &str = "/__berth_vol";
+
+fn helper_path(path: &str) -> String {
+    let rel = path.trim_matches('/');
+    if rel.is_empty() {
+        HELPER_MOUNT.to_string()
+    } else {
+        format!("{HELPER_MOUNT}/{rel}")
     }
 }
 
@@ -450,121 +584,776 @@ impl EngineClient for BollardEngine {
 
     async fn create(
         &self,
-        _spec: &berth_core::ContainerSpec,
-        _start: bool,
+        spec: &berth_core::ContainerSpec,
+        start: bool,
     ) -> Result<berth_core::ContainerId, EngineError> {
-        Err(EngineError::Unsupported("create".into())) // P1-T6
+        self.create_from_spec(spec, start).await
     }
 
     async fn recreate(
         &self,
-        _id: &berth_core::ContainerId,
-        _spec: &berth_core::ContainerSpec,
+        id: &berth_core::ContainerId,
+        spec: &berth_core::ContainerSpec,
     ) -> Result<berth_core::ContainerId, EngineError> {
-        Err(EngineError::Unsupported("recreate".into())) // P1-T6
+        // PLAN §6.5: stop, rename old to "<name>-berth-old", create, start,
+        // remove old. On any failure the old container is renamed back and
+        // restarted (when it was running).
+        let detail = self.container(id).await?;
+        let old_name = detail.container.name.clone();
+        let was_running = matches!(
+            detail.container.state,
+            berth_core::ContainerState::Running | berth_core::ContainerState::Restarting
+        );
+        let was_paused = detail.container.state == berth_core::ContainerState::Paused;
+        if was_paused {
+            self.act(id, berth_core::ContainerAction::Unpause).await?;
+        }
+        if was_running || was_paused {
+            // Bollard's per-request timeout is the 2 s connect budget, so a
+            // container whose PID 1 ignores SIGTERM outlives the stop
+            // request. The engine keeps stopping it server-side; poll for
+            // the exit, then kill as the last resort.
+            match self
+                .act(
+                    id,
+                    berth_core::ContainerAction::Stop {
+                        timeout_s: Some(10),
+                    },
+                )
+                .await
+            {
+                Ok(()) => {}
+                Err(EngineError::Timeout(_)) => {
+                    let mut stopped = false;
+                    for _ in 0..48 {
+                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                        match self.container(id).await {
+                            Ok(d)
+                                if !matches!(
+                                    d.container.state,
+                                    berth_core::ContainerState::Running
+                                        | berth_core::ContainerState::Restarting
+                                ) =>
+                            {
+                                stopped = true;
+                                break;
+                            }
+                            Ok(_) => {}
+                            Err(_) => {
+                                stopped = true;
+                                break;
+                            }
+                        }
+                    }
+                    if !stopped {
+                        self.act(id, berth_core::ContainerAction::Kill { signal: None })
+                            .await?;
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        let backup_name = format!("{old_name}-berth-old");
+        self.act(
+            id,
+            berth_core::ContainerAction::Rename { name: backup_name },
+        )
+        .await?;
+        let start_new = was_running || was_paused;
+        match self.create_from_spec(spec, start_new).await {
+            Ok(new_id) => {
+                if let Err(e) = self.remove_by_id(&id.0, true).await {
+                    tracing::warn!(error = %e, "recreate: old container left behind");
+                }
+                Ok(new_id)
+            }
+            Err(create_err) => {
+                let mut restore_errors = Vec::new();
+                if let Err(e) = self
+                    .act(
+                        id,
+                        berth_core::ContainerAction::Rename {
+                            name: old_name.clone(),
+                        },
+                    )
+                    .await
+                {
+                    restore_errors.push(e.to_string());
+                }
+                if start_new {
+                    if let Err(e) = self.act(id, berth_core::ContainerAction::Start).await {
+                        restore_errors.push(e.to_string());
+                    }
+                }
+                if restore_errors.is_empty() {
+                    Err(match create_err {
+                        EngineError::Docker(m) => EngineError::Docker(m),
+                        other => EngineError::Docker(other.to_string()),
+                    })
+                } else {
+                    Err(EngineError::Docker(format!(
+                        "recreate failed ({create_err}); restoring the old container also failed: {}",
+                        restore_errors.join("; ")
+                    )))
+                }
+            }
+        }
     }
 
     async fn exec(
         &self,
-        _id: &berth_core::ContainerId,
-        _req: berth_core::ExecRequest,
-        _cancel: Cancel,
+        id: &berth_core::ContainerId,
+        req: berth_core::ExecRequest,
+        cancel: Cancel,
     ) -> Result<ExecHandle, EngineError> {
-        Err(EngineError::Unsupported("exec".into())) // P1-T6
+        // D41: probe bash, then sh, unless the caller picked a shell.
+        let candidates: Vec<String> = match &req.shell {
+            Some(shell) => vec![shell.clone()],
+            None => vec!["bash".to_string(), "sh".to_string()],
+        };
+        let mut last_err: Option<EngineError> = None;
+        for shell in candidates {
+            let config = CreateExecOptions {
+                attach_stdin: Some(true),
+                attach_stdout: Some(true),
+                attach_stderr: Some(true),
+                tty: Some(true),
+                detach_keys: None,
+                env: None::<Vec<String>>,
+                cmd: Some(vec![shell.clone()]),
+                privileged: None,
+                user: req.user.clone(),
+                working_dir: req.workdir.clone(),
+            };
+            let created = match self.docker.create_exec(&id.0, config).await {
+                Ok(created) => created,
+                Err(e) => {
+                    last_err = Some(self.err(e));
+                    continue;
+                }
+            };
+            let started = self
+                .docker
+                .start_exec(
+                    &created.id,
+                    Some(StartExecOptions {
+                        detach: false,
+                        tty: true,
+                        output_capacity: None,
+                    }),
+                )
+                .await;
+            let (output_stream, binput) = match started {
+                Ok(StartExecResults::Attached { output, input }) => (output, input),
+                Ok(StartExecResults::Detached) => {
+                    last_err = Some(EngineError::Docker("exec detached unexpectedly".into()));
+                    continue;
+                }
+                Err(e) => {
+                    last_err = Some(self.err(e));
+                    continue;
+                }
+            };
+            let exec_id = created.id.clone();
+            let _ = self
+                .docker
+                .resize_exec(
+                    &exec_id,
+                    ResizeExecOptions {
+                        height: req.rows,
+                        width: req.cols,
+                    },
+                )
+                .await;
+            let output = cancellable(
+                output_stream,
+                cancel.clone(),
+                |out| match out {
+                    LogOutput::StdErr { message }
+                    | LogOutput::StdOut { message }
+                    | LogOutput::StdIn { message }
+                    | LogOutput::Console { message } => message,
+                },
+                self.engine_name.clone(),
+            );
+            let (input_tx, mut input_rx) = tokio::sync::mpsc::channel::<bytes::Bytes>(32);
+            let input_cancel = cancel.clone();
+            tokio::spawn(async move {
+                let mut binput = binput;
+                loop {
+                    let chunk = tokio::select! {
+                        biased;
+                        () = input_cancel.cancelled() => break,
+                        chunk = input_rx.recv() => chunk,
+                    };
+                    match chunk {
+                        Some(chunk) => {
+                            if binput.write_all(&chunk).await.is_err() {
+                                break;
+                            }
+                            if binput.flush().await.is_err() {
+                                break;
+                            }
+                        }
+                        None => break,
+                    }
+                }
+                let _ = binput.shutdown().await;
+            });
+            let (resize_tx, mut resize_rx) = tokio::sync::mpsc::channel::<(u16, u16)>(8);
+            let resize_docker = self.docker.clone();
+            let resize_cancel = cancel.clone();
+            tokio::spawn(async move {
+                loop {
+                    let size = tokio::select! {
+                        biased;
+                        () = resize_cancel.cancelled() => break,
+                        size = resize_rx.recv() => size,
+                    };
+                    match size {
+                        Some((cols, rows)) => {
+                            let _ = resize_docker
+                                .resize_exec(
+                                    &exec_id,
+                                    ResizeExecOptions {
+                                        height: rows,
+                                        width: cols,
+                                    },
+                                )
+                                .await;
+                        }
+                        None => break,
+                    }
+                }
+            });
+            return Ok(ExecHandle::new(
+                berth_core::ExecSession {
+                    id: created.id,
+                    container: id.clone(),
+                    shell,
+                    cols: req.cols,
+                    rows: req.rows,
+                },
+                output,
+                input_tx,
+                resize_tx,
+            ));
+        }
+        Err(last_err.unwrap_or_else(|| EngineError::Docker("no shell found in container".into())))
     }
 
     async fn list_files(
         &self,
-        _target: &berth_core::FileTarget,
-        _path: &str,
+        target: &berth_core::FileTarget,
+        path: &str,
     ) -> Result<Vec<berth_core::FileEntry>, EngineError> {
-        Err(EngineError::Unsupported("list_files".into())) // P1-T6
+        // Listing through the archive API (D51's fallback): works with no
+        // shell and on stopped containers; volumes go through the helper.
+        let chunks: Vec<bytes::Bytes> = self
+            .download(target, path, Cancel::new())
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut tar_bytes = Vec::new();
+        for chunk in &chunks {
+            tar_bytes.extend_from_slice(chunk);
+        }
+        entries_from_tar(&tar_bytes)
     }
 
     fn download(
         &self,
-        _target: &berth_core::FileTarget,
-        _path: &str,
-        _cancel: Cancel,
+        target: &berth_core::FileTarget,
+        path: &str,
+        cancel: Cancel,
     ) -> Bs<bytes::Bytes> {
-        unsupported_stream("download") // P1-T6
+        // Raw tar stream from the archive API (PLAN §6.5: "tar stream").
+        let engine = Self {
+            docker: self.docker.clone(),
+            id: self.id.clone(),
+            docker_host: self.docker_host.clone(),
+            engine_name: self.engine_name.clone(),
+        };
+        let target = target.clone();
+        let path = path.to_string();
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<bytes::Bytes, EngineError>>(32);
+        tokio::spawn(async move {
+            let resolved = engine.resolve_target(&target, &path, true).await;
+            let (container, in_path, helper) = match resolved {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = tx.send(Err(e)).await;
+                    return;
+                }
+            };
+            let options = DownloadFromContainerOptionsBuilder::new()
+                .path(&in_path)
+                .build();
+            let mut stream = Box::pin(
+                engine
+                    .docker
+                    .download_from_container(&container, Some(options)),
+            );
+            loop {
+                let item = tokio::select! {
+                    biased;
+                    () = cancel.cancelled() => break,
+                    item = stream.next() => item,
+                };
+                match item {
+                    Some(Ok(chunk)) => {
+                        if tx.send(Ok(chunk)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(Err(e)) => {
+                        let _ = tx.send(Err(engine.err(e))).await;
+                        break;
+                    }
+                    None => break,
+                }
+            }
+            if let Some(helper) = helper {
+                let _ = engine.remove_by_id(&helper, true).await;
+            }
+        });
+        channel_stream(rx)
     }
 
     async fn upload(
         &self,
-        _target: &berth_core::FileTarget,
-        _dir: &str,
-        _tar: bytes::Bytes,
+        target: &berth_core::FileTarget,
+        dir: &str,
+        tar: bytes::Bytes,
     ) -> Result<(), EngineError> {
-        Err(EngineError::Unsupported("upload".into())) // P1-T6
+        let (container, in_path, helper) = self.resolve_target(target, dir, false).await?;
+        let options = UploadToContainerOptionsBuilder::new()
+            .path(&in_path)
+            .build();
+        let result = self
+            .docker
+            .upload_to_container(&container, Some(options), bollard::body_full(tar))
+            .await
+            .map_err(|e| self.err(e));
+        if let Some(helper) = helper {
+            let _ = self.remove_by_id(&helper, true).await;
+        }
+        result
     }
 
     fn pull(
         &self,
-        _reference: &str,
-        _platform: Option<&str>,
-        _cancel: Cancel,
+        reference: &str,
+        platform: Option<&str>,
+        cancel: Cancel,
     ) -> Bs<berth_core::PullProgress> {
-        unsupported_stream("pull") // P1-T6
+        let (from_image, tag) = split_image_ref(reference);
+        let mut builder = CreateImageOptionsBuilder::new().from_image(&from_image);
+        if let Some(tag) = &tag {
+            builder = builder.tag(tag);
+        }
+        if let Some(platform) = platform {
+            builder = builder.platform(platform);
+        }
+        let stream = self.docker.create_image(Some(builder.build()), None, None);
+        cancellable(
+            stream,
+            cancel,
+            |info| berth_core::PullProgress {
+                layer: info.id,
+                status: info.status.unwrap_or_default(),
+                current: info
+                    .progress_detail
+                    .as_ref()
+                    .and_then(|p| p.current)
+                    .map(|n| u64::try_from(n).unwrap_or(0)),
+                total: info
+                    .progress_detail
+                    .as_ref()
+                    .and_then(|p| p.total)
+                    .map(|n| u64::try_from(n).unwrap_or(0)),
+            },
+            self.engine_name.clone(),
+        )
     }
 
-    async fn remove_image(&self, _id: &str, _force: bool) -> Result<(), EngineError> {
-        Err(EngineError::Unsupported("remove_image".into())) // P1-T6
+    async fn remove_image(&self, id: &str, force: bool) -> Result<(), EngineError> {
+        let options = RemoveImageOptionsBuilder::new().force(force).build();
+        self.docker
+            .remove_image(id, Some(options), None)
+            .await
+            .map(|_| ())
+            .map_err(|e| self.err(e))
     }
 
     async fn search_images(
         &self,
-        _term: &str,
-        _limit: u32,
+        term: &str,
+        limit: u32,
     ) -> Result<Vec<berth_core::ImageSearchHit>, EngineError> {
-        Err(EngineError::Unsupported("search_images".into())) // P1-T6
+        let options = SearchImagesOptionsBuilder::new()
+            .term(term)
+            .limit(i32::try_from(limit).unwrap_or(i32::MAX))
+            .build();
+        let items = self
+            .docker
+            .search_images(options)
+            .await
+            .map_err(|e| self.err(e))?;
+        Ok(items
+            .iter()
+            .map(|i| berth_core::ImageSearchHit {
+                name: i.name.clone().unwrap_or_default(),
+                description: i.description.clone().unwrap_or_default(),
+                stars: i.star_count.map_or(0, |n| u32::try_from(n).unwrap_or(0)),
+                official: i.is_official.unwrap_or(false),
+            })
+            .collect())
     }
 
     async fn create_volume(
         &self,
-        _spec: &berth_core::VolumeSpec,
+        spec: &berth_core::VolumeSpec,
     ) -> Result<berth_core::Volume, EngineError> {
-        Err(EngineError::Unsupported("create_volume".into())) // P1-T6
+        let config = VolumeCreateRequest {
+            name: Some(spec.name.clone()),
+            driver: Some(spec.driver.clone()).filter(|d| !d.is_empty()),
+            driver_opts: Some(
+                spec.driver_opts
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            ),
+            labels: Some(
+                spec.labels
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            ),
+            cluster_volume_spec: None,
+        };
+        let volume = self
+            .docker
+            .create_volume(config)
+            .await
+            .map_err(|e| self.err(e))?;
+        Ok(mappers::volume(&volume, &[]))
     }
 
-    async fn remove_volume(&self, _name: &str) -> Result<(), EngineError> {
-        Err(EngineError::Unsupported("remove_volume".into())) // P1-T6
+    async fn remove_volume(&self, name: &str) -> Result<(), EngineError> {
+        self.docker
+            .remove_volume(name, None::<RemoveVolumeOptions>)
+            .await
+            .map_err(|e| self.err(e))
     }
 
     async fn create_network(
         &self,
-        _spec: &berth_core::NetworkSpec,
+        spec: &berth_core::NetworkSpec,
     ) -> Result<berth_core::Network, EngineError> {
-        Err(EngineError::Unsupported("create_network".into())) // P1-T6
+        let ipam = if spec.subnet.is_some() || spec.gateway.is_some() {
+            Some(Ipam {
+                driver: None,
+                config: Some(vec![IpamConfig {
+                    subnet: spec.subnet.clone(),
+                    ip_range: None,
+                    gateway: spec.gateway.clone(),
+                    auxiliary_addresses: None,
+                }]),
+                options: None,
+            })
+        } else {
+            None
+        };
+        let config = NetworkCreateRequest {
+            name: spec.name.clone(),
+            driver: Some(spec.driver.clone()).filter(|d| !d.is_empty()),
+            internal: Some(spec.internal),
+            ipam,
+            ..Default::default()
+        };
+        let created = self
+            .docker
+            .create_network(config)
+            .await
+            .map_err(|e| self.err(e))?;
+        for container in &spec.attach {
+            if let Err(e) = self.connect_network(&spec.name, container).await {
+                let _ = self.docker.remove_network(&created.id).await;
+                return Err(e);
+            }
+        }
+        let networks = self.networks().await?;
+        networks
+            .into_iter()
+            .find(|n| n.name == spec.name || n.id == created.id)
+            .ok_or_else(|| EngineError::NotFound(spec.name.clone()))
     }
 
-    async fn remove_network(&self, _id: &str) -> Result<(), EngineError> {
-        Err(EngineError::Unsupported("remove_network".into())) // P1-T6
+    async fn remove_network(&self, id: &str) -> Result<(), EngineError> {
+        self.docker
+            .remove_network(id)
+            .await
+            .map_err(|e| self.err(e))
     }
 
     async fn connect_network(
         &self,
-        _network: &str,
-        _id: &berth_core::ContainerId,
+        network: &str,
+        id: &berth_core::ContainerId,
     ) -> Result<(), EngineError> {
-        Err(EngineError::Unsupported("connect_network".into())) // P1-T6
+        let config = NetworkConnectRequest {
+            container: id.0.clone(),
+            endpoint_config: None,
+        };
+        self.docker
+            .connect_network(network, config)
+            .await
+            .map_err(|e| self.err(e))
     }
 
     async fn disconnect_network(
         &self,
-        _network: &str,
-        _id: &berth_core::ContainerId,
+        network: &str,
+        id: &berth_core::ContainerId,
     ) -> Result<(), EngineError> {
-        Err(EngineError::Unsupported("disconnect_network".into())) // P1-T6
+        let config = NetworkDisconnectRequest {
+            container: id.0.clone(),
+            force: Some(false),
+        };
+        self.docker
+            .disconnect_network(network, config)
+            .await
+            .map_err(|e| self.err(e))
     }
 
     async fn prune(
         &self,
-        _plan: &berth_core::PrunePlan,
-        _cancel: Cancel,
+        plan: &berth_core::PrunePlan,
+        cancel: Cancel,
     ) -> Result<berth_core::PruneReport, EngineError> {
-        Err(EngineError::Unsupported("prune".into())) // P1-T6
+        // Item by item through the ordinary remove APIs; build cache goes
+        // through prune_build only when a BuildCache item is selected.
+        let mut removed = Vec::new();
+        let mut failed = Vec::new();
+        let mut freed: u64 = 0;
+        let mut build_cache_pruned = false;
+        for item in plan.items.iter().filter(|i| i.selected) {
+            if cancel.is_cancelled() {
+                failed.push((item.clone(), "cancelled".to_string()));
+                continue;
+            }
+            let (result, extra_freed) = match item.kind {
+                berth_core::PruneKind::Container => (self.remove_by_id(&item.id, true).await, None),
+                berth_core::PruneKind::Image => (self.remove_image(&item.id, false).await, None),
+                berth_core::PruneKind::Volume => (self.remove_volume(&item.id).await, None),
+                berth_core::PruneKind::Network => (self.remove_network(&item.id).await, None),
+                berth_core::PruneKind::BuildCache => {
+                    if build_cache_pruned {
+                        (Ok(()), None)
+                    } else {
+                        build_cache_pruned = true;
+                        match self.docker.prune_build(None::<PruneBuildOptions>).await {
+                            Ok(resp) => (
+                                Ok(()),
+                                resp.space_reclaimed.map(|n| u64::try_from(n).unwrap_or(0)),
+                            ),
+                            Err(e) => (Err(self.err(e)), None),
+                        }
+                    }
+                }
+            };
+            match result {
+                Ok(()) => {
+                    freed += extra_freed.or_else(|| item.size.map(|s| s.0)).unwrap_or(0);
+                    removed.push(item.clone());
+                }
+                Err(e) => failed.push((item.clone(), e.to_string())),
+            }
+        }
+        Ok(berth_core::PruneReport {
+            removed,
+            failed,
+            freed: bytesize::ByteSize(freed),
+        })
     }
+}
+
+fn proto_name(p: berth_core::Proto) -> &'static str {
+    match p {
+        berth_core::Proto::Tcp => "tcp",
+        berth_core::Proto::Udp => "udp",
+        berth_core::Proto::Sctp => "sctp",
+    }
+}
+
+/// Hand-built `HostConfig` + body from a core spec (D40 in the task text:
+/// host_config built by hand, no compose machinery involved).
+fn spec_to_create_body(spec: &berth_core::ContainerSpec) -> ContainerCreateBody {
+    let mut port_bindings: PortMap = HashMap::new();
+    let mut exposed_ports = Vec::new();
+    for p in &spec.ports {
+        let key = format!("{}/{}", p.container_port, proto_name(p.proto));
+        exposed_ports.push(key.clone());
+        port_bindings.insert(
+            key,
+            Some(vec![PortBinding {
+                host_ip: p.host_ip.map(|ip| ip.to_string()),
+                host_port: p.host_port.map(|port| port.to_string()),
+            }]),
+        );
+    }
+    let mounts: Vec<Mount> = spec
+        .mounts
+        .iter()
+        .map(|m| {
+            let (typ, source) = match m.kind {
+                berth_core::MountKind::Bind => (Some(MountType::BIND), Some(m.source.clone())),
+                berth_core::MountKind::Volume => (
+                    Some(MountType::VOLUME),
+                    Some(m.volume_name.clone().unwrap_or_else(|| m.source.clone())),
+                ),
+                berth_core::MountKind::Tmpfs => (Some(MountType::TMPFS), None),
+                berth_core::MountKind::Other => (None, Some(m.source.clone())),
+            };
+            Mount {
+                target: Some(m.destination.clone()),
+                source,
+                typ,
+                read_only: Some(m.read_only),
+                ..Default::default()
+            }
+        })
+        .collect();
+    let (restart_name, max_retries) = match &spec.restart {
+        berth_core::RestartPolicy::No => (RestartPolicyNameEnum::EMPTY, None),
+        berth_core::RestartPolicy::Always => (RestartPolicyNameEnum::ALWAYS, None),
+        berth_core::RestartPolicy::UnlessStopped => (RestartPolicyNameEnum::UNLESS_STOPPED, None),
+        berth_core::RestartPolicy::OnFailure { max_retries } => (
+            RestartPolicyNameEnum::ON_FAILURE,
+            Some(i64::from(*max_retries)),
+        ),
+    };
+    let networking_config = spec.networks.first().map(|first| NetworkingConfig {
+        endpoints_config: Some(
+            [(first.clone(), EndpointSettings::default())]
+                .into_iter()
+                .collect(),
+        ),
+    });
+    ContainerCreateBody {
+        image: Some(spec.image.reference.clone()),
+        cmd: spec.command.clone(),
+        entrypoint: spec.entrypoint.clone(),
+        env: Some(spec.env.iter().map(|(k, v)| format!("{k}={v}")).collect()),
+        labels: Some(
+            spec.labels
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+        ),
+        exposed_ports: Some(exposed_ports),
+        host_config: Some(HostConfig {
+            port_bindings: Some(port_bindings),
+            mounts: Some(mounts),
+            restart_policy: Some(BollardRestart {
+                name: Some(restart_name),
+                maximum_retry_count: max_retries,
+            }),
+            nano_cpus: spec
+                .limits
+                .cpus
+                .map(|c| (f64::from(c) * 1_000_000_000.0) as i64),
+            memory: spec
+                .limits
+                .memory
+                .map(|b| i64::try_from(b.0).unwrap_or(i64::MAX)),
+            memory_swap: spec
+                .limits
+                .memory_swap
+                .map(|b| i64::try_from(b.0).unwrap_or(i64::MAX)),
+            ..Default::default()
+        }),
+        networking_config,
+        ..Default::default()
+    }
+}
+
+/// Split "repo:tag" for `create_image`; digests and registry ports stay
+/// in the from_image part (only a `:` after the last `/` is a tag).
+fn split_image_ref(reference: &str) -> (String, Option<String>) {
+    if reference.contains('@') {
+        return (reference.to_string(), None);
+    }
+    let name_part = reference.rsplit('/').next().unwrap_or(reference);
+    match name_part.split_once(':') {
+        Some((_, tag)) if !tag.is_empty() => {
+            let cut = reference.len() - tag.len() - 1;
+            (reference[..cut].to_string(), Some(tag.to_string()))
+        }
+        _ => (reference.to_string(), None),
+    }
+}
+
+/// Immediate children of the archived path, from a `download` tar.
+/// Docker's archive root entry is the basename of the requested path;
+/// entries below it are recursive, so deeper entries are dropped.
+fn entries_from_tar(tar_bytes: &[u8]) -> Result<Vec<berth_core::FileEntry>, EngineError> {
+    let mut archive = tar::Archive::new(std::io::Cursor::new(tar_bytes));
+    let entries = archive.entries().map_err(|e| EngineError::Parse {
+        what: "archive listing".to_string(),
+        message: e.to_string(),
+    })?;
+    let mut out = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| EngineError::Parse {
+            what: "archive listing".to_string(),
+            message: e.to_string(),
+        })?;
+        let path = entry.path().map_err(|e| EngineError::Parse {
+            what: "archive listing".to_string(),
+            message: e.to_string(),
+        })?;
+        let raw = path.to_string_lossy().trim_end_matches('/').to_string();
+        let parts: Vec<&str> = raw.split('/').filter(|p| !p.is_empty()).collect();
+        // Depth 1 is the archived root itself; depth 2 is a child.
+        // A single-file archive has only the depth-1 entry: list it.
+        let (name, is_root) = match parts.len() {
+            1 => (parts[0].to_string(), true),
+            2 => (parts[1].to_string(), false),
+            _ => continue,
+        };
+        let header = entry.header();
+        let kind = match header.entry_type() {
+            tar::EntryType::Directory => berth_core::FileKind::Dir,
+            tar::EntryType::Symlink | tar::EntryType::Link => berth_core::FileKind::Link,
+            tar::EntryType::Regular => berth_core::FileKind::File,
+            _ => berth_core::FileKind::Other,
+        };
+        out.push((
+            is_root,
+            berth_core::FileEntry {
+                name,
+                kind,
+                size: (kind == berth_core::FileKind::File)
+                    .then(|| bytesize::ByteSize(header.size().unwrap_or(0))),
+                modified: header.mtime().ok().and_then(|t| {
+                    chrono::DateTime::from_timestamp(i64::try_from(t).unwrap_or(0), 0)
+                }),
+            },
+        ));
+    }
+    // The root entry itself is never listed for a directory (an empty
+    // directory's archive holds only the root); a lone root file is.
+    let has_child = out.iter().any(|(is_root, _)| !is_root);
+    let mut out: Vec<berth_core::FileEntry> = out
+        .into_iter()
+        .filter(|(is_root, e)| !is_root || (!has_child && e.kind != berth_core::FileKind::Dir))
+        .map(|(_, e)| e)
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
 }
 
 fn channel_stream<T: Send + 'static>(
@@ -783,6 +1572,133 @@ mod tests {
         let mut stream = cancellable(pending, cancel.clone(), |n| n * 2, "test".to_string());
         cancel.cancel();
         assert!(stream.next().await.is_none());
+    }
+
+    fn sample_spec() -> berth_core::ContainerSpec {
+        berth_core::ContainerSpec {
+            name: "berthfx-scratch-unit".to_string(),
+            image: berth_core::ImageRef {
+                reference: "alpine:3".to_string(),
+                id: None,
+            },
+            command: Some(vec!["sleep".to_string(), "60".to_string()]),
+            entrypoint: None,
+            env: vec![("FOO".to_string(), "bar".to_string())],
+            ports: vec![berth_core::PortMapping {
+                host_ip: None,
+                host_port: Some(56123),
+                container_port: 8080,
+                proto: berth_core::Proto::Tcp,
+            }],
+            mounts: vec![berth_core::Mount {
+                kind: berth_core::MountKind::Volume,
+                source: "data-src".to_string(),
+                destination: "/data".to_string(),
+                read_only: true,
+                volume_name: Some("berthfx-vol-unit".to_string()),
+            }],
+            networks: vec!["berthfx-net-unit".to_string(), "bridge".to_string()],
+            labels: [("dev.berth.fixture".to_string(), "1".to_string())]
+                .into_iter()
+                .collect(),
+            restart: berth_core::RestartPolicy::OnFailure { max_retries: 3 },
+            limits: berth_core::Limits {
+                cpus: Some(0.5),
+                memory: Some(bytesize::ByteSize(268_435_456)),
+                memory_swap: None,
+            },
+            platform: None,
+        }
+    }
+
+    #[test]
+    fn spec_to_create_body_maps_env_ports_mounts_limits_and_restart() {
+        let body = spec_to_create_body(&sample_spec());
+        assert_eq!(body.image.as_deref(), Some("alpine:3"));
+        assert_eq!(body.cmd, Some(vec!["sleep".to_string(), "60".to_string()]));
+        assert_eq!(body.env, Some(vec!["FOO=bar".to_string()]));
+        assert_eq!(body.exposed_ports, Some(vec!["8080/tcp".to_string()]));
+        let labels = body.labels.expect("labels");
+        assert_eq!(
+            labels.get("dev.berth.fixture").map(String::as_str),
+            Some("1")
+        );
+        let host = body.host_config.expect("host config");
+        let bindings = host.port_bindings.expect("port bindings");
+        let binding = bindings
+            .get("8080/tcp")
+            .expect("8080 binding")
+            .as_ref()
+            .expect("binding list")
+            .first()
+            .expect("one binding");
+        assert_eq!(binding.host_port.as_deref(), Some("56123"));
+        let mount = host.mounts.expect("mounts").pop().expect("one mount");
+        assert_eq!(mount.target.as_deref(), Some("/data"));
+        assert_eq!(mount.source.as_deref(), Some("berthfx-vol-unit"));
+        assert_eq!(mount.read_only, Some(true));
+        assert_eq!(host.nano_cpus, Some(500_000_000));
+        assert_eq!(host.memory, Some(268_435_456));
+        let restart = host.restart_policy.expect("restart policy");
+        assert_eq!(restart.maximum_retry_count, Some(3));
+        let endpoints = body
+            .networking_config
+            .expect("networking")
+            .endpoints_config
+            .expect("endpoints");
+        assert!(endpoints.contains_key("berthfx-net-unit"));
+        assert_eq!(endpoints.len(), 1, "only the first network rides in create");
+    }
+
+    #[test]
+    fn split_image_ref_handles_tag_registry_port_and_digest() {
+        assert_eq!(
+            split_image_ref("alpine:3"),
+            ("alpine".to_string(), Some("3".to_string()))
+        );
+        assert_eq!(split_image_ref("alpine"), ("alpine".to_string(), None));
+        assert_eq!(
+            split_image_ref("127.0.0.1:56500/berthfx/app:1"),
+            (
+                "127.0.0.1:56500/berthfx/app".to_string(),
+                Some("1".to_string())
+            )
+        );
+        assert_eq!(
+            split_image_ref("127.0.0.1:56500/berthfx/app"),
+            ("127.0.0.1:56500/berthfx/app".to_string(), None)
+        );
+        assert_eq!(
+            split_image_ref("alpine@sha256:abc"),
+            ("alpine@sha256:abc".to_string(), None)
+        );
+    }
+
+    #[test]
+    fn entries_from_tar_lists_immediate_children_only() {
+        let mut builder = tar::Builder::new(Vec::new());
+        let mut dir = tar::Header::new_gnu();
+        dir.set_entry_type(tar::EntryType::Directory);
+        dir.set_size(0);
+        builder
+            .append_data(&mut dir, "etc", std::io::empty())
+            .expect("tar dir");
+        let mut file = tar::Header::new_gnu();
+        file.set_size(5);
+        builder
+            .append_data(&mut file, "etc/os-release", &b"hello"[..])
+            .expect("tar file");
+        let mut nested = tar::Header::new_gnu();
+        nested.set_size(1);
+        builder
+            .append_data(&mut nested, "etc/nginx/nginx.conf", &b"x"[..])
+            .expect("tar nested");
+        let bytes = builder.into_inner().expect("tar bytes");
+        let entries = entries_from_tar(&bytes).expect("entries");
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert_eq!(entries[0].name, "os-release");
+        assert_eq!(entries[0].kind, berth_core::FileKind::File);
+        assert_eq!(entries[0].size.map(|s| s.0), Some(5));
     }
 
     #[tokio::test]
