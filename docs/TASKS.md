@@ -1,0 +1,367 @@
+# Berth — task list
+
+One task per workhorse session. Work strictly in order inside a phase. Every task names the files it touches, the PLAN sections it implements, and a **Done when** check: a command with its expected result. Paste the output into `docs/STATUS.md` when you finish.
+
+Interfaces cited as "§6.x" are in `docs/PLAN.md`. Implement them exactly. If you must change one, stop and escalate (PLAN §3).
+
+UI tasks name the FigCraft frame they match. The PNG is `design/shots/figcraft/screens/<frame name with " / " replaced by " _ ">.png` (for example `Containers _ selected _ 1440.png`). Read it before you start. A UI task's Done when always ends with a shot: `scripts/shot.sh <name> --scene "<frame>"`, then read `target/shots/<name>-1x.png` beside the frame PNG and list in STATUS.md every difference in layout, copy or state, each with "fixed" or a question id. The task is done when that list has no open item.
+
+Each phase header has a **Learned** paragraph that the architect fills at phase open. Read it first.
+
+Every command that touches Docker acts only on resources labelled `dev.berth.fixture=1` (names `berthfx…`). Never stop, start or resize a Colima profile unless the task says so.
+
+---
+
+## Phase 0 — Scaffold (branch `phase/0-scaffold`, tag `v0.0`)
+
+Learned: —
+
+**P0-T1 Workspace.** Create the Cargo workspace of PLAN §6.1: the eleven crates under `crates/` and `plugins/coolify`, each with `lib.rs` (`main.rs` for `berth-app` and `berth-coolify`) and one `#[test] fn compiles() {}`. `Cargo.toml` has `[workspace.dependencies]` for every crate in PLAN §5 at the minimum shown, `[workspace.lints]` per D54, the release profile of PLAN §12 item 4, `[workspace.package]` with `publish = false`, `license = "MIT OR Apache-2.0"` and `repository = "https://github.com/fullstoptech/berth"` (D62, D63; crates.io names such as `berth` and `berth-registry` belong to other projects, so nothing is published). `rust-toolchain.toml` pins 1.99.1 with rustfmt and clippy; `clippy.toml` allows unwrap and expect in tests. Each crate declares only the dependencies it uses now, following the direction graph in §6.1. Extend `.gitignore` with `target/`, `/web-src/node_modules/`. Record resolved versions of every §5 crate in STATUS.md (resolve them with a throwaway crate in the scratch area if needed, as Ferry P0-T1 did).
+Done when: `cargo nextest run --workspace` reports 12 passed, and `cargo tree --workspace -d -e normal | grep -E "^(dioxus|bollard|tokio|serde|reqwest|rustls|keyring|rusqlite) v"` prints nothing.
+
+**P0-T2 Core types.** Every type and function of PLAN §6.2 in `crates/berth-core/src/{ids,engine,project,container,status,image,volume,network,events,compose,effect,problem,generation,template,registry,activity,assistant,fmt}.rs`, re-exported from `lib.rs`, with the derives shown. Implement `ContainerId::short`, `ProjectId::for_folder`/`for_remote`, `ProblemId::new`, `Arch::parse`/`docker_name`, `ImageRef::repo`/`tag`, `status_of`, `StatusKind::tone`/`label`, `spec_diff`, `needs_recreate`, `EffectSummary::button_label`/`result_label`, `PrunePlan::effect`, `GenerationPlan::effect`, and the `fmt` functions (decimal units: `14.2 GB`, `184 MB`, `9.8 MB`). `clippy::pedantic` is denied in this crate.
+Done when: `cargo nextest run -p berth-core` reports ≥ 45 passed, including: `ProjectId::for_folder` is stable across runs and differs per engine; `status_of` for every `StatusKind` with its tone (components-spec tone map); `EffectSummary` with 41 items and 14.2 GB gives "Remove 41 items (14.2 GB)" and "Removed 41 items (14.2 GB)"; `fmt::port` gives ":5432→5432/tcp"; `middle_truncate("~/Dev/clients/acme/shop-api", 16)` keeps both ends; serde round trips of `Project`, `Problem` and `GenerationPlan`.
+
+**P0-T3 Tokens, fonts, icons, CSS lint.** Write `scripts/gen-tokens.py` (stdlib only, run with `python3 -I`) producing `crates/berth-app/assets/css/tokens.css` exactly as PLAN §7.7 says. Copy the five TTFs from `design/fonts/` to `crates/berth-app/assets/fonts/` with `OFL.txt`. Export the icon components from `design/berth.figcraft` (page "Components"; find the icon set with `figcraft-cli info design/berth.figcraft --json` or the figcraft MCP `inspect_document`) as SVG with `figcraft-cli export … --format svg --node "<name>"`, then `scripts/build-icons.py` turns them into one sprite `crates/berth-app/assets/icons.svg` (`<symbol id="name">`, `stroke="currentColor"`, no fills). Write `scripts/css-lint.sh` (fails on any `#rgb`/`#rrggbb` or `rgb(` in `assets/css/*.css` except `tokens.css`) and `scripts/secret-scan.sh` (fails on `berthfx-dev`, `BERTH_BRIDGE_TOKEN=` values, or `PASSWORD=` lines outside `fixtures/` and `scripts/`). PLAN D4, D6, D10, §7.7.
+Done when: `python3 -I scripts/gen-tokens.py design/tokens.json | diff - crates/berth-app/assets/css/tokens.css` prints nothing; `grep -c "<symbol" crates/berth-app/assets/icons.svg` prints ≥ 40; `scripts/css-lint.sh && scripts/secret-scan.sh` exit 0; `grep -c "data-theme=\"dark\"" crates/berth-app/assets/css/tokens.css` prints ≥ 1.
+
+**P0-T4 Window, assets, platform, scenes, shot.** `crates/berth-app/src/main.rs`: if `argv[1] == "mcp"` print "not implemented yet" and exit 2 (P7-T2 fills it); else install the rustls ring provider (D48), init tracing (D15), launch Dioxus desktop with `platform::config()`: title "Berth", 1440x900, min 900x600, custom head from `assets.rs` (D5), `use_asset_handler` for `/fonts/<file>` and `/icons.svg`. `platform/macos.rs`: integrated title bar (transparent, full-size content view, hidden title) and `use_traffic_lights()` calling `window.webview.set_traffic_light_inset((12, 19))` (Ferry `platform.rs` precedent); `platform/other.rs` empty stubs. `state.rs` with the §6.11 `AppState` fields (empty signals). Theme effect sets `document.documentElement.dataset.theme` (D7); `BERTH_THEME=light|dark` forces it for development. `scenes.rs` with the `Scene` registry, `render_scene_html`, and the first scene "Projects / empty / 1440" (title bar, empty sidebar, empty main). `scripts/ssr.sh "<frame>"` (runs `cargo run -q -p berth-app --example ssr -- "<frame>"`, writes `target/ssr/<slug>.html`). `scripts/shot.sh <name> [--scene "<frame>"]`: builds, launches with `BERTH_MOCK=1 BERTH_SCENE=…` and a temp `BERTH_DATA_DIR`, waits for the window, reads its bounds with `osascript` (System Events, by process id), captures with `screencapture -x -R`, writes `target/shots/<name>.png` and `<name>-1x.png` (`sips -Z`), quits the app; `BERTH_SHOT_ATTACH=1` captures a running app instead. PLAN D5, D7, D8, D57, D58.
+Done when: `cargo nextest run -p berth-app scenes` passes; `scripts/shot.sh p0 --scene "Projects / empty / 1440"` writes a 2880x1800 PNG whose title bar is 38 pt with the traffic lights inside it; `BERTH_THEME=dark scripts/shot.sh p0-dark --scene "Projects / empty / 1440"` shows the dark `--color-bg`; text in the shot renders in IBM Plex Sans (compare the "g" and "a" shapes with the frame `Projects _ empty _ 1440.png`).
+
+**P0-T5 Fixtures, scripts, CI file.** `fixtures/compose/berthfx/`, `berthfx-broken/` and `berthfx-registry/` per PLAN §8.1 (every service has `labels: [dev.berth.fixture=1]`; the `logger` script lives in `fixtures/compose/berthfx/logger.sh`; `.env` holds the fixture password). `scripts/fx-up.sh [--broken] [--registry]` and `scripts/fx-down.sh` (removes only labelled containers, volumes and networks), `scripts/it.sh [-p crate] [filter]` (sets `BERTH_IT=1`, runs fx-up, then `cargo nextest run --run-ignored all`; bash 3.2 safe: `${arr[@]+"${arr[@]}"}`, Ferry Mac session lesson), `scripts/check.sh` (PLAN §8 line). `.github/workflows/ci.yml` running `scripts/check.sh` on `macos-14` (written, not run: no push without approval). PLAN §8, §8.1.
+Done when: `scripts/fx-up.sh && docker ps --filter label=dev.berth.fixture=1 --format '{{.Names}}' | sort` prints `berthfx-cache-1`, `berthfx-db-1`, `berthfx-logger-1`, `berthfx-web-1`; `curl -s 127.0.0.1:56080 | grep -c -i nginx` prints ≥ 1; `scripts/fx-down.sh && docker ps -a --filter label=dev.berth.fixture=1 -q | wc -l` prints 0; `scripts/check.sh` exits 0.
+
+---
+
+## Phase 1 — Engine and store (branch `phase/1-engine`, tag `v0.1`)
+
+Learned: Phase 0 gotchas worth carrying in — PLAN §5's `rfd` "tokio" feature does not exist in 0.17.2 (workspace uses dioxus-desktop's spec; §5 amended by STATUS note until an architect edits it); bytesize 2.7's `kb/mb/gb` constructors take `u64`, never floats; `Subject` has no `Ord`, so `PendingKey` sorts by debug string until an architect adds `Ord` to §6.2; `grep` exits 2 when any operand directory is missing even on a match, so scripts must only scan directories that exist; `figcraft-cli info --json` has no node tree (the `.figcraft` zip's `document.json` does); osascript window bounds need an Accessibility grant the agent terminal may not have, so `shot.sh` uses a CoreGraphics helper; `berth-store` so far holds only the §6.4 settings types and tracing still writes to stderr (P1-T1's `berth_sys::paths` unlocks the log file, D15).
+
+**P1-T1 System helpers.** `crates/berth-sys/src/{lib,search_path,process,paths}.rs` per PLAN §6.3 and D30. `with_login_shell` runs `$SHELL -ilc 'printf %s "$PATH"'` once with a 3 s timeout and appends unseen entries. `spawn_lines` uses `tokio::process::Command` with `kill_on_drop(true)`, reads stdout and stderr concurrently, ends with `Exit`. Add `examples/which.rs` printing `SearchPath::from_process().with_login_shell().await.find(arg)` for each argument.
+Done when: `cargo nextest run -p berth-sys` reports ≥ 12 passed (a fake `$SHELL` script supplies extra dirs; a hanging fake shell is killed by the timeout; `BERTH_SHELL_PATH=0` skips the shell; cancelling `spawn_lines` kills a `sleep 30` child within 500 ms; stdout and stderr lines keep their order per stream); and `env -i HOME=$HOME SHELL=/bin/zsh PATH=/usr/bin:/bin:/usr/sbin:/sbin cargo run -q -p berth-sys --example which -- claude muse docker colima` prints four absolute paths (a Finder-launched app's PATH, Ferry Q-Mac-2).
+
+**P1-T2 Store and secrets.** `crates/berth-store/src/{lib,store,settings,secret}.rs`, `migrations/0001_init.sql` with the tables of PLAN §6.4, `Store` methods, `Settings::default`, `SecretStore`, `KeyringStore` (`keyring` 3.6 `apple-native`, service `dev.berth`, real backend only `#[cfg(not(test))]`), `InMemorySecretStore`, `secret_store()` with the memory fallback and `BERTH_KEYRING=memory`. PLAN D19, D20, D21, ADR 0007.
+Done when: `cargo nextest run -p berth-store` reports ≥ 18 passed (CRUD per table, opening twice runs migrations once, activity query order and filters, prune by age, snapshot round trip, settings defaults); `BERTH_KEYRING_TEST=1 cargo nextest run -p berth-store --run-ignored only keyring` passes; afterwards `security find-generic-password -s dev.berth -a test/roundtrip` exits non-zero (the test deletes its item).
+
+**P1-T3 Discovery and Colima.** `crates/berth-engine/src/{discovery,colima,colima_parse}.rs` per PLAN §6.5, D28, D29. Capture `colima list --json`, `colima status -p default --json` and `~/.colima/default/colima.yaml` into `fixtures/colima/` (read-only commands). `ColimaCli` builds args with the pure `start_args` (vz and Rosetta flags), streams subprocess lines, and never runs `start`/`stop` in tests. `MockColima` reads `fixtures/mock/berth.json` once that file exists (P1-T8); until then it takes a `Vec<ColimaProfile>`.
+Done when: `cargo nextest run -p berth-engine colima discovery` reports ≥ 14 passed (NDJSON and array forms; a stopped profile; `apply_yaml` reads `rosetta` and `vmType`; context resolution from a temp home with `config.json` and meta files; `DOCKER_HOST=unix://…` wins); `BERTH_IT=1 cargo nextest run -p berth-engine --run-ignored only colima_it` prints profile `default`, `VmType::Vz`, `rosetta: Some(false)` and socket `~/.colima/default/docker.sock`.
+
+**P1-T4 Engine client, read side.** `crates/berth-engine/src/{client,bollard_engine,mappers}.rs`: the `EngineClient` trait exactly as §6.5 (all methods; unimplemented ones in this task return `EngineError::Unsupported` with a `// P1-T5`/`P1-T6` comment), `BollardEngine::connect` over the unix socket with a 2 s connect timeout, and `info`, `containers`, `container`, `images`, `image`, `volumes`, `networks`, `disk_usage`, `volume_sizes` through `mappers`. Capture `fixtures/docker/{containers,inspect-web,inspect-db,images,volumes,networks,df,events}.json` from the berthfx fixtures. Env values in `ContainerDetail::inspect` are masked; `ContainerDetail::env` keeps them.
+Done when: `cargo nextest run -p berth-engine mappers` reports ≥ 15 passed with insta snapshots; `scripts/it.sh -p berth-engine engine_read` passes: 4 containers with `compose_project == "berthfx"`, `berthfx-web-1` has port 56080→80/tcp and health, `inspect` of `berthfx-db-1` contains no `berthfx-dev`.
+
+**P1-T5 Streams and container actions.** In `bollard_engine.rs`: `events` (mapped, reconnect is the caller's job), `logs` (timestamps on, demuxed stdout/stderr, follow), `stats` (`mappers::cpu_percent` with the Docker CLI formula), `act` (all `ContainerAction`s), `update_limits` (`update_container`). PLAN §6.5, D13.
+Done when: `scripts/it.sh -p berth-engine streams` passes: stopping `berthfx-web-1` through `act` yields a `Container{action:"die"|"stop"}` event within 2 s; `logs` of `berthfx-logger-1` with `tail: 20` returns 20 lines with both streams present; one `stats` sample of `berthfx-db-1` has `mem_used > 0`; `update_limits` to 0.5 CPU is visible in a fresh `container()`; pause and unpause round trip; the container ends running.
+
+**P1-T6 Create, recreate, exec, files, images, volumes, networks, prune.** Remaining `EngineClient` methods except the P8 defaults: `create`, `recreate` (rename-old, create, start, remove-old; restore on failure), `exec` (`ExecHandle`, D41), `list_files`/`download`/`upload` (D51, helper container `alpine:3` for volumes, pulled only when the caller says so), `pull`, `remove_image`, `search_images`, volume and network create/remove/connect/disconnect, `prune` item by item (build cache through `prune_build` only when that item is selected).
+Done when: `scripts/it.sh -p berth-engine mutate` passes: recreate of a `berthfx-scratch` container with a new port succeeds, and with image `berthfx/does-not-exist:1` fails and leaves the old container running under its old name; exec `echo berth` returns "berth"; `list_files` of `/etc` in `berthfx-web-1` includes `nginx`; `create_volume("berthfx-vol")` then `list_files` on it is empty and removal works; `berthfx-net` connect/disconnect of `berthfx-web-1`; a `PrunePlan` with only `berthfx-vol2` removes exactly that volume.
+
+**P1-T7 Projects grouping and git.** `crates/berth-engine/src/projects.rs` per §6.5: `group` (Compose by project name + working dir, pins as `NotCreated` or merged, `Inferred` for bind mounts inside a pinned folder, `RemoteOnly` when `remote`, the rest `Loose`), `status`, `parse_git_status`. A service helper in `berth-engine/src/git.rs` runs `git -C <dir> status --porcelain=v2 --branch` and `git remote get-url origin` through `berth-sys` (D49).
+Done when: `cargo nextest run -p berth-engine projects git` reports ≥ 14 passed (two compose projects with the same name in different folders stay separate; a pin with no containers is `NotCreated`; partial and failing statuses; porcelain v2 with ahead/behind and dirty); `scripts/it.sh -p berth-engine projects_it` groups the four berthfx containers into one project whose folder equals the canonical `fixtures/compose/berthfx` and whose git branch equals `git branch --show-current`.
+
+**P1-T8 Mock world.** `fixtures/mock/berth.json` and `crates/berth-engine/src/mock/{mod,engine,colima,compose}.rs`. Build the JSON from what the frames show (read every PNG in `design/shots/figcraft/screens/`): engines `colima:default` (running, Docker 28.4.0, 4 CPU, 8 GB), `colima:work` (stopped), `ssh:hetzner-1` (unreachable); projects `shop-api` (failing: worker restarting 14 times, db exited 1), `analytics` (partial), `berth-site`, `payments-mock`, `ml-notebooks` (stopped), `docs-site`, `docker-manger` (pinned, not created); Unassigned `pg-scratch`, `eager_hopper`, `api-worker-7f9c4d8b6-xk2lp` (paused); ≥ 40 containers with the frames' ports, CPU and memory; an amd64 image; volume `shop-api_pgdata` 1.2 GB; scripted log lines per container (the frames' ECONNREFUSED, stack trace and JSON lines) and stats. `MockEngine` keeps state in memory: actions change state and emit events after 150 ms; logs and stats streams replay the scripted lines. PLAN D58, brief §10 item 2.
+Done when: `cargo nextest run -p berth-engine mock` reports ≥ 10 passed, including `mock_world_matches_brief` (3 engines in the three states, 7 projects with the statuses above, ≥ 40 containers, one amd64 image on an arm64 engine, a 1.2 GB volume, `restart_count == 14`), and Stop on a running mock container yields Exited plus one event.
+
+**P1-T9 Compose runner.** `crates/berth-engine/src/compose.rs`: pure `compose_args`, `CliCompose` (D27; `DOCKER_HOST` from the target; `docker` from `SearchPath`), `parse_progress_json`, `config`, `validate`, `MockCompose`. Record `fixtures/compose-progress/{up,down,pull}.jsonl` from real runs on berthfx.
+Done when: `cargo nextest run -p berth-engine compose` reports ≥ 10 passed; `scripts/it.sh -p berth-engine compose_it` passes: `Restart{web}` yields Progress events and `Done{code:0}`; `Stop{web}` then `Start{web}` leaves it running; `config` returns 4 services; `validate` on a temp copy of berthfx with a broken indent returns `EngineError::Docker` whose message names the line.
+
+---
+
+## Phase 2 — Shell and lists (branch `phase/2-shell`, tag `v0.2`)
+
+Learned: —
+
+**P2-T1 App state and engine service.** `crates/berth-app/src/{state,actions,keys}.rs`, `services/{mod,engines,activity}.rs`. Engines service: discover (ColimaCli + contexts + user engines), one `BollardEngine` per running engine (or the mocks under `BERTH_MOCK=1`), initial lists, one events loop per engine applying changes to the signals (refetch the one container an event names), full refresh on reconnect, snapshot load before the first engine answer and save every 30 s and on quit (D23). `actions.rs`: the `ActionDef` table for every action in brief §7.2 and PLAN §7.4 with `mod_label()`. `keys.rs`: one keydown handler on the root mapping keys to actions, calling `preventDefault` for handled keys. Activity service writes engine events and Berth actions (D65).
+Done when: `cargo nextest run -p berth-app services` reports ≥ 10 passed (an event updates one container; a snapshot renders before a delayed MockEngine answers; reconnect refreshes; every `ActionDef` shortcut is unique); `scripts/it.sh -p berth-app engines_it` sees `berthfx-web-1` turn Exited in the signal within 2 s of `docker stop berthfx-web-1`, then restarts it.
+
+**P2-T2 UI primitives.** `crates/berth-app/src/ui/{button,icon_button,kbd,icon,status_dot,status_badge,badge,tooltip,menu,text_field,search_field,select,segmented_control,checkbox,switch,tabs}.rs` and their CSS, per PLAN §7.3 and `design/components-spec.md`. Text inputs are uncontrolled (D59). Add a dev scene "Components / primitives" that shows every variant and state. Frames: FigCraft page "Components" (export the sets you build with `figcraft-cli export design/berth.figcraft -o target/design/<name>.png --page Components --node "<set name>"`).
+Done when: `cargo nextest run -p berth-app ui::` reports ≥ 45 SSR tests (each variant and state, accessible names on IconButton, Kbd shows ⌘); `scripts/shot.sh p2-primitives --scene "Components / primitives"` beside the exported component sets shows matching sizes (24/28 px controls), radii, colours and states in light and dark (`BERTH_THEME=dark`).
+
+**P2-T3 Shell.** `ui/{title_bar,engine_switcher,palette_trigger,sidebar,sidebar_item,status_bar,inspector,bottom_panel}.rs`, `app.rs` layout per PLAN §7.1, overlay stack, section switching (⌘1–⌘9), inspector collapse below 1200 px and overlay at 1024, bottom panel resize and ⌃\`. `platform/macos.rs` app menu per D39 (predefined Edit items so Cmd+C/V/X/A/Z work in inputs; Cmd+Q quits). Title bar is the drag region (mousedown drag, double-click zoom). Frame: "Containers / selected / 1440" (chrome only: title bar, sidebar, status bar, empty main and inspector).
+Done when: `cargo nextest run -p berth-app shell` passes (sidebar lists the 7 mock projects with status dots; status bar text "colima/default · Docker 28.4.0 · 4 CPU · 8 GB · 15 running"); `scripts/shot.sh p2-shell --scene "Containers / selected / 1440"` matches the frame's title bar, sidebar and status bar; by hand in `BERTH_MOCK=1 cargo run -p berth-app`: the menu bar shows Berth, File, Edit, View, Window, Help; typing and Cmd+A, Cmd+C, Cmd+V work in the sidebar filter; dragging the title bar moves the window.
+
+**P2-T4 Tables and feedback components.** `ui/{virtual_table,table_header_cell,group_header_row,skeleton_row,empty_state,banner,inline_message,toast}.rs` with the pure `visible_range` (D24) and toasts per D34 (5 s, 10 s with an action).
+Done when: `cargo nextest run -p berth-app virtual_table feedback` reports ≥ 15 passed, including `visible_range` edge cases (top, bottom, overscan, zero rows) and an SSR render of a 1,000-row table that contains ≤ 60 row elements.
+
+**P2-T5 Actions service.** `services/{actions,compose,colima}.rs` per D34 and D33: pending state per (subject, action) set before the call, labels "Starting…", "Stopping…", "Restarting…"; success clears; failure restores and sets `PendingState::Failed` with the engine message (shown by `InlineMessage` under the row); every action writes an `ActivityEntry`. Project actions run `ComposeRunner` (Start project = `Up`, Stop project = `Stop`, Restart project, Rebuild = `Up{build:true}`, Pull images, Delete project = `Down` with the sheet's options). Disabled reasons for impossible actions (Delete image in use etc.) come from one pure `disabled_reason(subject, action, state) -> Option<String>`.
+Done when: `cargo nextest run -p berth-app actions` reports ≥ 12 passed (pending set synchronously; failure restores; disabled reasons); `scripts/it.sh -p berth-app actions_it` passes: Stop on `berthfx-web-1` sets "Stopping…" before the engine answers and Exited within 2 s; Restart of three containers in one call; Stop project then Start project on berthfx.
+
+**P2-T6 Projects screen.** `screens/projects.rs`, `ui/project_row.rs`: header with count, SearchField, SegmentedControl (All · Running · Failing · Stopped), Open folder button (wired in P5-T4; until then disabled with the tooltip "Folder browser not built yet"), table of ProjectRow (name, `~/…` middle-truncated path in mono, engine, git branch, service dots, ports summary, CPU/MEM totals, labelled Start project/Stop project, Restart, Logs, ⋯), problem summary line under a failing row, states of brief §7.3 (empty, loading skeleton after 300 ms, engine unreachable banner on its rows, engine stopped). Frames: "Projects / default / 1440", "Projects / default / 1440 / dark", "Projects / empty / 1440".
+Done when: `cargo nextest run -p berth-app projects` passes the three scenes (rows, counts, copy "Open a folder to see its containers here"); the three shots match their frames; by hand on the real engine (`BERTH_DATA_DIR=$(mktemp -d) cargo run -p berth-app`) berthfx shows 4 green dots and Stop project stops all four within 5 s.
+
+**P2-T7 Containers screen.** `screens/containers.rs`, `ui/container_row.rs`: grouped table (group by Project default, Engine, None), filter chips with ×, SearchField with "12 of 48", sort by column, row buttons (Start/Stop toggle, Restart, Logs, Terminal, Delete, ⋯) visible on hover and on the selected row with tooltips "Restart · ⌘R", ports as links opening `http://localhost:<port>` with `open`, CPU/MEM micro bars ("—" without stats), J/K selection, Space toggles the inspector (empty inspector body until P3-T3), loading skeletons, empty per filter, engine stopped banner with Start engine, 1024 layout dropping Uptime and Engine (D78). Frames: "Containers / selected / 1440", "Containers / selected / 1440 / light", "Containers / selected / 1024", "Containers / loading / 1440", "Containers / engine stopped / 1440".
+Done when: `cargo nextest run -p berth-app containers` passes the five scenes; the five shots match their frames (table part; the inspector body is checked in P3-T3); by hand on the real engine: filtering "berthfx" shows 4 rows, clicking `:56080` opens the nginx page in the browser, J/K and Space work.
+
+**P2-T8 Bulk bar and delete confirm.** `ui/{bulk_bar,confirm_dialog}.rs`: BulkBar with per-action applicable counts; `ConfirmDialog` rendering an `EffectSummary` (D33) with "Also delete its anonymous volumes" unchecked, "Stop and delete" for a running container, typed-name variant; ⌫ opens it. Frames: "Containers / bulk / 1440", "Containers / confirm delete / 1440".
+Done when: `cargo nextest run -p berth-app bulk confirm` passes ("Start 1 · Stop 3 · Restart 4 · Pause 3 · Delete 4" for the frame's selection; the dialog text "Its writable layer is deleted. Volume shop-api_pgdata (1.2 GB) is kept."); both shots match their frames; by hand: deleting a `berthfx-scratch` container through the dialog removes it and the result text repeats the dialog's count.
+
+**P2-T9 Command palette and global search.** `screens/palette.rs`, `ui/palette_item.rs`, `services/search.rs` (`nucleo-matcher` over actions from `actions.rs`, containers, projects, images, volumes, networks across engines; port queries `:5432`; label and folder matches; groups Actions / Containers / …; recent items); "Run as docker command?" on no match opens a terminal tab later (P3-T6) and is disabled with a reason until then. Frame: "Palette / open / 1440".
+Done when: `cargo nextest run -p berth-app palette search` reports ≥ 10 passed (query "rest" ranks "Restart shop-api-worker-1" first in the mock world; ":5432" finds `pg-scratch` and `shop-api-db-1`); the shot matches the frame; by hand ⌘K, type "restart berthfx-web", Enter restarts it.
+
+**P2-T10 Activity screen.** `screens/activity.rs`: virtual live table (time, engine, origin, action, subject, outcome), filters (engine, project, origin, outcome), Pause feed with "23 new events", gap marker when an engine disconnects, 30-day prune at start (D65). No frame: build from the Containers table layout.
+Done when: `cargo nextest run -p berth-app activity` passes (pause counts new events; filters); by hand: restarting `berthfx-web-1` from the row adds a Berth entry and engine entries (`kill`, `die`, `start`) within 2 s; shot `p2-activity` saved and read.
+
+---
+
+## Phase 3 — Container detail, logs, terminal (branch `phase/3-detail`, tag `v0.3`)
+
+Learned: —
+
+**P3-T1 Logs core.** `crates/berth-logs/src/{lib,classify,json,fold,buffer,view,search,batch}.rs` per PLAN §6.6, D25. `fixtures/logs/*.txt` samples: plain levels, logfmt, JSON (`level`, `severity`, `msg`, `message`), Node, Python and Java stack traces, Go panics, nginx access lines, Postgres logs.
+Done when: `cargo nextest run -p berth-logs` reports ≥ 30 passed (classification table per sample, JSON summary, folding of each trace kind, ring drop count, search plain/regex/invalid regex, next error, filter by stream and level, copy text); `cargo nextest run -p berth-logs --release throughput` reports ≥ 10,000 lines/s pushed through `batch` + `LogView::push_batch` with ≤ 1 batch per 16 ms tick (the test prints both numbers).
+
+**P3-T2 Logs section and bottom tab.** `services/logs.rs` (one `LogView` per open view, fed by `berth_logs::batch` over engine `logs` streams, version signal bumped per batch), `ui/{log_line,log_toolbar,log_view}.rs`, `screens/logs.rs` (container picker chips in series colours, whole project, any set across engines), bottom panel Logs tab, PLAN §7.6 rules: Follow, search with N of M, stream filter, level chips with counts, time range, Next error F8/⇧F8, wrap, timestamps, Copy, Save (rfd save panel), "142 new lines" pill, dropped-lines notice, line selection with the floating "Explain · Ask about these lines" bar (both disabled with a reason until P5-T8/P7-T6). Frames: "Logs / errors / 1440", "Logs / paused / 1440".
+Done when: `cargo nextest run -p berth-app logs` passes both scenes; both shots match their frames; by hand with `LOGGER_RATE=10000 scripts/fx-up.sh`: the Logs section follows `berthfx-logger-1` without visible stutter, F8 jumps between error lines, search "ECONNREFUSED" shows "N of M", Save writes a file whose line count equals the view's.
+
+**P3-T3 Inspector and container detail.** `screens/container_detail.rs`, `ui/{inspector_header,key_value_list,json_tree}.rs`: header with labelled Start/Stop, Restart, Pause/Resume, Kill (danger icon), Delete, ⋯ (Edit, Duplicate, Recreate with latest image, Rename, Save as image — later items disabled with reasons); tabs Overview (KeyValueList, health log, the compact ProblemItem slot), Logs (embedded log view), Terminal (P3-T6), Stats (P3-T4), Inspect (searchable JSON tree of the masked inspect), Env (keys, values masked, click reveals one for 30 s, D79), Mounts, Files (P3-T8), Limits (P3-T7); states exited (exit code, last 20 lines), restart loop (count, "Stop the restart loop"), paused, removed while open. Frames: "Containers / selected / 1440", "Containers / selected / 1440 / light" (inspector part).
+Done when: `cargo nextest run -p berth-app inspector` passes (each state; Env shows no value until revealed); both shots match the frames' inspector; by hand: `berthfx-db-1` Env shows `POSTGRES_PASSWORD` masked and reveals it on click.
+
+**P3-T4 Stats.** `services/stats.rs` (subscriptions keyed by visible row range and open Stats tab, closed on scroll-out and when the window is hidden, D26), row micro bars, `ui/metric_tile.rs` with a 5-minute sparkline (CPU, memory with limit, network rx/tx).
+Done when: `cargo nextest run -p berth-app stats` passes (scrolling a 1,000-row mock table keeps ≤ 60 subscriptions; hiding the window closes all); by hand: the Stats tab of `berthfx-db-1` draws moving sparklines, and `lsof -p $(pgrep -n berth) | grep -c docker.sock` stays below 70 with the Containers table open.
+
+**P3-T5 Web bundles.** `web-src/` (package.json pinned per PLAN §5 Node tooling, `src/terminal.ts`, `src/editor.ts`, a dark and a light theme from the CSS variables), `scripts/build-web.sh` (pnpm install --frozen-lockfile, esbuild bundle, writes `crates/berth-app/assets/web/{terminal,editor}.{js,css}`), `crates/berth-app/src/bridge/{mod,terminal,editor}.rs` (typed messages of PLAN §7.5, `document::eval` handles). ADR 0004.
+Done when: `scripts/build-web.sh` exits 0 and a second run leaves `git status --short crates/berth-app/assets/web` empty; `cargo nextest run -p berth-app bridge` passes (serde of every message); by hand a dev scene "Dev / terminal echo" echoes typed keys back through Rust into xterm.
+
+**P3-T6 Terminal.** `services/exec.rs`, `ui/terminal.rs`, bottom panel terminal tabs "api-1 · bash" (background-output dot, grey "Exited"), toolbar (shell bash/sh/zsh/ash, user default/root, working dir, Reconnect, Clear, Copy, Split, Pop out as a second window, Open in Terminal app), shell probe (D41), Start and open terminal for a stopped container, no-shell state with Files, ⌘T, "Open terminals for all services" on a project, palette "Run as docker command?" now opens a terminal tab. `platform/macos.rs`: Open in Terminal app per D42. Frames: "Container / terminal / 1440", "Container / terminal / no shell / 1440".
+Done when: `cargo nextest run -p berth-app terminal exec` passes (probe order; no-shell state); both shots match their frames; by hand: ⌘T on `berthfx-web-1` opens bash, `ls /` prints, resizing the panel reflows `stty size`; a distroless test container (`gcr.io/distroless/static` labelled berthfx) shows the no-shell state; Open in Terminal app opens Terminal.app at a shell in `berthfx-web-1`.
+
+**P3-T7 Limits, edit and recreate.** `screens/container_detail.rs` Limits tab (CPU, memory, restart policy; Apply limits uses `update_limits`), `sheets/edit_recreate.rs` (form from `ContainerDetail` → `ContainerSpec`; `spec_diff` shown; loss warning; Apply limits when `needs_recreate` is false, Recreate container otherwise; failed state keeps the old container; for a Compose service, "Write to compose.yaml instead" disabled until P5-T3), Duplicate (create with name `<name>-copy`), Rename, Recreate with latest image (pull then recreate). ⌘E. PLAN §6.2 `spec_diff`, brief §6.7.
+Done when: `cargo nextest run -p berth-app edit_recreate` passes (limits-only change offers Apply limits; port change offers Recreate with the diff); by hand on `berthfx-scratch`: changing memory to 256 MB applies live (`docker inspect -f '{{.HostConfig.Memory}}'` prints 268435456); changing its port recreates it and `docker ps` shows the new port; image `berthfx/does-not-exist:1` shows the failed state and the old container still runs.
+
+**P3-T8 Container files.** `ui/file_browser.rs` (virtual list, breadcrumbs, sizes, modified), container Files tab via exec `stat` listing or the archive API (D51), Download (rfd save panel, file extracted from the tar), Upload (tar built in memory).
+Done when: `cargo nextest run -p berth-app file_browser` passes (empty, large dir, read error states); by hand: Files of `berthfx-web-1` lists `/usr/share/nginx/html`, downloading `index.html` writes a file identical to `docker exec berthfx-web-1 cat /usr/share/nginx/html/index.html`.
+
+---
+
+## Phase 4 — Images, volumes, networks, engines (branch `phase/4-resources`, tag `v0.4`)
+
+Learned: —
+
+**P4-T1 Images on this engine.** `screens/images.rs` (tabs On this engine · Find images; table: repo:tag, ID, size, arch with amd64 badge on arm64, created, used by; dangling filter), `screens/image_detail.rs` (tags, layers and history, containers using it, platform), Delete disabled with "Used by 2 containers" and a "Delete containers too" option in the sheet, `sheets/run.rs` (name, ports, env, volumes prefilled from the image's exposed ports and env keys; creates with `create`), Pull image with per-layer `ProgressBar`, Tag (dialog). No frame for this tab: follow "Images / find / 1440" for the header and tabs, Containers for the table.
+Done when: `cargo nextest run -p berth-app images` passes; by hand: Pull `alpine:3` shows per-layer progress and the row appears; Run on `nginx:alpine` with name `berthfx-run1`, port 56081 and the label `dev.berth.fixture=1` typed into the sheet's Labels field serves `curl 127.0.0.1:56081`; Delete on `nginx:alpine` is disabled with the reason; shot `p4-images` saved and read.
+
+**P4-T2 Docker Hub client.** `crates/berth-registry/src/{lib,hub,registry,release}.rs` per PLAN §6.8, D50. Record `fixtures/hub/{search-postgres,tags-postgres,search-empty}.json` and a 429 case. Verify whether a Hub endpoint returns Verified Publisher and Sponsored OSS (try `https://hub.docker.com/api/search/v3/catalog/search?query=postgres` and record the response); if none answers, `Publisher` is only Official or Community and STATUS.md says so. `arm64` is true when any tag of the first page has an arm64 image.
+Done when: `cargo nextest run -p berth-registry` reports ≥ 12 passed against wiremock (search mapping, tags per arch sizes, 429 → RateLimited with reset, offline → Offline); `BERTH_NET=1 cargo nextest run -p berth-registry --run-ignored only live` finds `postgres` as Official with arm64 true.
+
+**P4-T3 Find images.** `screens/find_images.rs`: search field with registry select (Docker Hub default; added registries later), toggles Official only and arm64 only, results rows (44 px, two lines: name, badge, stars, pulls, updated, description, "amd64 only · runs under emulation" amber), detail panel 420 px (description, tags table with size per arch and pushed date, pull command with Copy, platform select default linux/arm64, Pull <ref>, Run…, Add to project… disabled until P5-T9), suggestions with no query (Official images for detected stacks of known projects plus recent pulls), states searching, no results with "Did you mean", rate limited banner with cached results greyed, offline, pull failed; pulling shows layer progress in the row and detail and "1 pulling" on the other tab. Frames: "Images / find / 1440", "Images / find / pulling / 1440", "Images / find / rate limited / 1440".
+Done when: `cargo nextest run -p berth-app find_images` passes the three scenes; the three shots match their frames; by hand: searching "postgres" on the live Hub lists `postgres` first with the Official badge, pulling `postgres:17-alpine` shows progress and it appears under On this engine.
+
+**P4-T4 Volumes and volume browser.** `screens/{volumes,volume_browser}.rs`, `sheets/create_volume.rs`: table (name, project, size "Calculating…" until `volume_sizes`, used by, driver, created; unused filter), Delete disabled when in use, typed-name confirm for delete; Create volume (name, driver, options; name taken inline); Volume browser with `FileBrowser` through the helper container (first use confirms "Berth uses a small helper image alpine:3 to read volumes" with its size), Back up volume to `.tar.gz` (rfd save panel), Restore with typed name.
+Done when: `cargo nextest run -p berth-app volumes` passes; by hand: `berthfx_pgdata` shows a size, browsing it lists `PG_VERSION`, Back up writes a file that `tar -tzf <file> | grep -c PG_VERSION` counts ≥ 1; creating `berthfx-vol` then deleting it with the typed name works.
+
+**P4-T5 Networks.** `screens/networks.rs`, `sheets/create_network.rs`: table (name, driver, subnet, containers, project), built-in networks marked with no Delete and the reason, Create network (name, driver, subnet, gateway, internal, attach containers; invalid subnet inline), Connect container / Disconnect in the network detail and in the container's Overview networks list.
+Done when: `cargo nextest run -p berth-app networks` passes (subnet validation; built-in rows have no Delete); by hand: create `berthfx-net` with subnet 172.31.250.0/24, connect `berthfx-web-1`, `docker inspect -f '{{json .NetworkSettings.Networks}}' berthfx-web-1` lists it, disconnect and delete.
+
+**P4-T6 Engines and dashboard.** `screens/{engines,engine_dashboard}.rs`, `ui/usage_bar.rs`, `sheets/edit_resources.rs`: engine rows (state, Docker version, CPU/mem/disk, arch, Rosetta, VM type, counts), Start/Stop/Restart engine through `ColimaControl` with progress (~20 s, "Starting…"), unreachable rows with last seen and Retry, containerd/incus profiles "Not supported in this version" (D69); dashboard: MetricTiles, UsageBar from `disk_usage` (Images · Volumes · Build cache · Containers of disk size), engine info list, recent activity, buttons Clean up (P4-T7), Edit resources, Stop engine. Edit resources: CPUs, memory, disk (grow only), VM type and Rosetta (vz only), the notice "Colima restarts; running containers stop for about 20 s" and Apply (stop then start with `start_args`). Frames: "Engines / dashboard / 1440", "Engines / starting / 1440".
+Done when: `cargo nextest run -p berth-app engines` passes both scenes and `start_args` for the edit sheet; both shots match their frames; by hand **with the owner present only**: Edit resources on `default` with the current values unchanged shows Apply disabled; the owner decides whether to run a real restart now or at the P4 acceptance.
+
+**P4-T7 Clean up.** `sheets/clean_up.rs`, `services/prune.rs`: plan from lists and `disk_usage` grouped (stopped containers, dangling and unused images, unused volumes unchecked by default, unused networks, build cache), sizes and total, button "Remove N items (X GB)" from `PrunePlan::effect`, item-by-item removal with progress, partial failure list, done state with the same total, nothing-to-clean state. Frames: "Clean up / sheet / 1440", "Clean up / done / 1440".
+Done when: `cargo nextest run -p berth-app clean_up` passes (volumes unchecked by default; button and result labels equal for the same plan; partial failure keeps failed items listed); both shots match their frames; by hand on a plan narrowed to two berthfx-labelled stopped containers and one berthfx volume: the button reads "Remove 3 items (…)" and the result toast repeats the exact text.
+
+---
+
+## Phase 5 — Folders, generation, problems (branch `phase/5-folders`, tag `v0.5`)
+
+Learned: —
+
+**P5-T1 Detection.** `crates/berth-rules/src/detect.rs` per PLAN §6.7, D36, D83, and the 13 folder fixtures of PLAN §8.1 (minimal real files: `package.json` with `next` and a `pnpm-lock.yaml`, `pyproject.toml` with Django, etc.; `.env` files use fake values only).
+Done when: `cargo nextest run -p berth-rules detect` reports ≥ 16 passed with one insta snapshot per fixture (stack, services needed with reasons such as "from DATABASE_URL", confidence) and a test that `detect` reads no file outside the list (a sentinel file with unreadable permissions in a subfolder does not cause an error).
+
+**P5-T2 Recipes, templates, edits, diff, write.** `crates/berth-rules/src/{recipes,templates,compose_edit,diff,write,ports,run_to_compose}.rs` per PLAN §6.7, D31, D32, D84, ADR 0012. Recipes write a multi-stage Dockerfile per stack, `.dockerignore`, `compose.yaml` with the needed services (generated password into `.env`, container hostnames in URLs, `develop.watch` for Node and Python as the design's generated compose shows), and healthchecks. Check every template image tag exists on Docker Hub (`BERTH_NET=1` test using `berth-registry`).
+Done when: `cargo nextest run -p berth-rules` reports ≥ 40 passed (recipe snapshot per stack fixture; `add_service` keeps comments; `set_host_port`; `apply` refuses `../x`, refuses on hash mismatch and writes nothing; `run_to_compose` of `docker run -d --name db -p 5432:5432 -e POSTGRES_PASSWORD=x -v pg:/var/lib/postgresql/data postgres:17`); `scripts/it.sh -p berth-rules recipe_it`: the plan for a temp copy of `node-next-pnpm` writes files that pass `docker compose config -q`.
+
+**P5-T3 Review changes and Generate.** `services/plans.rs` (pending plans by uuid), `sheets/{review_changes,generate}.rs`, `ui/diff_view.rs`: file tree with +/−, unified diff with line numbers, summary from `GenerationPlan::effect` ("Adds 3 files. Writes nothing outside this folder."), source label (Recipe / template / Claude Code / muse), Cancel · Write files · Write files and start; states conflict (Regenerate), write error, empty plan. Generate sheet: detection, recipe options (ports, database, Node version), harness choice shown only when one is detected (wired in P7-T6). The Compose-service "Write to compose.yaml instead" from P3-T7 is enabled now. Frames: "Review changes / default / 1440", "Review changes / new project / 1440".
+Done when: `cargo nextest run -p berth-app review_changes generate` passes both scenes and the states; both shots match their frames; by hand on a temp copy of `fixtures/folders/node-next-pnpm`: Generate, then Write files and start brings the project up; editing `package.json` between Generate and Write shows the conflict state and writes nothing.
+
+**P5-T4 Open folder browser.** `sheets/open_folder.rs`, `ui/column_browser.rs`, `services/folders.rs`: places (Home, Dev ★, Desktop, Documents, mounted volumes from `/Volumes`) and Recent; Finder-style columns reading only the visible folder; editable path bar with Tab completion and "path not found"; filter field; ⌘⇧. hidden files; markers Compose / Dockerfile / Open (known project) from `detect::markers`; right preview with the detection summary and git branch; footer "Use system dialog…" (rfd folder picker), Cancel, "Open <folder>" or "Go to <project>"; states loading large folder, empty, no access (EPERM → "Berth can't read Documents…" with Open System Settings, which runs `open "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders"`), slow volume. ⌘O, Projects header button and the palette open it; opening a folder pins it (`PinnedFolder`). Frames: "Open folder / browser / 1440", "Open folder / browser / no access / 1440".
+Done when: `cargo nextest run -p berth-app open_folder` passes (markers; completion; EPERM maps to no-access); both shots match their frames; by hand: browsing to `fixtures/folders` shows Dockerfile and Compose markers; opening `~/Documents` the first time triggers the macOS privacy prompt or shows the no-access state, and Open System Settings opens Files and Folders; "Use system dialog…" opens the native panel.
+
+**P5-T5 Drop folder, Detected sheet, New project.** `ui/drop_overlay.rs` (wry drag-drop via dioxus-desktop paths, D37: "Drop to open new-app", queue for several folders, wrong file type message, compose.yaml or Dockerfile opens its folder, known folder jumps to its project), `sheets/{detected,new_project}.rs` (Detected: found files, stack, services needed, Start project when Compose exists else Generate from recipe / Generate with Claude Code ▾; New project: Open folder, From editor with the CodeMirror bundle editing a Compose file saved to a chosen folder through Review changes, From Git disabled until P8-T5), dropping onto a sidebar project row. Frames: "Projects / drop folder / 1440", "New project / detected / 1440".
+Done when: `cargo nextest run -p berth-app drop detected new_project` passes; both shots match their frames; by hand: dragging `fixtures/folders/compose-present` from Finder shows the overlay and then Start project; dragging `node-next-pnpm` shows the Detected sheet with "Postgres (from DATABASE_URL)"; dragging a `.txt` file shows the wrong-type message.
+
+**P5-T6 Project detail.** `screens/project_detail.rs`: header (name, StatusBadge, path, branch, engine, labelled Start/Stop project, Restart project, Rebuild, Pull images, Delete project, ⋯ Open folder, Open in editor (VS Code `code` found via SearchPath, else the default app), Reveal in Finder); tabs Services (ContainerRows), Files (FileBrowser over the project folder: compose files, `.env` keys with values hidden, Dockerfile, opening a file in the editor), Logs (combined), Activity (filtered); states not created, partial, compose file invalid (line and message from `validate`), loading; Delete project sheet (`Down` with remove volumes / remove images checkboxes, effect text). Frame: "Project / files / 1440".
+Done when: `cargo nextest run -p berth-app project_detail` passes; the shot matches the frame; by hand: berthfx Files tab shows `compose.yaml` and `.env` with values hidden; Open in editor opens VS Code on `compose.yaml`; a broken indent in a temp copy shows the line and message.
+
+**P5-T7 Problem rules.** `crates/berth-rules/src/problems/{mod,port_allocated,image_not_found,exec_format,oom,exited_no_logs,unhealthy,bind_missing,bind_permission,disk_full,socket_missing,network_not_found,name_in_use,env_missing,dependency_failed,build_failed}.rs` per PLAN §6.7, D35, D82, brief §6.4. Each rule has fixtures in `fixtures/problems/<kind>/` (log lines, inspect JSON, compose text) captured from `berthfx-broken` where possible, plain explanations, and fixes: port → `set_host_port` plan with `ports::suggest`; exec format → "Restart Colima with Rosetta" (vz only) or `platform: linux/arm64`; OOM → raise memory limit; env missing → add `.env` line; name in use → remove or rename; socket missing → Start engine; etc.
+Done when: `cargo nextest run -p berth-rules problems` reports ≥ 30 passed (one positive and one negative per kind); `scripts/it.sh -p berth-rules problems_it` with `scripts/fx-up.sh --broken` raises PortAllocated, ImageNotFound, ExitedNoLogs, OutOfMemory, EnvVarMissing, Unhealthy and BindPathMissing for the matching services.
+
+**P5-T8 Problems panel and fixes.** `services/problems.rs` (re-evaluate on events, compose failures and error-marked log batches; dedupe by `ProblemId`; clear when resolved), `ui/problem_item.rs`, bottom panel Problems tab with count badge, title-bar and status-bar count, the inspector's compact problem card, fix buttons (file fixes open Review changes; action fixes show the effect and time, then run; "Fix with Claude Code" slot disabled until P7-T6), log "Explain" runs rules for the selected lines.
+Done when: `cargo nextest run -p berth-app problems` passes (fix running and failed states); the Containers scene's problem card matches "Containers / selected / 1440"; by hand with `--broken`: the Problems tab shows the seven problems, "Map portclash to port 56081" opens Review changes and after Write files and restart the problem disappears.
+
+**P5-T9 Templates and Add service.** `screens/templates.rs` (list grouped by category, built-in and custom, custom empty state), `sheets/add_service.rs` (pick template, inputs with suggested free port and generated password, Review changes with the compose block and `.env` lines, Write files and start service), Add to project… from Find images (P4-T3).
+Done when: `cargo nextest run -p berth-app templates add_service` passes; by hand: Add service Redis 7 to a temp copy of berthfx suggests port 56380 (56379 taken), Review changes shows the block, and after writing `docker compose ps` lists the new service running.
+
+---
+
+## Phase 6 — Menu bar, first run, settings, performance (branch `phase/6-polish`, tag `v0.6`)
+
+Learned: —
+
+**P6-T1 Menu bar item.** `services/menubar.rs` with the pure `menu_model` (D38, D80), `platform/macos.rs` tray item via `dioxus::desktop::trayicon` with template icons for all good / failing / engine stopped, items routed to actions, window close hides (`WindowCloseBehaviour::WindowHides`), Open Berth shows the window, Quit quits; dock icon setting (D67, activation policy). Frames: "Menu bar / failing / 320", "Menu bar / failing / 320 / dark" (content and order).
+Done when: `cargo nextest run -p berth-app menubar` reports ≥ 8 passed (failing list first; engines with Start/Stop; pinned and running projects); by hand: closing the window keeps the item; with `--broken` up the icon shows the failing mark and "Show logs" on `berthfx-broken-crash-1` opens the window on its logs; Stop berthfx from the menu stops it; hiding the dock icon in Settings keeps the item.
+
+**P6-T2 First run, settings, update check.** `screens/{first_run,settings}.rs`, `services/updates.rs`: checks Colima, Docker CLI, socket, Compose plugin, harnesses (pass/fail with the copyable `brew install colima docker docker-compose`), Start default; Settings: engines (add socket), harnesses found (path, version, Rescan, Choose binary…), appearance (light/dark/system, density), shortcuts list from `actions.rs`, terminal app and editor, favourites, external calls list (D61), update check toggle; `latest_release` once a day (D62).
+Done when: `cargo nextest run -p berth-app first_run settings updates` passes (all pass / Colima missing / stopped with a fake SearchPath; update newer/older/offline against wiremock); by hand: `env -i HOME=$HOME PATH=/usr/bin:/bin BERTH_SHELL_PATH=0 BERTH_DATA_DIR=$(mktemp -d) cargo run -p berth-app` shows first run with Colima missing and the copy button; switching density to Compact makes rows 24 px in a shot.
+
+**P6-T3 Performance pass.** `services/timing.rs` (log lines `timing name=… ms=…` for cold start to shell, to snapshot render, to live data), `scripts/perf.sh` (release build; launches with a temp data dir holding a 50-container mock snapshot; reads the timing log; samples `ps -o %cpu,rss` for 60 s with the window closed; prints the numbers). Fix what misses brief §1.3.
+Done when: `scripts/perf.sh` prints cold start to populated Projects < 600 ms, idle CPU with the window closed < 0.5 %, RSS of the app plus its WebContent process < 150 MB with 50 containers; the numbers are pasted in STATUS.md.
+
+**P6-T4 Keyboard and accessibility pass.** Every icon button has an accessible name; Tab reaches row actions on the selected row; focus ring visible on every control; live region for status changes (polite); Escape closes the top overlay everywhere; every `ActionDef` reachable from the palette with its shortcut; reduced motion honoured.
+Done when: `cargo nextest run -p berth-app a11y` passes (SSR: no `button` without text or `aria-label` in any scene; every action in `actions.rs` appears in the palette index); by hand with VoiceOver on a row: "Restart berthfx-web-1, button" is read.
+
+---
+
+## Phase 7 — Assistant (branch `phase/7-assistant`, tag `v0.7`)
+
+Learned: —
+
+**P7-T1 Harness detection, tool catalog, redaction.** `crates/berth-assistant/src/{lib,detect,catalog,redact}.rs` and `examples/detect.rs` per PLAN §6.9, D43, D79. `catalog()` holds the 25 tools with JSON schemas (`schemars`) and risks.
+Done when: `cargo nextest run -p berth-assistant detect catalog redact` reports ≥ 15 passed (25 tools; unique names; every Destructive tool has a `name` argument; env file and inspect redaction); `env -i HOME=$HOME SHELL=/bin/zsh PATH=/usr/bin:/bin:/usr/sbin:/sbin cargo run -q -p berth-assistant --example detect` prints Claude Code 2.1.309 or newer and Muse Code 1.4.12 or newer with `~/.local/bin` paths.
+
+**P7-T2 MCP server, bridge, gated execution.** `crates/berth-assistant/src/{bridge,mcp}.rs` (`serve_mcp_stdio` with rmcp `server` + `transport-io`), `berth-app/src/main.rs` `mcp` mode, `berth-app/src/services/tools.rs` (bind the bridge at start, execute tools against engines, rules and store, gate Change and Destructive with approval state in `AppState`, redact results, Activity `assistant.<tool>`, `files.propose_edit` creates a pending plan). ADR 0006.
+Done when: `scripts/it.sh -p berth-assistant mcp_it` passes: an rmcp client (dev feature `client`, `transport-child-process`) spawns `target/debug/berth mcp --bridge <test socket>` against a test bridge backed by MockEngine, lists 25 tools, `containers.list` returns at once, `containers.restart` blocks until the test approves and returns denied when it denies, `files.read` of a `.env` returns masked values, a wrong token is refused.
+
+**P7-T3 Claude Code adapter.** `crates/berth-assistant/src/claude.rs`: flag table (D43), `--mcp-config` file in `runtime_dir` with the `berth` server, stream-json writer for user turns (context rendered by `context::render`), line parser to `AssistantEvent` (text deltas, `tool_use` and results for `mcp__berth__*`, result line), `--session-id`/`--resume`, interrupt (verify how a stream-json session is interrupted: a control message if `--help` or the docs name one, else SIGINT; record the finding). First verify `--allowedTools mcp__berth` lets Berth's tools run without prompts under `-p`; if not, try `mcp__berth__*` and record which works.
+Done when: `cargo nextest run -p berth-assistant claude` reports ≥ 10 passed on recorded stream-json fixtures (`fixtures/assistant/claude/*.jsonl`, captured in this task); `BERTH_HARNESS_SMOKE=1 cargo nextest run -p berth-assistant --run-ignored only smoke_claude` passes: asked "List the containers on this engine", the session calls `containers.list` through the bridge (MockEngine) and the answer names `shop-api-api-1`.
+
+**P7-T4 muse adapter.** `crates/berth-assistant/src/muse.rs`: `muse serve --disable-shell --disable-write` over stdio, MSP framing (check the schema export: `muse schema generate-json-schema --out <tmp>`; record the framing and the `initialize` handshake in STATUS.md), `session/start` with `workspaceRoot` and `config.mcpServers.berth`, `turn/start`, `turn/interrupt`, notifications to `AssistantEvent`, `approval/requested` for `berth` tools answered with the allow choice, others denied; fallback `muse exec --json`.
+Done when: `cargo nextest run -p berth-assistant muse` reports ≥ 10 passed on recorded fixtures (`fixtures/assistant/muse/*.jsonl`); `BERTH_HARNESS_SMOKE=1 cargo nextest run -p berth-assistant --run-ignored only smoke_muse` passes the same question as P7-T3.
+
+**P7-T5 Assistant UI.** `screens/assistant.rs` (bottom tab and full section), `ui/{chat_turn,tool_call_row,approval_card,proposed_change_card,context_chip,harness_picker}.rs`, `services/assistant.rs` (one session per project, saved with `Store::save_session`, resumed on reopen; streaming; ⌘. interrupt per D77; Approve / Deny; typed name for Destructive; Review changes from a proposed change; harness error with stderr and Retry; no-harness state with install hints while rules still work). Frame: "Project / assistant / 1440".
+Done when: `cargo nextest run -p berth-app assistant` passes the scene and states (thinking, waiting for approval, watch banner, error, no harness); the shot matches the frame; by hand with Claude Code on berthfx: "What is using the most memory?" streams an answer with tool rows; quitting and reopening resumes the conversation.
+
+**P7-T6 Entry points and watch mode.** Ask about these lines (log selection → `ContextItem::Logs`), Explain this error (rules first, then the assistant), Fix with Claude Code / muse on problems (problem, its log lines, inspect, compose file and folder tree attached), Generate with harness in the Generate sheet (result lands in Review changes), Watch and fix (follows logs after each change; proposes, never applies, D71), Open in terminal (the harness TUI in a terminal tab with `--mcp-config` attached; `muse` with its session config).
+Done when: `cargo nextest run -p berth-app assistant_entry` passes (context chips built from a selection; watch mode never calls write); by hand with `--broken`: Fix with Claude Code on the portclash problem reads logs through Berth's tools, proposes a compose change that opens Review changes, and `compose.up` waits for Approve.
+
+---
+
+## Phase 8 — Remote engines and Portainer parity (branch `phase/8-parity`, tag `v0.8`)
+
+Learned: —
+
+**P8-T1 Remote engines.** Enable bollard features `ssh` and `ssl` (PLAN §5). `BollardEngine::connect` for `RemoteTransport::Ssh` (`connect_with_ssh`) and `Tcp` with TLS files; `sheets/add_engine.rs` (SSH: hosts parsed from `~/.ssh/config`; TCP+TLS: URL and cert files; Test connection; name; colour marker), loading and stale states on every remote view, unreachable with last seen and Retry, Compose with `DOCKER_HOST=ssh://…` (D47). Store with `upsert_engine`.
+Done when: `cargo nextest run -p berth-engine remote` passes (ssh config parsing; docker_host strings); `BERTH_SSH_TEST=<user@host> scripts/it.sh -p berth-engine ssh_it` lists containers on that host when the owner sets the variable, otherwise the test reports skipped; by hand: Add engine with an unreachable host shows the unreachable state within 5 s.
+
+**P8-T2 Registries.** `screens/registries.rs`, `sheets/add_registry.rs`: list (name, URL, username, status), Docker Hub always present, login check with `RegistryClient::check_login`, password to the Keychain (`registry/<id>/password`), credentials passed to `pull` and `push` as `RegistryAuth`, Find images registry select gains added registries, `ghcr.io/` prefix scopes the search.
+Done when: `cargo nextest run -p berth-registry -p berth-app registries` passes; `scripts/it.sh -p berth-app registry_it` with `scripts/fx-up.sh --registry`: login to `127.0.0.1:56500` as `berthfx` succeeds, a wrong password shows "login failed", and `sqlite3 "$BERTH_DATA_DIR/berth.db" .dump | grep -c <the password>` prints 0 while `security find-generic-password -s dev.berth -a registry/<id>/password` finds the item.
+
+**P8-T3 Build, tag, push, import, export.** `sheets/build_image.rs` (context folder or Dockerfile in the editor, tags, build args, platform, live build log with the failing step highlighted and a Problems link, done state with size and Push next), D52 (verify `docker build --progress rawjson` with `docker build --help` first; fall back to plain parsing), `EngineClient` P8 methods in `BollardEngine` and `MockEngine` (`tag_image`, `push`, `export_image`, `import_image`, `commit`).
+Done when: `cargo nextest run -p berth-engine -p berth-app build` passes (step parser on recorded output); `scripts/it.sh -p berth-app build_it`: builds `fixtures/folders/dockerfile-only` as `127.0.0.1:56500/berthfx/app:1`, pushes it to the fixture registry, exports it to a tar that `import_image` loads back.
+
+**P8-T4 Save as image, custom templates.** Container ⋯ Save as image (`commit`), "Save as template" on a project service (stores a custom `Template` from its compose block), Templates custom section with delete.
+Done when: `cargo nextest run -p berth-app custom_templates` passes; by hand: Save as image on `berthfx-web-1` as `berthfx/web-snap:1` appears under Images; saving the `cache` service as a template lists it under Custom and Add service with it writes the same block.
+
+**P8-T5 Project from Git.** `scripts/fx-git.sh` builds `fixtures/git/berthfx-app.git`; New project → From Git (URL, branch, SSH keys from `~/.ssh` through the user's agent, target engine, local folder), `git clone --progress`, then the detection and generation flow (P5), Deploy; project row shows the commit; Pull and redeploy shows incoming commits (`git log --oneline HEAD..@{u}`) then pulls and runs `Up{build:true}`; polling every N minutes shows "N new commits" and redeploys only with Auto-redeploy on (D72); states cloning, clone failed (auth or URL with the fix), invalid compose.
+Done when: `cargo nextest run -p berth-app git_deploy` passes; `scripts/it.sh -p berth-app git_it`: deploys `berthfx-app.git` to running; a new commit pushed to the bare repo appears as "1 new commit" after a poll, and Pull and redeploy brings the new commit up.
+
+---
+
+## Phase 9 — Plugins and Coolify (branch `phase/9-plugins`, tag `v0.9`)
+
+Learned: —
+
+**P9-T1 Plugin protocol.** `crates/berth-plugin-protocol/src/lib.rs` exactly as PLAN §6.10, `encode`/`decode`, a JSON Schema of `Manifest` written to `crates/berth-plugin-protocol/manifest.schema.json` by a test, and `docs/plugins.md` (protocol reference for authors: methods, views, permissions, a minimal example). ADR 0008.
+Done when: `cargo nextest run -p berth-plugin-protocol` reports ≥ 12 passed (round trip of every message and view kind; unknown fields ignored; a manifest with an unknown permission fails with a clear message).
+
+**P9-T2 Plugin host and Plugins screen.** `crates/berth-plugin-host/src/{lib,discover,process,dispatch}.rs` per §6.10 (start with `PATH` from SearchPath, `initialize`, request timeouts, restart with backoff 1 s, 5 s, 30 s then Error, secrets only for declared and granted keys, `host/log` to tracing), a test plugin `crates/berth-plugin-host/tests/fixture-plugin/` (small Rust bin in the test target), `screens/plugins.rs` (installed plugins, permissions, state, Enable with a permission request sheet, Configure form from `ConfigField`s with secrets to the Keychain, crash log).
+Done when: `cargo nextest run -p berth-plugin-host` reports ≥ 12 passed (conformance with the fixture plugin: initialize, view/load, action/invoke, logs/lines, secret allowed and denied, crash and restart, timeout); `cargo nextest run -p berth-app plugins` passes the Plugins screen states.
+
+**P9-T3 Coolify client.** `plugins/coolify/`: `berth-plugin.json`, `spec/openapi-v4.5.0.json` downloaded from `https://raw.githubusercontent.com/coollabsio/coolify/v4.5.0/openapi.json` with its SHA-256 recorded in `spec/SHA256`, `src/{main,client,types,views}.rs` with the brief §5 Coolify types (field names from the spec), endpoints `GET /health`, `/version`, `/resources`, `/servers`, `/deployments`, `/applications/{uuid}`, `/deployments/applications/{uuid}`, `/applications/{uuid}/logs?lines=N`, `/applications/{uuid}/envs` (values never returned to the host unless revealed), bearer token from `host/secret.get`. `fixtures/coolify/*.json` built from the spec's schemas and examples.
+Done when: `cargo nextest run -p berth-coolify client` reports ≥ 15 passed against wiremock (each endpoint maps; 401 → "token invalid"; unreachable; version 5.x → the "Built for Coolify 4.5; some actions may fail" warning).
+
+**P9-T4 Coolify actions, logs, linking.** In `plugins/coolify`: actions Deploy (`POST /deploy?uuid=…`, Force rebuild option), Start/Stop/Restart for applications, services and databases, Cancel deployment, each with a `Confirm` naming app, server and branch; deployment log stream polled until a final status; application logs polled; `project/badges` linking local projects by git remote; MCP passthrough when Coolify's MCP is enabled (`host/mcp.servers`, Mcp permission).
+Done when: `cargo nextest run -p berth-coolify actions logs badges` reports ≥ 12 passed against wiremock (deploy with force sends `force=true`; cancel; poll stops at `finished`, `failed`, `cancelled`; a project whose remote matches `git_repository` gets "Deployed on Coolify: running").
+
+**P9-T5 Declarative views and the Coolify section.** `berth-app/src/screens/plugin_view.rs` renders every `View` kind with the app's components (Table → VirtualTable, Detail → inspector layout, LogStream → log view, Message, Form), sidebar section from contributions, action confirms through `ConfirmDialog`, palette commands, project badges on ProjectRow, the bundled `berth-coolify` binary found next to the app binary. Frames: "Coolify / deployments / 1440", "Coolify / confirm redeploy / 1440".
+Done when: `cargo nextest run -p berth-app plugin_view` passes both scenes (rendered from recorded plugin responses); both shots match their frames; by hand with the plugin pointed at a wiremock instance (`cargo run -p berth-coolify --example fake-coolify`): the Coolify section lists resources and deployments, Deploy confirms with app, server and branch, the failed deployment's log scrolls to the failing step.
+
+---
+
+## Phase 10 — Ship (branch `phase/10-ship`, tag `v1.0.0`)
+
+Learned: —
+
+**P10-T1 Bundle configuration.** App icon from the design (if the FigCraft file has no icon, ask the owner: Q5), `crates/berth-app/assets/icon/` sizes and `.icns` made with `sips`/`iconutil`, `crates/berth-app/Dioxus.toml` `[bundle]` per PLAN §12 item 1, `packaging/macos/Berth.entitlements` (network.client only), `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD_PARTY_NOTICES.md` (OFL fonts, xterm.js, CodeMirror, crate licences from `cargo metadata`), `packaging/homebrew/berth.rb` cask template.
+Done when: `cargo nextest run --workspace` passes; `plutil -lint` on the bundle's generated Info.plist (after `dx bundle --platform macos -p berth-app`) prints OK with `CFBundleIdentifier` `dev.berth.app` and `LSMinimumSystemVersion` 14.0.
+
+**P10-T2 Release script and unsigned DMG.** `scripts/release.sh` per PLAN §12 item 3 (copies `berth-coolify` into the bundle, signs only when variables are set, checks the bundle size, builds `Berth-<version>-arm64.dmg`), `.github/workflows/release.yml` (written, not run).
+Done when: `scripts/release.sh` exits 0 and prints the DMG path; the DMG is < 30 MB (`stat -f %z`); `open` of the unsigned app from Finder (right-click Open) shows Projects with berthfx, and Settings lists `claude` and `muse` found through the login-shell PATH.
+
+**P10-T3 Design audit, part 1.** For every scene of P2 to P4 frames (19 frames), `scripts/shot.sh` and read beside the frame PNG; fix differences in tokens, CSS or RSX; record one sign-off line per frame in STATUS.md (matched / fixed / deviation accepted by the architect with the reason).
+Done when: STATUS.md has 19 sign-off lines and no open item; `scripts/check.sh` exits 0.
+
+**P10-T4 Design audit, part 2.** Same for the frames of P5 to P9 (15 frames) and one consistency pass over the screens with no frame (Image detail, Volumes, Volume browser, Networks, Templates, Activity, Registries, Settings, First run, Plugins, sheets).
+Done when: STATUS.md has 15 more sign-off lines and a line per no-frame screen; `scripts/check.sh` exits 0.
+
+**P10-T5 Signed and notarized build.** Needs the owner: the signing identity and a notarytool keychain profile name (Q4). `BERTH_SIGN_IDENTITY="Developer ID Application: …" BERTH_NOTARY_PROFILE=<profile> scripts/release.sh`. Stop and ask when either is missing.
+Done when: `codesign -dvv --entitlements - Berth.app` shows the Developer ID authority, hardened runtime and only `com.apple.security.network.client`; `xcrun stapler validate` passes for the app and the DMG; `spctl -a -vv -t exec Berth.app` prints "accepted, source=Notarized Developer ID"; the signed app launches, saves a registry password to the Keychain, and runs Claude Code from the Assistant.
+
+**P10-T6 Clean-install test and 1.0.0.** Move Berth's Application Support, Logs, Caches, Preferences and WebKit folders for `dev.berth.app` to the Trash folder `~/.Trash/berth-uninstall-<date>/` (reversible; never empty the Trash); copy the DMG to `~/Downloads` with a quarantine flag; install by Finder copy; launch from Finder; walk: first run checks, open `fixtures/folders/node-next-pnpm` by drag and drop, generate and start it, read its logs, open a terminal, ask Claude Code one question, quit and relaunch with data intact. Bump the workspace to 1.0.0, merge `phase/10-ship` into `main`, tag `v1.0.0` locally. Push, release and cask publication only with the owner's approval.
+Done when: STATUS.md records each step of the walk as passed; `git tag --list v1.0.0` prints `v1.0.0`; `cargo pkgid -p berth-app` ends with `1.0.0`.
+
+---
+
+## Coverage: brief section → tasks
+
+| Brief section | Tasks |
+|---|---|
+| 1 MVP 1 Colima profiles start/stop/resize | P1-T3, P4-T6 |
+| 1 MVP 2 Projects view, up/down/restart/rebuild | P1-T7, P1-T9, P2-T5, P2-T6, P5-T6 |
+| 1 MVP 3 Containers, Images, Volumes, Networks tables | P2-T7, P4-T1, P4-T4, P4-T5 |
+| 1 MVP 4 Container detail: logs, terminal, stats, inspect, env, mounts, files | P3-T2, P3-T3, P3-T4, P3-T6, P3-T8 |
+| 1 MVP 5 Command palette | P2-T9 |
+| 1 MVP 6 Global search | P2-T9 |
+| 1 MVP 7 Open a folder, detect, generate, diff | P5-T1, P5-T2, P5-T3, P5-T4, P5-T5 |
+| 1 MVP 8 Problems panel | P5-T7, P5-T8 |
+| 1 MVP 9 Logs section | P3-T1, P3-T2 |
+| 1 MVP 10 Menu bar | P6-T1 |
+| 1 MVP 11 Portainer-depth management, activity | P3-T7, P4-T4, P4-T5, P2-T10 |
+| 1 M3 AI harnesses | P7-T1 … P7-T6 |
+| 1 M4 Remote, Git, templates, registries, build/push, plugins, Coolify | P8-T1 … P8-T5, P9-T1 … P9-T5 |
+| 1.1 Portainer table: engines, dashboard | P1-T3, P4-T6 |
+| 1.1 Project from editor | P5-T5 |
+| 1.1 Project from Git, pull and redeploy, polling | P8-T5 |
+| 1.1 Templates built-in and custom | P5-T9, P8-T4 |
+| 1.1 Logs, console, attach, inspect, stats | P3-T2, P3-T6, P3-T3, P3-T4 |
+| 1.1 Duplicate, edit, recreate, recreate with latest | P3-T7 |
+| 1.1 Limits live | P3-T7 |
+| 1.1 Pause, resume, kill, rename | P1-T5, P2-T5, P3-T3, P3-T7 |
+| 1.1 Commit to image | P8-T4 |
+| 1.1 Row quick actions | P2-T7 |
+| 1.1 Build, tag, push, import, export | P8-T3 |
+| 1.1 Registries with Keychain | P8-T2 |
+| 1.1 Volumes create and browse | P4-T4 |
+| 1.1 Networks create, connect, disconnect | P4-T5 |
+| 1.1 Activity | P2-T10 |
+| 1.2 Licence, no telemetry, external calls, update available | P10-T1, P6-T2 |
+| 1.2 Actor and owner fields | P0-T2, P1-T2 |
+| 1.2 SecretStore trait | P1-T2 |
+| 1.3 Performance budget | P2-T4, P3-T1, P3-T4, P6-T3, P10-T2 |
+| 2 Archetype, dense-pro, effect before commitment | P0-T3, P2-T8, P4-T7, P5-T3 |
+| 3 Platforms, window sizes | P0-T4, P2-T3, P2-T7 |
+| 5 Entities and API shapes | P0-T2 |
+| 6.1 First run | P6-T2 |
+| 6.2 Open a folder | P5-T1 … P5-T5 |
+| 6.3 Something failed | P5-T8, P7-T6 |
+| 6.4 Problem kinds (15) | P5-T7 |
+| 6.5 Free disk space | P4-T6, P4-T7 |
+| 6.6 Exec into a container | P3-T6 |
+| 6.7 Edit and recreate | P3-T7 |
+| 6.8 Add a service from a template | P5-T9 |
+| 6.9 Deploy from Git | P8-T5 |
+| 6.10 Add a remote engine | P8-T1 |
+| 6.11 Coolify plugin | P9-T3, P9-T4, P9-T5 |
+| 6.12 AI assistant with Docker tools | P7-T1 … P7-T6 |
+| 6.13 Logs: stream, read, act | P3-T1, P3-T2, P7-T6 |
+| 6.14 Menu bar | P6-T1 |
+| 6.15 Drag a folder | P5-T5 |
+| 6.16 Terminal for every container | P3-T5, P3-T6 |
+| 6.17 Find images online | P4-T2, P4-T3 |
+| 6.18 Browse the file system | P5-T4, P5-T6 |
+| 7.1 Shell and keyboard | P2-T1, P2-T3, P6-T4 |
+| 7.2 Action buttons | P2-T5, P2-T7, P2-T8, P3-T3, P4-T1, P4-T4, P4-T5, P4-T6, P6-T1, P9-T5 |
+| 7.3 Screens and states | the task named per frame in PLAN §7.2; no-frame screens in P2-T10, P4-T1, P4-T4, P4-T5, P5-T9, P6-T2, P8-T2, P8-T3, P9-T2 |
+| 8 Glossary | P0-T2 (type names), P10-T3/T4 (copy audit) |
+| 9 Open questions | PLAN §4.3, `docs/QUESTIONS.md` |
+| 10 Build rules | CLAUDE.md, every UI task |
+
+Gaps: none.
