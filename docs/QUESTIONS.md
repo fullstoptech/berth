@@ -4,6 +4,7 @@ Each open entry has a default already taken, so work never waits. The owner answ
 
 ## Open
 
+- **Q9 Project status rule.** P1-T7's `status()` makes any Unhealthy service Failing (its Done-when), but the frames call `analytics` Partial (3 of 4 running) while `ingest` is Unhealthy; the mock world stores the brief's Partial, so live grouping and mock scenes can disagree. Options: (a) only Dead/Restarting fail a project (Unhealthy stays Partial; Problems already flag it per container); (b) keep the rule and treat the frames as wrong. Architect's pick: (a), to apply at P2 with the STATUS note. Owner to confirm.
 - **Q1 Product name (brief §9).** Default: "Berth", bundle id `dev.berth.app`, binary `berth`, Keychain service `dev.berth` (D64). Found 2026-10-24: the GitHub repository `fullstoptech/berth` exists; the Homebrew cask name `berth` is free; on crates.io `berth` (an MCP server runtime) and `berth-registry` are taken by another project, which does not matter for unpublished crates but is a brand overlap. Renaming later is one task (identifiers, Keychain service, bundle id); do it before P10-T1 at the latest.
 - **Q2 Licence (brief §9).** Default: MIT OR Apache-2.0 (D63). Alternative: GPL-3.0 if forks must stay open. Needed by P10-T1.
 - **Q3 Icons.** Default: the hand-drawn Lucide-style icons exported from `design/berth.figcraft` (D10, P0-T3). Alternative: download the real Lucide SVGs (MIT, about 1,500 icons) and keep the ones the design uses. `.eng/notes.md` records this as waiting for your OK to download.
