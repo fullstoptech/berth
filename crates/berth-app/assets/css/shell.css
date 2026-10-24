@@ -1,0 +1,77 @@
+/* App shell skeleton (P0-T4). Colours come only from tokens.css variables (D4). */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-text);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.titlebar {
+  height: var(--size-titlebar);
+  min-height: var(--size-titlebar);
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding-left: 78px;
+  padding-right: var(--space-12);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-line);
+  user-select: none;
+}
+.titlebar-search {
+  margin: 0 auto;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: 2px 48px;
+}
+.titlebar-problems {
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  white-space: nowrap;
+}
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.sidebar {
+  width: var(--size-sidebar);
+  min-width: var(--size-sidebar);
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-line);
+  padding: var(--space-8) 0;
+  overflow-y: auto;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  height: var(--size-row);
+  padding: 0 var(--space-12);
+  color: var(--color-ink);
+}
+.nav-item.selected {
+  background: var(--color-selection);
+}
+.nav-item svg {
+  width: var(--size-icon-md);
+  height: var(--size-icon-md);
+  flex: none;
+}
+.main {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-bg);
+  overflow: auto;
+}
