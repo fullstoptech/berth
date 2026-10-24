@@ -1,0 +1,36 @@
+[package]
+name = "berth-app"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "berth"
+path = "src/main.rs"
+
+[dependencies]
+berth-assistant.workspace = true
+berth-core.workspace = true
+berth-engine.workspace = true
+berth-logs.workspace = true
+berth-plugin-host.workspace = true
+berth-plugin-protocol.workspace = true
+berth-registry.workspace = true
+berth-rules.workspace = true
+berth-store.workspace = true
+berth-sys.workspace = true
+anyhow.workspace = true
+dioxus.workspace = true
+dioxus-ssr.workspace = true
+rustls.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
