@@ -622,6 +622,39 @@ pub fn cpu_percent(s: &ContainerStatsResponse) -> Option<f32> {
     Some((cpu_delta as f64 / system_delta as f64 * online * 100.0) as f32)
 }
 
+/// One stats sample mapped to `LiveStats`. Memory used follows the Docker
+/// CLI: usage minus page cache (`inactive_file` on cgroup v2, `cache` on v1,
+/// only when below usage). Network totals sum every interface.
+pub(crate) fn live_stats(s: &ContainerStatsResponse) -> berth_core::LiveStats {
+    let memory = s.memory_stats.as_ref();
+    let usage = memory.and_then(|m| m.usage).unwrap_or(0);
+    let cache = memory
+        .and_then(|m| m.stats.as_ref())
+        .and_then(|stats| {
+            stats
+                .get("inactive_file")
+                .copied()
+                .filter(|v| *v < usage)
+                .or_else(|| stats.get("cache").copied().filter(|v| *v < usage))
+        })
+        .unwrap_or(0);
+    let (mut net_rx, mut net_tx) = (0u64, 0u64);
+    if let Some(networks) = s.networks.as_ref() {
+        for n in networks.values() {
+            net_rx = net_rx.saturating_add(n.rx_bytes.unwrap_or(0));
+            net_tx = net_tx.saturating_add(n.tx_bytes.unwrap_or(0));
+        }
+    }
+    berth_core::LiveStats {
+        cpu_pct: cpu_percent(s).unwrap_or(0.0),
+        mem_used: bytesize::ByteSize(usage.saturating_sub(cache)),
+        mem_limit: bytesize::ByteSize(memory.and_then(|m| m.limit).unwrap_or(0)),
+        net_rx: bytesize::ByteSize(net_rx),
+        net_tx: bytesize::ByteSize(net_tx),
+        at: s.read.unwrap_or_else(chrono::Utc::now),
+    }
+}
+
 fn usage_group(
     total_count: Option<i64>,
     total_size: Option<i64>,
@@ -1021,6 +1054,62 @@ mod tests {
         let stats: ContainerStatsResponse =
             serde_json::from_value(serde_json::json!({})).expect("empty stats parse");
         assert_eq!(cpu_percent(&stats), None);
+    }
+
+    #[test]
+    fn mappers_cpu_percent_none_on_zero_system_delta_and_backwards_counters() {
+        let zero: ContainerStatsResponse = serde_json::from_value(serde_json::json!({
+            "cpu_stats": {"cpu_usage": {"total_usage": 300}, "system_cpu_usage": 500, "online_cpus": 2},
+            "precpu_stats": {"cpu_usage": {"total_usage": 100}, "system_cpu_usage": 500, "online_cpus": 2}
+        }))
+        .expect("stats parse");
+        assert_eq!(cpu_percent(&zero), None);
+        let backwards: ContainerStatsResponse = serde_json::from_value(serde_json::json!({
+            "cpu_stats": {"cpu_usage": {"total_usage": 50}, "system_cpu_usage": 1000, "online_cpus": 2},
+            "precpu_stats": {"cpu_usage": {"total_usage": 100}, "system_cpu_usage": 500, "online_cpus": 2}
+        }))
+        .expect("stats parse");
+        assert_eq!(cpu_percent(&backwards), None);
+    }
+
+    #[test]
+    fn mappers_cpu_percent_falls_back_to_percpu_len_without_online_cpus() {
+        let stats: ContainerStatsResponse = serde_json::from_value(serde_json::json!({
+            "cpu_stats": {"cpu_usage": {"total_usage": 400, "percpu_usage": [100, 100, 100, 100]}, "system_cpu_usage": 800},
+            "precpu_stats": {"cpu_usage": {"total_usage": 0, "percpu_usage": [0, 0, 0, 0]}, "system_cpu_usage": 0}
+        }))
+        .expect("stats parse");
+        // (400 / 800) * 4 * 100 = 200
+        assert_eq!(cpu_percent(&stats), Some(200.0));
+    }
+
+    #[test]
+    fn mappers_live_stats_subtracts_cache_and_sums_networks() {
+        let stats: ContainerStatsResponse = serde_json::from_value(serde_json::json!({
+            "read": "2026-10-24T10:00:00.000000000Z",
+            "cpu_stats": {"cpu_usage": {"total_usage": 300}, "system_cpu_usage": 1000, "online_cpus": 2},
+            "precpu_stats": {"cpu_usage": {"total_usage": 100}, "system_cpu_usage": 500, "online_cpus": 2},
+            "memory_stats": {"usage": 1000, "limit": 8000, "stats": {"inactive_file": 250}},
+            "networks": {"eth0": {"rx_bytes": 10, "tx_bytes": 20}, "eth1": {"rx_bytes": 5, "tx_bytes": 7}}
+        }))
+        .expect("stats parse");
+        let live = live_stats(&stats);
+        assert_eq!(live.cpu_pct, 80.0);
+        assert_eq!(live.mem_used.0, 750);
+        assert_eq!(live.mem_limit.0, 8000);
+        assert_eq!(live.net_rx.0, 15);
+        assert_eq!(live.net_tx.0, 27);
+        assert_eq!(live.at.timestamp(), 1_792_836_000);
+    }
+
+    #[test]
+    fn mappers_live_stats_handles_empty_sample() {
+        let stats: ContainerStatsResponse =
+            serde_json::from_value(serde_json::json!({})).expect("empty stats parse");
+        let live = live_stats(&stats);
+        assert_eq!(live.cpu_pct, 0.0);
+        assert_eq!(live.mem_used.0, 0);
+        assert_eq!(live.net_rx.0, 0);
     }
 
     // PLAN §5 pins insta to json+yaml, so snapshots are scrubbed by hand
