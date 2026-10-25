@@ -247,13 +247,19 @@ async fn containers_it_filter_berthfx_shows_four_rows_and_the_port_link_opens_ng
 
     assert_eq!(model.matched, 4, "four berthfx containers");
     assert_eq!(order.len(), 4);
-    // Parallel worktrees may have recreated some fixture containers from
-    // their own folder (a second project with the same name), so only the
-    // group name is fixed.
-    assert!(!group_names.is_empty());
-    assert!(
-        group_names.iter().all(|n| n == "berthfx"),
-        "{group_names:?}"
+    // One tree owns the fixtures, so berthfx is one project with its four
+    // containers (not several projects of the same name).
+    assert_eq!(group_names, ["berthfx"], "exactly one berthfx group");
+    let berthfx: Vec<&Project> = projects.iter().filter(|p| p.name == "berthfx").collect();
+    assert_eq!(berthfx.len(), 1, "exactly one berthfx project: {berthfx:?}");
+    assert_eq!(
+        berthfx[0]
+            .services
+            .iter()
+            .map(|s| s.containers.len())
+            .sum::<usize>(),
+        4,
+        "the berthfx project holds the four fixture containers"
     );
     assert_eq!(rendered_rows, 4, "the screen renders the four rows");
     assert!(html.contains("4 of "), "the filter field counts matches");

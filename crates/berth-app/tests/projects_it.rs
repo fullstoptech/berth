@@ -8,8 +8,9 @@
 //! project: all four containers are Exited within 5 s, the row shows the
 //! pending "Stopping…" label at once and offers Start project afterwards;
 //! Start project brings all four back. Colima itself is never touched (the
-//! Colima runner is the mock) and the four fixture containers are started
-//! again on every exit path.
+//! Colima runner is the mock), the fixture project is never recreated (only
+//! stopped and started, so any tree can run this) and the four fixture
+//! containers are started again on every exit path.
 
 use std::sync::Arc;
 
@@ -123,33 +124,6 @@ fn run_docker(docker: &std::path::Path, host: &str, args: &[&str]) -> std::proce
         .expect("docker CLI runs")
 }
 
-/// Recreate the four fixture containers from this tree. The fixtures are
-/// shared between worktrees and Compose records the folder it ran from on
-/// each container, so containers created from another tree would show as a
-/// second "berthfx" project; the Projects screen is right to list them
-/// apart, and this test needs one project.
-fn recreate_fixture_from_this_tree(docker: &std::path::Path, host: &str) {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/compose/berthfx")
-        .canonicalize()
-        .expect("fixture dir");
-    let out = std::process::Command::new(docker)
-        .env("DOCKER_HOST", host)
-        .arg("compose")
-        .arg("--project-directory")
-        .arg(&dir)
-        .arg("-f")
-        .arg(dir.join("compose.yaml"))
-        .args(["-p", "berthfx", "up", "-d", "--force-recreate", "--wait"])
-        .output()
-        .expect("docker compose runs");
-    assert!(
-        out.status.success(),
-        "fixture recreate failed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-}
-
 #[tokio::test]
 #[ignore = "needs the live Colima engine; run with BERTH_IT=1 via scripts/it.sh"]
 async fn projects_it_berthfx_row_shows_four_running_and_stop_project_stops_all_within_5s() {
@@ -176,7 +150,6 @@ async fn projects_it_berthfx_row_shows_four_running_and_stop_project_stops_all_w
     let docker = search
         .find("docker")
         .unwrap_or_else(|| std::path::PathBuf::from("docker"));
-    recreate_fixture_from_this_tree(&docker, &host);
     let client: Arc<dyn EngineClient> =
         Arc::new(berth_engine::BollardEngine::connect(&engine).expect("connect"));
     let store = Arc::new(berth_store::Store::open_in_memory().expect("store"));
@@ -235,6 +208,16 @@ async fn projects_it_berthfx_row_shows_four_running_and_stop_project_stops_all_w
         .await;
 
     // --- The row: four services, four green dots, Stop project offered. ---
+    // The fixtures come from one tree, so there is exactly one berthfx
+    // project holding the four containers.
+    let berthfx_projects = env.dom.in_runtime(|| {
+        env.state
+            .projects
+            .peek()
+            .iter()
+            .filter(|p| p.name == "berthfx")
+            .count()
+    });
     let row_running = env.berthfx_row().expect("berthfx row");
     env.dom.in_runtime(|| {
         let projects = env.state.projects.peek();
@@ -346,6 +329,7 @@ async fn projects_it_berthfx_row_shows_four_running_and_stop_project_stops_all_w
     );
 
     assert!(ready, "all four fixture containers running first");
+    assert_eq!(berthfx_projects, 1, "exactly one berthfx project");
     assert_eq!(row_running.kind, RowKind::Normal);
     assert_eq!(row_running.services_label, "4 services");
     assert_eq!(row_running.dots.len(), 4);
