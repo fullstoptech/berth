@@ -313,7 +313,21 @@ html, body {
 }
 .bottom-resize:hover { background: var(--color-focus); opacity: 0.4; }
 .bottom-head { display: flex; align-items: stretch; justify-content: space-between; background: var(--color-surface-sunken); }
-.bottom-head .tabs-panel { border-bottom: none; background: transparent; }
+/* The panel's tabs are the inspector's: the same padding and gap, and the
+   accent underline is the active tab's own bottom border, so it sits under
+   that tab. (The button rule above would give each tab a top line and a fill.) */
+.bottom-head .tabs-underline {
+  border-bottom: none;
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.bottom-head .tab {
+  padding: 0 var(--space-12);
+  font-size: var(--text-label-size);
+  background: transparent;
+  border-top: none;
+}
 .bottom-close { display: inline-flex; align-items: center; padding-right: var(--space-4); }
 .bottom-body { flex: 1; min-height: 0; overflow: auto; }
 /* The region: the panel on the left, the inspector on the right (D22). */

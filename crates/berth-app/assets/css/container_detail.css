@@ -125,8 +125,16 @@
   border-bottom: 1px solid var(--color-line);
   padding: 0;
 }
-.cd-tabs .tabs-underline { border-bottom: none; flex: 1; min-width: 0; gap: var(--space-2); }
-.cd-tabs .tab { padding: 0 var(--space-12); font-size: var(--text-label-size); }
+.cd-tabs .tabs-underline {
+  border-bottom: none;
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.cd-tabs .tab {
+  padding: 0 var(--space-12);
+  font-size: var(--text-label-size);
+}
 .cd-more-tabs { position: relative; display: flex; }
 .cd-more-button { padding: 0 var(--space-6); }
 .cd-more-menu { position: absolute; top: 100%; right: 0; z-index: 30; }

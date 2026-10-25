@@ -138,7 +138,7 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
                             Tabs {
                                 items: bottom_tabs(problem_count),
                                 selected: tab_id(panel.tab).to_string(),
-                                variant: TabsVariant::Panel,
+                                variant: TabsVariant::Underline,
                                 aria_label: "Panel".to_string(),
                                 on_select: move |id: String| {
                                     if let Some(tab) = tab_from_id(&id) {

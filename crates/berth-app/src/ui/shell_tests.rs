@@ -772,6 +772,46 @@ fn shell_bottom_panel_renders_only_when_open_with_its_four_tabs() {
 }
 
 #[test]
+fn shell_bottom_panel_tabs_have_the_inspectors_padding_and_underline() {
+    // The same strip as the inspector's: underline tabs, the selected one
+    // carries the accent underline on its own bottom border.
+    let html = render_shell(|s| {
+        s.bottom.write().open = true;
+        s.bottom.write().tab = BottomTab::Terminal;
+    });
+    let strip = html
+        .find("aria-label=\"Panel\"")
+        .expect("the panel's tab strip");
+    let head = &html[strip - 80..strip + 40];
+    assert!(head.contains("tabs tabs-underline"), "{head}");
+    assert!(!head.contains("tabs-panel"), "{head}");
+    let selected = html.find("aria-selected=\"true\"").expect("a selected tab");
+    assert!(
+        html[selected - 80..selected].contains("tab tab-selected"),
+        "{html}"
+    );
+    // The stylesheet gives them the inspector's padding and gap.
+    use crate::screens::css_tracks::{block, declaration};
+    let shell = include_str!("../../assets/css/shell.css");
+    let detail = include_str!("../../assets/css/container_detail.css");
+    let padding = |css: &str, header: &str| declaration(block(css, header), "padding");
+    assert_eq!(
+        padding(shell, "\n.bottom-head .tab {"),
+        padding(detail, "\n.cd-tabs .tab {")
+    );
+    let gap = |css: &str, header: &str| declaration(block(css, header), "gap");
+    assert_eq!(
+        gap(shell, "\n.bottom-head .tabs-underline {"),
+        gap(detail, "\n.cd-tabs .tabs-underline {")
+    );
+    // Nothing of the panel variant's top line is left on them.
+    assert!(
+        block(shell, "\n.bottom-head .tab {").contains("border-top: none;"),
+        "the panel button rule's top line must not show on tabs"
+    );
+}
+
+#[test]
 fn shell_bottom_panel_height_is_clamped_between_160_and_60_percent() {
     assert_eq!(clamp_panel_height(50.0, 900.0), 160);
     assert_eq!(clamp_panel_height(280.0, 900.0), 280);
