@@ -409,7 +409,9 @@ mod tests {
 
     #[test]
     fn palette_scene_renders_the_frame_rows_in_order() {
-        let html = crate::scenes::render_scene_html("Palette / open / 1440").expect("scene");
+        let page = crate::scenes::render_scene_html("Palette / open / 1440").expect("scene");
+        // The Containers table renders behind the overlay; look only inside it.
+        let html = &page[page.find("class=\"palette\"").expect("palette overlay")..];
         let at = |needle: &str| {
             html.find(needle)
                 .unwrap_or_else(|| panic!("{needle} missing from {html}"))
