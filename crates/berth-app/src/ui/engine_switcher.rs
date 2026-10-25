@@ -100,11 +100,11 @@ pub fn EngineSwitcher(#[props(default)] initially_open: bool) -> Element {
                     Icon { name: icon, size: IconSize::Md }
                 }
                 span { class: "engine-switcher-name", "{label}" }
-                if let Some(word) = stopped_word {
-                    span { class: "engine-state", "{word}" }
-                }
                 if let Some(spec) = dot {
                     Dot { spec }
+                }
+                if let Some(word) = stopped_word {
+                    span { class: "engine-state", "{word}" }
                 }
                 span { class: "engine-switcher-chevron",
                     Icon { name: "chevron-down", size: IconSize::Sm }

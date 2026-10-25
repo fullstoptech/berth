@@ -41,6 +41,14 @@ pub fn sidebar_model(
     all_projects: &[berth_core::Project],
     containers: &[berth_core::Container],
 ) -> SidebarModel {
+    let live = |engine: &berth_core::EngineId| {
+        engines.iter().find(|e| e.id == *engine).is_some_and(|e| {
+            matches!(
+                e.state,
+                berth_core::EngineState::Running | berth_core::EngineState::Starting
+            )
+        })
+    };
     let projects = all_projects
         .iter()
         .filter(|p| scope_includes(scope, &p.engine))
@@ -48,19 +56,39 @@ pub fn sidebar_model(
         .map(|p| SidebarProject {
             id: p.id.clone(),
             name: p.name.clone(),
-            dot: project_dot(&p.status),
+            // A project's status is only as fresh as its engine: while the
+            // engine is down every dot reads as stopped.
+            dot: if live(&p.engine) {
+                project_dot(&p.status)
+            } else {
+                project_dot(&match p.status {
+                    berth_core::ProjectStatus::NotCreated => berth_core::ProjectStatus::NotCreated,
+                    _ => berth_core::ProjectStatus::Stopped,
+                })
+            },
             services: (!p.services.is_empty()).then_some(p.services.len()),
         })
         .collect();
     let projects_total = all_projects.len();
     let in_scope = || engines.iter().filter(|e| scope_includes(scope, &e.id));
+    // Rows in scope; an engine that has not answered (or is stopped) keeps
+    // the count it last knew instead of showing 0.
+    let containers_in_scope: usize = in_scope()
+        .map(|e| {
+            let rows = containers.iter().filter(|c| c.engine == e.id).count();
+            let answered =
+                e.state == berth_core::EngineState::Running && e.docker_version.is_some();
+            if rows == 0 && !answered {
+                e.counts.containers_total as usize
+            } else {
+                rows
+            }
+        })
+        .sum();
     SidebarModel {
         projects,
         projects_total,
-        containers: containers
-            .iter()
-            .filter(|c| scope_includes(scope, &c.engine))
-            .count(),
+        containers: containers_in_scope,
         images: in_scope().map(|e| e.counts.images as usize).sum(),
         volumes: in_scope().map(|e| e.counts.volumes as usize).sum(),
         engines: engines.len(),

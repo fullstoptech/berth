@@ -377,6 +377,149 @@ fn shell_engine_switcher_says_when_the_engine_is_stopped() {
         }
     });
     assert!(html.contains("class=\"engine-state\">Stopped<"), "{html}");
+    // Frame "engine stopped": the dot comes before the word.
+    let dot = html.find("aria-label=\"Stopped\"").expect("dot");
+    let word = html.find("class=\"engine-state\"").expect("word");
+    assert!(dot < word, "dot before word: {html}");
+}
+
+// ---------- connection states in the chrome ----------
+
+fn default_engine_with(
+    edit: impl FnOnce(&mut berth_core::Engine),
+) -> (Vec<berth_core::Engine>, EngineScope) {
+    let mut engines = mock_world().engines;
+    let engine = engines
+        .iter_mut()
+        .find(|e| e.id == engine_id("colima:default"))
+        .expect("default engine");
+    edit(engine);
+    (engines, EngineScope::One(engine_id("colima:default")))
+}
+
+#[test]
+fn shell_connection_follows_the_scoped_engine() {
+    let world = mock_world();
+    let default = EngineScope::One(engine_id("colima:default"));
+    assert_eq!(connection(&world.engines, &default), Connection::Ready);
+    assert_eq!(
+        connection(&world.engines, &EngineScope::All),
+        Connection::Ready
+    );
+    assert_eq!(connection(&[], &default), Connection::Connecting);
+    let (engines, scope) = default_engine_with(|e| e.docker_version = None);
+    assert_eq!(connection(&engines, &scope), Connection::Connecting);
+    let (engines, scope) = default_engine_with(|e| e.state = berth_core::EngineState::Stopped);
+    assert_eq!(connection(&engines, &scope), Connection::EngineStopped);
+    // A stopped engine outside the scope does not change the chrome.
+    assert_eq!(
+        connection(
+            &world.engines,
+            &EngineScope::One(engine_id("colima:default"))
+        ),
+        Connection::Ready
+    );
+    let (engines, scope) = default_engine_with(|e| {
+        e.state = berth_core::EngineState::Stopped;
+        e.docker_version = None;
+    });
+    assert_eq!(connection(&engines, &scope), Connection::EngineStopped);
+    assert_eq!(
+        engine_summary(&engines, &scope),
+        "colima/default \u{b7} Stopped"
+    );
+    let (engines, scope) = default_engine_with(|e| e.docker_version = None);
+    assert_eq!(engine_summary(&engines, &scope), "Connecting\u{2026}");
+}
+
+fn titlebar_of(html: &str) -> &str {
+    let bar = &html[html.find("<header class=\"titlebar\"").expect("title bar")..];
+    &bar[..bar.find("</header>").expect("end")]
+}
+
+fn statusbar_of(html: &str) -> &str {
+    &html[html
+        .find("<footer class=\"statusbar\"")
+        .expect("status bar")..]
+}
+
+#[test]
+fn shell_loading_scene_checks_and_connects_and_keeps_the_last_known_count() {
+    let html = scenes::render_scene_html("Containers / loading / 1440").expect("scene");
+    let bar = titlebar_of(&html);
+    assert!(bar.contains("Checking\u{2026}"), "{bar}");
+    assert!(bar.contains("btn-spinner"), "a spinner, not a check: {bar}");
+    assert!(!bar.contains("No problems"), "{bar}");
+    assert!(
+        !bar.contains("engine-state"),
+        "a running engine says no word: {bar}"
+    );
+    let status = statusbar_of(&html);
+    assert!(status.contains("Connecting\u{2026}"), "{status}");
+    assert!(status.contains("Checking\u{2026}"), "{status}");
+    // The sidebar keeps the 23 the engine last reported.
+    let containers = html
+        .find("class=\"sidebar-label\">Containers<")
+        .expect("Containers item");
+    let after = &html[containers..];
+    assert!(
+        after[..after.find("</button>").expect("end")].contains(">23<"),
+        "{after}"
+    );
+}
+
+#[test]
+fn shell_engine_stopped_scene_warns_and_greys_the_project_dots() {
+    let html = scenes::render_scene_html("Containers / engine stopped / 1440").expect("scene");
+    let bar = titlebar_of(&html);
+    assert!(bar.contains("Engine stopped"), "{bar}");
+    assert!(bar.contains("/icons.svg#alert-triangle"), "{bar}");
+    assert!(!bar.contains("No problems"), "{bar}");
+    assert!(titlebar_of(&html).contains("class=\"engine-state\">Stopped<"));
+    let status = statusbar_of(&html);
+    assert!(status.contains("colima/default \u{b7} Stopped"), "{status}");
+    assert!(status.contains("Engine stopped"), "{status}");
+    // The sidebar's project dots no longer claim a live state.
+    let sidebar = &html[html.find("<nav class=\"sidebar\"").expect("sidebar")..];
+    let sidebar = &sidebar[..sidebar.find("</nav>").expect("end")];
+    for live in ["tone-danger", "tone-warning", "tone-success"] {
+        assert!(!sidebar.contains(live), "{live}: {sidebar}");
+    }
+    assert!(sidebar.contains("status-dot tone-stopped status-dot-hollow"));
+}
+
+#[test]
+fn shell_sidebar_model_greys_dots_of_a_stopped_engine_only() {
+    let world = mock_world();
+    let (engines, scope) = default_engine_with(|e| e.state = berth_core::EngineState::Stopped);
+    let model = sidebar_model(&engines, &scope, &world.projects, &world.containers);
+    let labels: Vec<&str> = model.projects.iter().map(|p| p.dot.label).collect();
+    assert_eq!(
+        labels,
+        [
+            "Stopped",
+            "Stopped",
+            "Stopped",
+            "Stopped",
+            "Stopped",
+            "Stopped",
+            "Not created"
+        ]
+    );
+    // A running engine keeps the live dots.
+    let live = sidebar_model(&world.engines, &scope, &world.projects, &world.containers);
+    assert_eq!(live.projects[0].dot.label, "Failing");
+}
+
+#[test]
+fn shell_sidebar_count_keeps_the_last_known_total_until_the_engine_answers() {
+    let world = mock_world();
+    let (engines, scope) = default_engine_with(|e| e.docker_version = None);
+    let model = sidebar_model(&engines, &scope, &world.projects, &[]);
+    assert_eq!(model.containers, 23);
+    // An engine that answered with nothing running shows its real zero.
+    let model = sidebar_model(&world.engines, &scope, &world.projects, &[]);
+    assert_eq!(model.containers, 0);
 }
 
 #[test]

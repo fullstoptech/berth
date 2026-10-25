@@ -66,7 +66,9 @@ pub use sidebar::{sidebar_model, Sidebar, SidebarModel};
 pub use sidebar_item::{project_dot, Dot, DotShape, DotSpec, SidebarItem};
 pub use skeleton_row::{SkeletonRow, SkeletonRows};
 pub use status_badge::StatusBadge;
-pub use status_bar::{engine_summary, problems_label, ProblemsChip, StatusBar};
+pub use status_bar::{
+    connection, engine_summary, problems_label, Connection, ProblemsChip, StatusBar,
+};
 pub use status_dot::StatusDot;
 pub use switch::Switch;
 pub use table_header_cell::{CellAlign, SortDirection, TableHeaderCell};

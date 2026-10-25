@@ -156,6 +156,7 @@ html, body {
 .problems-chip:hover { background: var(--color-surface-hover); }
 .problems-chip-icon { display: inline-flex; color: var(--color-danger-dot); }
 .problems-chip-none .problems-chip-icon { color: var(--color-ink-muted); }
+.problems-chip-warning .problems-chip-icon { color: var(--color-warning-dot); }
 .statusbar .problems-chip { height: 100%; font-size: var(--text-caption-size); line-height: var(--text-caption-line); }
 
 /* Sidebar */
@@ -231,6 +232,7 @@ html, body {
 }
 .statusbar-summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .statusbar .problems-chip { color: var(--color-ink); }
+.titlebar .problems-chip-checking, .statusbar .problems-chip-checking { color: var(--color-ink-muted); }
 
 /* Inspector: docked at 1200 px and wider, hidden below; at 1024 px and
    narrower an explicit open (Space, P2-T7) shows it as an overlay (D8). */

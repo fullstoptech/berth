@@ -33,13 +33,45 @@ fn engine_title(engine: &berth_core::Engine) -> String {
     }
 }
 
+/// How far the chrome has got with the scoped engine; the title bar and
+/// status bar derive their wording from it (frames "Containers / loading"
+/// and "Containers / engine stopped").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Connection {
+    /// The engine answered, or the scope spans engines: show real numbers.
+    Ready,
+    /// No engine has answered yet: problems are not known.
+    Connecting,
+    /// The scoped engine is stopped: nothing on it can be checked.
+    EngineStopped,
+}
+
+pub fn connection(engines: &[berth_core::Engine], scope: &EngineScope) -> Connection {
+    use berth_core::EngineState as S;
+    if engines.is_empty() {
+        return Connection::Connecting;
+    }
+    let EngineScope::One(id) = scope else {
+        return Connection::Ready;
+    };
+    match engines.iter().find(|e| e.id == *id) {
+        Some(e) if e.state == S::Stopped => Connection::EngineStopped,
+        Some(e) if e.state == S::Running && e.docker_version.is_none() => Connection::Connecting,
+        _ => Connection::Ready,
+    }
+}
+
 /// The status bar's left text (PLAN 7.1): engine, Docker version, VM size
 /// and running count for the scoped engine, e.g.
 /// "colima/default · Docker 28.4.0 · 4 CPU · 8 GB · 15 running". An engine
-/// that is not running says its state instead of numbers it cannot know.
+/// that is not running says its state instead of numbers it cannot know,
+/// and one that has not answered yet says "Connecting…".
 pub fn engine_summary(engines: &[berth_core::Engine], scope: &EngineScope) -> String {
     if engines.is_empty() {
         return "Looking for engines\u{2026}".to_string();
+    }
+    if connection(engines, scope) == Connection::Connecting {
+        return "Connecting\u{2026}".to_string();
     }
     match scope {
         EngineScope::All => {
@@ -90,16 +122,25 @@ pub fn problems_label(count: usize) -> String {
 pub fn ProblemsChip() -> Element {
     let mut state = use_context::<AppState>();
     let count = state.problems.read().len();
-    let label = problems_label(count);
-    let icon_name = if count == 0 {
-        "circle-check"
-    } else {
-        "alert-circle"
+    let connection = connection(&state.engines.read(), &state.engine_scope.read());
+    let (label, icon_name, state_class) = match connection {
+        Connection::Connecting => (
+            "Checking\u{2026}".to_string(),
+            "loader",
+            " problems-chip-none problems-chip-checking",
+        ),
+        Connection::EngineStopped => (
+            "Engine stopped".to_string(),
+            "alert-triangle",
+            " problems-chip-warning",
+        ),
+        Connection::Ready if count == 0 => {
+            (problems_label(0), "circle-check", " problems-chip-none")
+        }
+        Connection::Ready => (problems_label(count), "alert-circle", ""),
     };
-    let mut class = "problems-chip".to_string();
-    if count == 0 {
-        class.push_str(" problems-chip-none");
-    }
+    let spin = connection == Connection::Connecting;
+    let class = format!("problems-chip{state_class}");
     rsx! {
         button {
             class: "{class}",
@@ -112,7 +153,7 @@ pub fn ProblemsChip() -> Element {
                 bottom.open = true;
                 bottom.tab = BottomTab::Problems;
             },
-            span { class: "problems-chip-icon",
+            span { class: if spin { "problems-chip-icon btn-spinner" } else { "problems-chip-icon" },
                 Icon { name: icon_name, size: IconSize::Md }
             }
             span { "{label}" }
