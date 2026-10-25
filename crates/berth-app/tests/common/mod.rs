@@ -5,6 +5,15 @@
 
 use std::time::{Duration, Instant};
 
+// `berthfx-broken` helpers (`broken_up`, `assert_broken_down`), shared with berth-rules.
+#[path = "../../../../fixtures/rust/broken_set.rs"]
+mod broken_set;
+
+/// Fails with a clear message when `berthfx-broken` is up (its containers match "berthfx").
+pub fn assert_broken_down() {
+    broken_set::assert_broken_down();
+}
+
 const FIXTURE: [&str; 4] = [
     "berthfx-web-1",
     "berthfx-db-1",

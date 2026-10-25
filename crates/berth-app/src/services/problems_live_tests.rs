@@ -1,5 +1,6 @@
 //! P5-T8 live check, against the real engine and the `berthfx-broken` fixtures. Run with:
-//!   scripts/fx-up.sh --broken && scripts/it.sh -p berth-app problems_it
+//!   scripts/it.sh -p berth-app problems_it
+//! The test brings `berthfx-broken` up and takes it down again itself.
 //!
 //! The app without its window: the engines service fills the signals, the actions service is
 //! asked to start the broken project (Compose fails at the image that does not exist, and its
@@ -18,6 +19,9 @@ use std::time::Duration;
 use berth_core::{ProblemKind, Project};
 
 use super::*;
+
+#[path = "../../../../fixtures/rust/broken_set.rs"]
+mod broken_set;
 use crate::screens::problems::model::{fix_click, Clicked};
 use crate::services::actions::{ActionsService, ProjectOp};
 use crate::services::confirm;
@@ -219,12 +223,14 @@ fn broken_project(state: &AppState) -> Option<Project> {
 }
 
 #[tokio::test]
-#[ignore = "live: needs Colima and `scripts/fx-up.sh --broken` (BERTH_IT=1)"]
+#[ignore = "live: needs Colima; brings berthfx-broken up and down itself (BERTH_IT=1)"]
 async fn problems_it_the_broken_fixtures_list_seven_problems_and_fixes_work() {
     if std::env::var("BERTH_IT").as_deref() != Ok("1") {
         eprintln!("skipped: set BERTH_IT=1");
         return;
     }
+    // Brought up here and taken down when the guard drops, even if an assertion fails.
+    let _broken = broken_set::broken_up();
     let mut dom = VirtualDom::new(Headless);
     let _ = dom.rebuild_to_vec();
     let app = SLOT

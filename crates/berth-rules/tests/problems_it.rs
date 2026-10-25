@@ -1,5 +1,6 @@
 //! Live problem rules against the broken fixture set (P5-T7 done-when). Run with:
-//!   scripts/fx-up.sh --broken && scripts/it.sh -p berth-rules problems_it
+//!   scripts/it.sh -p berth-rules problems_it
+//! The test brings `berthfx-broken` up and takes it down again itself.
 //!
 //! Facts come from `docker inspect`, `docker logs` and one `docker compose create` per service of the
 //! `berthfx-broken` project (it creates what is missing and reports what cannot be made:
@@ -22,6 +23,9 @@ use berth_core::{
 };
 use berth_rules::problems::{evaluate, ContainerFacts, ProblemInput, ProjectFacts};
 use serde_json::Value;
+
+#[path = "../../../fixtures/rust/broken_set.rs"]
+mod broken_set;
 
 const ENGINE: &str = "colima:default";
 const PROJECT: &str = "berthfx-broken";
@@ -255,7 +259,7 @@ fn gather() -> ProblemInput {
     ]);
     assert!(ok, "docker ps failed: {err}");
     let ids: Vec<&str> = ids.split_whitespace().collect();
-    assert!(!ids.is_empty(), "run scripts/fx-up.sh --broken first");
+    assert!(!ids.is_empty(), "berthfx-broken is not up");
     let mut args = vec!["inspect"];
     args.extend(ids.iter().copied());
     let (ok, json, err) = docker(&args);
@@ -361,11 +365,13 @@ fn missing(input: &ProblemInput, found: &[Problem]) -> Vec<&'static str> {
 }
 
 #[test]
-#[ignore = "needs the live Colima engine and `scripts/fx-up.sh --broken`; run with BERTH_IT=1 via scripts/it.sh"]
+#[ignore = "needs the live Colima engine; brings berthfx-broken up and down itself; run with BERTH_IT=1 via scripts/it.sh"]
 fn problems_it_the_broken_fixtures_raise_their_problems() {
     if std::env::var("BERTH_IT").as_deref() != Ok("1") {
         return;
     }
+    // Brought up here and taken down when the guard drops, even if an assertion fails.
+    let _broken = broken_set::broken_up();
     // The unhealthy check needs a few probes and the memory hog a moment to be killed.
     let deadline = Instant::now() + Duration::from_secs(60);
     loop {

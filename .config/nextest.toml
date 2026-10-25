@@ -4,7 +4,8 @@
 live-engine = { max-threads = 1 }
 
 [[profile.default.overrides]]
-filter = 'binary(/_it$/) | binary(engine_read) | binary(mutate) | binary(streams)'
+# berth-app's problems live test sits in its unit-test binary (services::problems::live_tests).
+filter = 'binary(/_it$/) | binary(engine_read) | binary(mutate) | binary(streams) | test(/::live_tests::/)'
 test-group = 'live-engine'
 
 # Timing tests (AD26) are named `perf_*` and marked #[ignore]. The default

@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 # Start Berth fixture Compose projects (PLAN 8.1). Touches only resources
 # labelled dev.berth.fixture=1.
-#   scripts/fx-up.sh [--broken] [--registry]
+#   scripts/fx-up.sh [--broken | --broken-only] [--registry]
+# --broken-only brings up just berthfx-broken (the live problems tests call it and
+# take the project down again themselves).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 BROKEN=0
+NORMAL=1
 REGISTRY=0
 for arg in "$@"; do
   case "$arg" in
     --broken) BROKEN=1 ;;
+    --broken-only) BROKEN=1; NORMAL=0 ;;
     --registry) REGISTRY=1 ;;
     *) echo "fx-up.sh: unknown argument $arg" >&2; exit 2 ;;
   esac
@@ -23,7 +27,9 @@ compose() {
   docker compose --project-directory "$dir" -f "$dir/compose.yaml" -p "$name" "$@"
 }
 
-compose fixtures/compose/berthfx berthfx up -d --wait
+if [ "$NORMAL" = 1 ]; then
+  compose fixtures/compose/berthfx berthfx up -d --wait
+fi
 
 if [ "$REGISTRY" = 1 ]; then
   compose fixtures/compose/berthfx-registry berthfx-registry up -d --wait
