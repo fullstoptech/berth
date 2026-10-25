@@ -536,6 +536,8 @@ fn fill_random(buf: &mut [u8]) {
 }
 
 /// The compose service name for `t`: its id when that is a valid name, else its name made into one.
+/// `add_service_plan` takes the name from its caller; this is the default the Add service sheet offers.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn service_name(t: &Template) -> String {
     if valid_name(&t.id) {
         return t.id.to_lowercase();
@@ -568,21 +570,24 @@ pub(crate) fn env_keys(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// A plan that adds `t` to the compose file at `root/compose_rel` (it may be docker-compose.yml) and its
-/// lines to `.env`. `compose_text` and `env_text` are what the files hold now; the plan records their hashes,
+/// A plan that adds `t` as the service `service` to the compose file at `root/compose_rel` (it may be
+/// docker-compose.yml) and its lines to `.env`. The caller picks the name, so the user can rename the service
+/// to get past `ServiceExists`. `compose_text` and `env_text` are what the files hold now; the plan records their hashes,
 /// so a change on disk before Write shows as a conflict. An existing `.env` key keeps its value.
 ///
 /// # Errors
-/// `ServiceExists` when the service is already in the file, `Yaml` when the compose file does not parse.
+/// `ServiceExists` when a service called `service` is already in the file (and only then: another template's
+/// service does not count), `Yaml` when the compose file does not parse or `service` is not a usable key.
 pub fn add_service_plan(
     root: &Path,
     compose_rel: &Path,
     compose_text: &str,
     env_text: Option<&str>,
     t: &Template,
+    service: &str,
     inputs: &std::collections::BTreeMap<String, String>,
 ) -> Result<GenerationPlan, RulesError> {
-    let name = service_name(t);
+    let name = service.to_string();
     let rendered = render_full(t, inputs);
     let mut new_compose = compose_edit::add_service(compose_text, &name, &rendered.service)?;
     for v in &rendered.volumes {
@@ -815,6 +820,7 @@ mod tests {
             compose,
             Some("A=1\n"),
             &by_id("postgres"),
+            "postgres",
             &BTreeMap::from([("PASSWORD".to_string(), fake_password())]),
         )
         .expect("plan");
@@ -862,6 +868,7 @@ mod tests {
             "services: {}\n",
             None,
             &by_id("postgres"),
+            "postgres",
             &no_inputs(),
         )
         .expect("plan");
@@ -882,6 +889,7 @@ mod tests {
             "services:\n  web:\n    image: x\n",
             None,
             &by_id("redis"),
+            "redis",
             &no_inputs(),
         )
         .expect("plan");
@@ -897,6 +905,7 @@ mod tests {
             "services:\n  web:\n    image: x\n",
             Some(format!("{}={}\n", "POSTGRES_PASSWORD", "mine").as_str()),
             &by_id("postgres"),
+            "postgres",
             &no_inputs(),
         )
         .expect("plan");
@@ -912,10 +921,66 @@ mod tests {
             "services:\n  postgres:\n    image: x\n",
             None,
             &by_id("postgres"),
+            "postgres",
             &no_inputs(),
         )
         .expect_err("exists");
         assert!(matches!(err, RulesError::ServiceExists(n) if n == "postgres"));
+    }
+
+    #[test]
+    fn add_service_plan_uses_the_given_name_for_the_service_and_the_up_command() {
+        let plan = add_service_plan(
+            Path::new("/p"),
+            Path::new("compose.yaml"),
+            "services:\n  postgres:\n    image: x\n",
+            None,
+            &by_id("postgres"),
+            "postgres-2",
+            &no_inputs(),
+        )
+        .expect("a different name is not a clash");
+        let text = plan.files[0].new_text.as_deref().expect("text");
+        assert!(text.contains("\n  postgres-2:\n"), "{text}");
+        assert!(text.contains("\n  postgres:\n    image: x\n"), "{text}");
+        assert_eq!(
+            plan.after_write,
+            Some(ComposeCommand::Up {
+                services: vec!["postgres-2".to_string()],
+                build: false
+            })
+        );
+        assert!(plan
+            .notes
+            .iter()
+            .any(|n| n.starts_with("Adds the postgres-2 service")));
+    }
+
+    #[test]
+    fn add_service_plan_clashes_only_on_the_name_it_was_given() {
+        // `db` holds a Postgres, but the new service is called `pg`: no clash.
+        let compose = "services:\n  db:\n    image: postgres:17\n";
+        assert!(add_service_plan(
+            Path::new("/p"),
+            Path::new("compose.yaml"),
+            compose,
+            None,
+            &by_id("postgres"),
+            "pg",
+            &no_inputs(),
+        )
+        .is_ok());
+        let err = add_service_plan(
+            Path::new("/p"),
+            Path::new("compose.yaml"),
+            compose,
+            None,
+            &by_id("postgres"),
+            "db",
+            &no_inputs(),
+        )
+        .expect_err("db exists");
+        assert!(matches!(err, RulesError::ServiceExists(n) if n == "db"));
     }
 
     #[test]

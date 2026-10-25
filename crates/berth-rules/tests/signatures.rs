@@ -80,6 +80,7 @@ fn every_public_fn_is_callable_as_written() {
         "services: {}\n",
         None,
         &template(),
+        "cache",
         &inputs,
     );
 
