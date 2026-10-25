@@ -231,7 +231,7 @@ fn open(state: &mut AppState, plan: PendingPlan) {
     state.overlays.write().push(Overlay::ReviewChanges(id));
 }
 
-fn claude_code() -> berth_core::Harness {
+pub(super) fn claude_code() -> berth_core::Harness {
     berth_core::Harness {
         id: HarnessId("claude".to_string()),
         name: "Claude Code".to_string(),

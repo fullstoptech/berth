@@ -336,3 +336,118 @@ fn generate_sheet_for_a_folder_with_compose_says_so_and_disables_review() {
     let tag = &html[html[..at].rfind("<button").expect("tag")..at];
     assert!(tag.contains("disabled"), "{tag}");
 }
+
+// ---------------------------------------------------------------------
+// The Detected sheet's frame layout
+// ---------------------------------------------------------------------
+
+use super::model::{harness_note, reuses_dockerfile, service_rows, set_service, template_name};
+
+#[test]
+fn generate_service_rows_name_the_version_the_port_and_the_password() {
+    let d = detection();
+    let c = Choices::from_detection(&d, &[]);
+    let rows = service_rows(&d, &c, &[5432], &[container("pg-scratch", 5432)]);
+
+    assert_eq!(rows.len(), 2);
+    let db = &rows[0];
+    assert_eq!(db.kind, ServiceKind::Postgres);
+    assert_eq!(db.name, "Postgres 17");
+    assert!(db.checked);
+    assert_eq!(db.port.as_ref().map(|p| p.value.as_str()), Some("5433"));
+    assert_eq!(
+        db.note,
+        "(5432 is used by pg-scratch) \u{b7} password generated into .env"
+    );
+    assert_eq!(
+        db.hint.as_deref(),
+        Some("Uncheck if DATABASE_URL points at a hosted database")
+    );
+    let redis = &rows[1];
+    assert_eq!(redis.name, "Redis 7.4");
+    // Nothing holds 6379, and Redis has no password to generate.
+    assert_eq!(redis.note, "");
+}
+
+#[test]
+fn generate_unticking_a_service_hides_its_port_and_leaves_it_out_of_the_plan() {
+    let d = detection();
+    let mut c = Choices::from_detection(&d, &[]);
+    set_service(&mut c, ServiceKind::Postgres, false);
+
+    let rows = service_rows(&d, &c, &[], &[]);
+    assert!(!rows[0].checked, "the row stays so it can be ticked again");
+    assert!(rows[0].port.is_none() && rows[0].note.is_empty());
+    assert!(rows[1].checked);
+    let opts = options(&d, &c, &[]).expect("options");
+    assert_eq!(opts.services, [ServiceKind::Redis]);
+    assert!(!opts.ports.contains_key("db"));
+
+    set_service(&mut c, ServiceKind::Postgres, true);
+    assert_eq!(c.database, Some(ServiceKind::Postgres));
+}
+
+#[test]
+fn generate_ticking_a_database_replaces_the_other_one() {
+    let mut d = detection();
+    d.services_needed.push(berth_core::ServiceGuess {
+        kind: ServiceKind::Mysql,
+        reason: "from mysql2 in package.json".to_string(),
+    });
+    let mut c = Choices::from_detection(&d, &[]);
+    set_service(&mut c, ServiceKind::Mysql, true);
+
+    let rows = service_rows(&d, &c, &[], &[]);
+    let ticked: Vec<ServiceKind> = rows.iter().filter(|r| r.checked).map(|r| r.kind).collect();
+    assert_eq!(ticked, [ServiceKind::Redis, ServiceKind::Mysql]);
+    assert!(!rows[0].checked, "Postgres gave way to MySQL");
+    // A service found from a dependency has no key to name.
+    assert_eq!(rows[2].hint, None);
+}
+
+#[test]
+fn generate_the_dockerfile_line_and_the_template_card_follow_the_folder() {
+    let mut d = detection();
+    assert!(reuses_dockerfile(&d));
+    assert_eq!(template_name(&d), "Berth's Node template");
+    assert_eq!(
+        harness_note(&d),
+        "Sends file names, package.json and the Dockerfile. Never .env values."
+    );
+
+    d.found
+        .retain(|f| !matches!(f.kind, berth_core::FoundKind::Dockerfile { .. }));
+    d.stack = vec![berth_core::StackGuess::Go];
+    assert!(!reuses_dockerfile(&d));
+    assert_eq!(template_name(&d), "Berth's Go template");
+    assert_eq!(
+        harness_note(&d),
+        "Sends file names and the project manifest. Never .env values."
+    );
+}
+
+#[test]
+fn generate_the_dockerfile_line_is_true_exactly_when_the_plan_reuses_the_dockerfile() {
+    // `build_plan` writes no Dockerfile for a folder that has one, and a Dockerfile of its own
+    // for one that does not; the sheet's line must say the same.
+    let with = copy_of("node-next-pnpm");
+    let d = berth_rules::detect::detect(with.path()).expect("detect");
+    let opts = options(&d, &Choices::from_detection(&d, &[]), &[]).expect("options");
+    let plan = build_plan(&d, &opts).expect("plan");
+    let writes_dockerfile = plan
+        .files
+        .iter()
+        .any(|f| f.path == Path::new("Dockerfile") && f.old_sha256.is_none());
+    assert_eq!(reuses_dockerfile(&d), !writes_dockerfile);
+
+    std::fs::write(
+        with.path().join("Dockerfile"),
+        "FROM node:22-alpine\nEXPOSE 3000\n",
+    )
+    .expect("dockerfile");
+    let d = berth_rules::detect::detect(with.path()).expect("detect");
+    let opts = options(&d, &Choices::from_detection(&d, &[]), &[]).expect("options");
+    let plan = build_plan(&d, &opts).expect("plan");
+    assert!(reuses_dockerfile(&d));
+    assert!(!plan.files.iter().any(|f| f.path == Path::new("Dockerfile")));
+}

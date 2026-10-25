@@ -317,11 +317,7 @@ pub fn has_compose(d: &Detection) -> bool {
 /// # Errors
 /// What the rules say (no recognised stack, an unreadable file).
 pub fn build_plan(d: &Detection, options: &RecipeOptions) -> Result<GenerationPlan, RulesError> {
-    let has_dockerfile = d
-        .found
-        .iter()
-        .any(|f| matches!(f.kind, FoundKind::Dockerfile { .. }));
-    if has_dockerfile {
+    if reuses_dockerfile(d) {
         recipes::compose_for_dockerfile(d, options)
     } else {
         recipes::plan(d, options)
@@ -341,4 +337,198 @@ pub fn replan(
     let options =
         options(&d, choices, taken).map_err(|m| RulesError::Read(folder.to_path_buf(), m))?;
     build_plan(&d, &options)
+}
+
+// ---------------------------------------------------------------------
+// The Detected sheet's frame: "Services needed" rows and the Compose file cards
+// ---------------------------------------------------------------------
+
+/// One row of "Services needed": a checkbox, the service with its version, the host port field
+/// while it is ticked, and what is worth knowing about the port and the password.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceRow {
+    pub kind: ServiceKind,
+    /// "Postgres 17".
+    pub name: String,
+    /// What the detection said ("from DATABASE_URL"); the row's tooltip.
+    pub reason: String,
+    pub checked: bool,
+    /// The host port field, while the row is ticked.
+    pub port: Option<PortRow>,
+    /// "(5432 is used by pg-scratch) · password generated into .env", or empty.
+    pub note: String,
+    /// "Uncheck if DATABASE_URL points at a hosted database", when the detection read it from a key.
+    pub hint: Option<String>,
+}
+
+fn template_id(kind: ServiceKind) -> &'static str {
+    match kind {
+        ServiceKind::Postgres => "postgres",
+        ServiceKind::Mysql => "mysql",
+        ServiceKind::Mongo => "mongodb",
+        ServiceKind::Redis => "redis",
+        ServiceKind::Rabbitmq => "rabbitmq",
+        ServiceKind::Meilisearch => "meilisearch",
+        ServiceKind::Minio => "s3",
+        ServiceKind::Mailpit => "mailpit",
+    }
+}
+
+/// The `RecipeOptions::ports` key of a service's main port (the one SQL database is `db`).
+fn port_key_of(kind: ServiceKind) -> &'static str {
+    match kind {
+        ServiceKind::Postgres | ServiceKind::Mysql => "db",
+        ServiceKind::Mongo => "mongo",
+        other => template_id(other),
+    }
+}
+
+fn is_env_key(text: &str) -> bool {
+    !text.is_empty()
+        && text.contains('_')
+        && text
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// The rows of "Services needed": every service the detection found, ticked when the choices
+/// include it. Unticking keeps the row, so it can be ticked again.
+#[must_use]
+pub fn service_rows(
+    d: &Detection,
+    choices: &Choices,
+    taken: &[u16],
+    containers: &[Container],
+) -> Vec<ServiceRow> {
+    let ports = port_rows(d, choices, taken, containers);
+    let templates = berth_rules::templates::built_in();
+    let mut seen: Vec<ServiceKind> = Vec::new();
+    let mut rows = Vec::new();
+    for guess in &d.services_needed {
+        if seen.contains(&guess.kind) {
+            continue;
+        }
+        seen.push(guess.kind);
+        let kind = guess.kind;
+        let template = templates.iter().find(|t| t.id == template_id(kind));
+        let version = template.and_then(|t| {
+            t.inputs.iter().find_map(|i| match &i.kind {
+                berth_core::TemplateInputKind::Version { choices } => choices.first().cloned(),
+                _ => None,
+            })
+        });
+        let default_port = template.and_then(|t| {
+            t.inputs.iter().find_map(|i| match i.kind {
+                berth_core::TemplateInputKind::Port { default } if i.key == "PORT" => Some(default),
+                _ => None,
+            })
+        });
+        let has_password = template.is_some_and(|t| {
+            t.inputs
+                .iter()
+                .any(|i| matches!(i.kind, berth_core::TemplateInputKind::Password))
+        });
+        let checked = choices.services().contains(&kind);
+        let port = checked
+            .then(|| ports.iter().find(|p| p.key == port_key_of(kind)).cloned())
+            .flatten();
+        let mut notes: Vec<String> = Vec::new();
+        if let Some(default) = default_port.filter(|p| taken.contains(p)) {
+            notes.push(
+                port_owner(default, containers).unwrap_or_else(|| format!("{default} in use")),
+            );
+        }
+        if let Some(warning) = port.as_ref().and_then(|p| p.warning.clone()) {
+            if !notes.contains(&warning) {
+                notes.push(warning);
+            }
+        }
+        let mut parts: Vec<String> = Vec::new();
+        if checked && !notes.is_empty() {
+            parts.push(format!("({})", notes.join(", ")));
+        }
+        if checked && has_password {
+            parts.push("password generated into .env".to_string());
+        }
+        let hint = guess
+            .reason
+            .strip_prefix("from ")
+            .filter(|key| is_env_key(key))
+            .map(|key| {
+                let what = if DATABASES.contains(&kind) {
+                    "database"
+                } else {
+                    "service"
+                };
+                format!("Uncheck if {key} points at a hosted {what}")
+            });
+        let label = crate::services::folders::service_label(kind);
+        rows.push(ServiceRow {
+            kind,
+            name: version.map_or_else(|| label.to_string(), |v| format!("{label} {v}")),
+            reason: guess.reason.clone(),
+            checked,
+            port,
+            note: parts.join(" \u{b7} "),
+            hint,
+        });
+    }
+    rows
+}
+
+/// Tick or untick a detected service. A database replaces the other one: the recipe has one.
+pub fn set_service(choices: &mut Choices, kind: ServiceKind, on: bool) {
+    if DATABASES.contains(&kind) {
+        choices.set_database(on.then_some(kind));
+    } else {
+        choices.set_extra(kind, on);
+    }
+}
+
+/// Whether Generate reuses the folder's own Dockerfile (`compose_for_dockerfile`) and so writes no
+/// Dockerfile of its own: the same test `build_plan` makes.
+#[must_use]
+pub fn reuses_dockerfile(d: &Detection) -> bool {
+    d.found
+        .iter()
+        .any(|f| matches!(f.kind, FoundKind::Dockerfile { .. }))
+}
+
+/// "Berth's Node template": what the recipe route is called on its card.
+#[must_use]
+pub fn template_name(d: &Detection) -> String {
+    let stack = match d.stack.first() {
+        Some(StackGuess::Node { .. }) => "Node ",
+        Some(StackGuess::Python { .. }) => "Python ",
+        Some(StackGuess::Go) => "Go ",
+        Some(StackGuess::Rust) => "Rust ",
+        Some(StackGuess::Php { .. }) => "PHP ",
+        Some(StackGuess::Ruby { .. }) => "Ruby ",
+        Some(StackGuess::Java { .. }) => "Java ",
+        Some(StackGuess::Static) => "static site ",
+        None => "",
+    };
+    format!("Berth's {stack}template")
+}
+
+/// What the assistant card says it sends: "Sends file names, package.json and the Dockerfile.
+/// Never .env values."
+#[must_use]
+pub fn harness_note(d: &Detection) -> String {
+    let mut parts = vec!["file names".to_string()];
+    match d.stack.first() {
+        Some(StackGuess::Node { .. }) => parts.push("package.json".to_string()),
+        Some(_) => parts.push("the project manifest".to_string()),
+        None => {}
+    }
+    if reuses_dockerfile(d) {
+        parts.push("the Dockerfile".to_string());
+    }
+    let last = parts.pop().unwrap_or_default();
+    let list = if parts.is_empty() {
+        last
+    } else {
+        format!("{} and {last}", parts.join(", "))
+    };
+    format!("Sends {list}. Never .env values.")
 }

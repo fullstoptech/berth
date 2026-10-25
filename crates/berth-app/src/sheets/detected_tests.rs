@@ -36,10 +36,18 @@ fn detected_frame_lists_what_berth_found_in_the_folder() {
         ">Stack<",
         "Node 22 \u{b7} pnpm \u{b7} Next.js 15",
         ">Services needed<",
-        ">Postgres<",
-        "(from DATABASE_URL)",
-        ">Redis<",
-        "(from ioredis in package.json)",
+        ">Postgres 17<",
+        ">Redis 7.4<",
+        ">host port<",
+        "Uncheck if DATABASE_URL points at a hosted database",
+        "password generated into .env",
+        ">Compose file<",
+        "Generate with Berth&#39;s Node template",
+        "Rules, no AI, works offline",
+        "Generate with Claude Code",
+        "Sends file names, package.json and the Dockerfile. Never .env values.",
+        "Claude Code 2.4.1",
+        "Reuses your Dockerfile for the app service",
         "Nothing is written until you review the changes.",
         "Generate compose.yaml",
     ] {
@@ -66,6 +74,12 @@ fn detected_folder_with_compose_offers_start_project_and_leaves_the_file_alone()
     );
     assert!(!html.contains("Generate compose.yaml"), "{html}");
     assert!(!html.contains(">Options<"), "{html}");
+    // Nothing is generated for it: no Compose file cards, no Dockerfile line, and the services
+    // it needs are listed, not ticked.
+    assert!(!html.contains(">Compose file<"), "{html}");
+    assert!(!html.contains("Reuses your Dockerfile"), "{html}");
+    assert!(!html.contains(">host port<"), "{html}");
+    assert!(html.contains("from DATABASE_URL"), "{html}");
 }
 
 #[test]

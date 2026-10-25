@@ -1,7 +1,8 @@
 //! The Detected sheet (P5-T5, "New project / detected / 1440"): what Berth found in a folder that
 //! was just opened or dropped on the window. A folder with a Compose file offers Start project; any
-//! other folder shows the Generate body (P5-T3) under the same Found list and Review changes
-//! comes from its button. Nothing is written here.
+//! other folder shows the Generate body (P5-T3) in the frame's layout, under the same Found list:
+//! the services it needs with their host ports, and the Compose file cards (Berth's template or an
+//! assistant). Review changes comes from its button. Nothing is written here.
 //!
 //! The folder was read when the sheet opened, once, off the UI thread (D36): Berth never scans in
 //! the background.
@@ -16,6 +17,7 @@ use crate::services::actions::ActionsService;
 use crate::services::backing::Capability;
 use crate::services::folders::{display_path, folder_name, found_rows, service_label, stack_label};
 use crate::services::plans::{blocking, target_engine, PlanRun};
+use crate::sheets::generate::model::reuses_dockerfile;
 use crate::sheets::generate::{BodyDress, GenerateBody, SeedDetection, GENERATE_CSS};
 use crate::state::{AppState, Overlay, Section};
 use crate::ui::{Button, ButtonVariant, ControlSize, Icon, IconSize, InlineMessage, InlineTone};
@@ -182,7 +184,10 @@ pub fn DetectedSheet(folder: PathBuf) -> Element {
                 }
                 h3 { class: "dt-label", "Stack" }
                 p { class: "dt-stack", "{stack}" }
-                if !services.is_empty() {
+                if !has_compose && reuses_dockerfile(&d) {
+                    p { class: "dt-reuse", "Reuses your Dockerfile for the app service" }
+                }
+                if has_compose && !services.is_empty() {
                     h3 { class: "dt-label", "Services needed" }
                     ul { class: "dt-services", "aria-label": "Services needed",
                         for (service, reason) in services {
@@ -262,6 +267,7 @@ fn SeededBody(
                 hide_found: true,
                 action: Some("Generate compose.yaml".to_string()),
                 note: Some(note),
+                frame_layout: true,
             },
         }
     }

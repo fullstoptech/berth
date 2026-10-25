@@ -64,6 +64,9 @@ fn open_detected(state: &mut AppState, detection: berth_core::Detection) {
 }
 
 fn detected_frame(state: &mut AppState) {
+    state
+        .harnesses
+        .set(vec![super::review_changes::claude_code()]);
     open_detected(state, frame_detection());
 }
 

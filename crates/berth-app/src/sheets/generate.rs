@@ -20,8 +20,8 @@ use crate::ui::{
     SelectOption, TextField,
 };
 use model::{
-    build_plan, has_compose, kind_name, options, port_rows, replan, stack_line, with_choices,
-    Choices, DATABASES, EXTRAS,
+    build_plan, harness_note, has_compose, kind_name, options, port_rows, replan, service_rows,
+    set_service, stack_line, template_name, with_choices, Choices, DATABASES, EXTRAS,
 };
 
 pub mod model;
@@ -98,6 +98,9 @@ pub struct BodyDress {
     pub action: Option<String>,
     /// The line left of the buttons.
     pub note: Option<String>,
+    /// The Detected sheet's frame: "Services needed" rows with their host ports and the
+    /// "Compose file" cards, where the Generate sheet has its Options card.
+    pub frame_layout: bool,
 }
 
 /// Detection, choices and the Review changes button, for `folder`. `on_close` is the Cancel button.
@@ -222,6 +225,31 @@ pub fn GenerateBody(
                     .iter()
                     .map(|k| SelectOption::new(db_id(*k), kind_name(*k))),
             );
+            let svc_rows = if dress.frame_layout {
+                service_rows(&d, &current, &taken, &state.containers.read())
+            } else {
+                Vec::new()
+            };
+            let template_title = format!("Generate with {}", template_name(&d));
+            let note_for_harness = harness_note(&d);
+            let harness_value = harness.read().clone();
+            let picked_harness = harnesses
+                .iter()
+                .find(|h| h.id.0 == harness_value)
+                .or_else(|| harnesses.first())
+                .cloned();
+            let first_harness = harnesses.first().map(|h| h.id.0.clone());
+            let harness_options: Vec<SelectOption> = harnesses
+                .iter()
+                .map(|h| {
+                    SelectOption::new(
+                        h.id.0.clone(),
+                        h.version
+                            .as_ref()
+                            .map_or_else(|| h.name.clone(), |v| format!("{} {v}", h.name)),
+                    )
+                })
+                .collect();
             let detection_for_click = d.clone();
             let folder_for_click = folder.clone();
             let click_store = store.clone();
@@ -314,6 +342,124 @@ pub fn GenerateBody(
                 }
                 if let Some(text) = block.clone() {
                     InlineMessage { message: text, tone: InlineTone::Warning }
+                } else if dress.frame_layout {
+                    if !svc_rows.is_empty() {
+                        h3 { class: "gen-label", "Services needed" }
+                        // Keyed by the services, so a new set of ports starts from its own suggestions.
+                        for _ in std::iter::once(()) {
+                            div { key: "{suggestion_key}", class: "gen-svcs", "aria-label": "Services needed",
+                                for row in svc_rows.iter().cloned() {
+                                    {
+                                        let kind = row.kind;
+                                        let port_key = row.port.as_ref().map(|p| p.key.clone());
+                                        rsx! {
+                                            div { key: "{kind_name(kind)}", class: "gen-svc", title: "{row.reason}",
+                                                div { class: "gen-svc-line",
+                                                    Checkbox {
+                                                        state: CheckState::from_bool(row.checked),
+                                                        label: row.name.clone(),
+                                                        aria_label: row.name.clone(),
+                                                        on_toggle: move |on: bool| {
+                                                            choices.with_mut(|c| set_service(c, kind, on));
+                                                        },
+                                                    }
+                                                    if let Some(port) = row.port.clone() {
+                                                        span { class: "gen-svc-port-label", "host port" }
+                                                        div { class: "gen-svc-port",
+                                                            TextField {
+                                                                initial_value: port.value.clone(),
+                                                                aria_label: format!("{} host port", row.name),
+                                                                error: port.error.clone(),
+                                                                oninput: move |e: FormEvent| {
+                                                                    let text = e.value();
+                                                                    if let Some(key) = port_key.clone() {
+                                                                        choices.with_mut(|c| {
+                                                                            c.ports.insert(key, text);
+                                                                        });
+                                                                    }
+                                                                },
+                                                            }
+                                                        }
+                                                        if !row.note.is_empty() {
+                                                            span { class: "gen-svc-note", "{row.note}" }
+                                                        }
+                                                    }
+                                                }
+                                                if let Some(hint) = row.hint.clone() {
+                                                    if row.checked {
+                                                        p { class: "gen-svc-hint", "{hint}" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    h3 { class: "gen-label", "Compose file" }
+                    div { class: "gen-radios", role: "radiogroup", "aria-label": "Compose file",
+                        div {
+                            class: if harness_value.is_empty() { "gen-radio gen-radio-on" } else { "gen-radio" },
+                            role: "radio",
+                            tabindex: "0",
+                            "aria-checked": if harness_value.is_empty() { "true" } else { "false" },
+                            onclick: move |_| harness.set(String::new()),
+                            onkeydown: move |e| {
+                                if matches!(e.key(), Key::Enter) || e.key() == Key::Character(" ".to_string()) {
+                                    harness.set(String::new());
+                                }
+                            },
+                            span { class: "gen-radio-dot" }
+                            span { class: "gen-radio-text",
+                                span { class: "gen-radio-title", "{template_title}" }
+                                span { class: "gen-radio-sub", "Rules, no AI, works offline" }
+                            }
+                        }
+                        if let Some(chosen) = picked_harness.clone() {
+                            div {
+                                class: if harness_value.is_empty() { "gen-radio" } else { "gen-radio gen-radio-on" },
+                                role: "radio",
+                                tabindex: "0",
+                                "aria-checked": if harness_value.is_empty() { "false" } else { "true" },
+                                onclick: {
+                                    let first = first_harness.clone();
+                                    move |_| {
+                                        if harness.peek().is_empty() {
+                                            if let Some(id) = first.clone() {
+                                                harness.set(id);
+                                            }
+                                        }
+                                    }
+                                },
+                                onkeydown: {
+                                    let first = first_harness.clone();
+                                    move |e| {
+                                        if (matches!(e.key(), Key::Enter) || e.key() == Key::Character(" ".to_string()))
+                                            && harness.peek().is_empty()
+                                        {
+                                            if let Some(id) = first.clone() {
+                                                harness.set(id);
+                                            }
+                                        }
+                                    }
+                                },
+                                span { class: "gen-radio-dot" }
+                                span { class: "gen-radio-text",
+                                    span { class: "gen-radio-title", "Generate with {chosen.name}" }
+                                    span { class: "gen-radio-sub", "{note_for_harness}" }
+                                }
+                                div { class: "gen-radio-select",
+                                    Select {
+                                        options: harness_options.clone(),
+                                        value: chosen.id.0.clone(),
+                                        aria_label: "Assistant".to_string(),
+                                        onchange: move |e: FormEvent| harness.set(e.value()),
+                                    }
+                                }
+                            }
+                        }
+                    }
                 } else {
                     section { class: "gen-card", "aria-label": "Options",
                         h3 { class: "gen-card-title", "Options" }

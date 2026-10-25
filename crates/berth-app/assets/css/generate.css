@@ -97,3 +97,115 @@
   font-size: var(--text-label-size);
   line-height: var(--text-label-line);
 }
+
+/* The Detected sheet's layout (P5-T5 frame): services with a host port each, then the Compose file cards. */
+.gen-label {
+  margin: var(--space-12) 0 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  font-weight: var(--text-body-weight);
+}
+.gen-svcs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.gen-svc-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--size-control-lg);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.gen-svc-port-label {
+  flex: none;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+}
+.gen-svc-port {
+  flex: none;
+  width: calc(44px * var(--text-scale, 1));
+}
+.gen-svc-port .field-control {
+  height: var(--size-control-sm);
+  padding: 0 var(--space-6);
+}
+.gen-svc-port .field-input {
+  font-size: var(--text-label-size);
+}
+.gen-svc-note {
+  min-width: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+}
+.gen-svc-hint {
+  margin: 0 0 var(--space-4) calc(var(--size-icon-md) + var(--space-8));
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.gen-radios {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.gen-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  box-sizing: border-box;
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+.gen-radio:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.gen-radio-on {
+  border-color: var(--color-accent-fill);
+  background: var(--color-selection);
+}
+.gen-radio-dot {
+  flex: none;
+  box-sizing: border-box;
+  width: var(--size-icon-md);
+  height: var(--size-icon-md);
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+}
+.gen-radio-on .gen-radio-dot {
+  border: 5px solid var(--color-accent-fill);
+}
+.gen-radio-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.gen-radio-title {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.gen-radio-sub {
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.gen-radio-select {
+  flex: none;
+  min-width: calc(150px * var(--text-scale, 1));
+}
+/* The assistant's picker sits in the card as plain text with a chevron, as in the frame. */
+.gen-radio-select .select-control {
+  background: transparent;
+  border-color: transparent;
+}
+.gen-radio-select .select-control:hover {
+  border-color: var(--color-line);
+}
