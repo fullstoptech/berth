@@ -18,6 +18,7 @@ pub mod inspector;
 pub mod kbd;
 pub mod menu;
 pub mod palette_trigger;
+pub mod project_row;
 pub mod search_field;
 pub mod segmented_control;
 pub mod select;

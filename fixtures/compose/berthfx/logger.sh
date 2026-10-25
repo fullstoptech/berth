@@ -2,6 +2,9 @@
 # Scripted log mix for Berth fixture tests (PLAN 8.1): info, warn, a JSON line
 # and an error with a 12-line stack trace, repeating every 2 s at LOGGER_RATE=1.
 # Higher LOGGER_RATE shortens the pause proportionally.
+# PID 1 ignores SIGTERM unless it handles it; without this, `docker stop`
+# waits the full 10 s grace period before killing the container.
+trap 'exit 0' TERM INT
 i=0
 while :; do
   i=$((i + 1))
