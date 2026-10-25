@@ -85,3 +85,139 @@ fn clean_up_done_scene_toast_says_what_the_button_promised() {
     // The disk the dashboard shows afterwards is what is left.
     assert!(done.contains("16.8 of 60 GB used"), "{done}");
 }
+
+// ---------------------------------------------------------------------
+// After a run: the dashboard reads the disk again
+// ---------------------------------------------------------------------
+
+use std::sync::Arc;
+
+use berth_core::EngineId;
+use dioxus::prelude::*;
+use tokio_util::sync::CancellationToken;
+
+use super::after_run;
+use crate::screens::engine_dashboard::disk_summary;
+use crate::services::engine_dashboard::{DashboardStore, UsageEntry};
+use crate::services::Services;
+
+fn default_engine() -> EngineId {
+    EngineId("colima:default".to_string())
+}
+
+thread_local! {
+    static RIG: std::cell::RefCell<Option<(DashboardStore, Signal<bool>)>> =
+        const { std::cell::RefCell::new(None) };
+    static SERVICES: std::cell::RefCell<Option<Services>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Stands in for the sheet: it ends a run in its own scope, which goes away
+/// at once, as the sheet does when it closes.
+#[component]
+fn FinishingSheet() -> Element {
+    use_hook(|| {
+        let store = try_consume_context::<DashboardStore>().expect("store");
+        let services = SERVICES
+            .with(|s| s.borrow().clone())
+            .expect("services were set");
+        let outcome = crate::services::prune::Outcome {
+            engine: default_engine(),
+            removed: Vec::new(),
+            failed: Vec::new(),
+            freed: bytesize::ByteSize(0),
+            cancelled: false,
+        };
+        after_run(&services, Some(store), &default_engine(), &outcome);
+    });
+    rsx! {}
+}
+
+#[component]
+fn Dashboard() -> Element {
+    let store = use_hook(|| provide_context(DashboardStore::new()));
+    let open = use_signal(|| true);
+    use_hook(move || RIG.with(|rig| *rig.borrow_mut() = Some((store, open))));
+    rsx! {
+        if open() {
+            FinishingSheet {}
+        }
+    }
+}
+
+fn nothing_left(usage: &berth_core::DiskUsage) -> berth_core::DiskUsage {
+    let mut usage = usage.clone();
+    for group in [
+        &mut usage.images,
+        &mut usage.containers,
+        &mut usage.volumes,
+        &mut usage.build_cache,
+    ] {
+        group.reclaimable = bytesize::ByteSize(0);
+    }
+    usage
+}
+
+#[tokio::test]
+async fn clean_up_after_a_run_the_dashboard_reads_the_disk_again_even_though_the_sheet_closed() {
+    let mut world = berth_engine::MockWorld::bundled();
+    let before = world.disk_usage_by_engine[&default_engine().0].clone();
+    let (_, reclaimable_before) = disk_summary(&before, None);
+    assert_ne!(
+        reclaimable_before.as_deref(),
+        Some("0 B reclaimable"),
+        "the stale reading has something to reclaim"
+    );
+    // What the engine answers once the run is over.
+    world
+        .disk_usage_by_engine
+        .insert(default_engine().0, nothing_left(&before));
+    let mock =
+        Arc::new(berth_engine::MockEngine::from_world(world, &default_engine()).expect("engine"));
+    let clients = crate::services::engines::client_map();
+    clients.lock().expect("clients").insert(
+        default_engine(),
+        mock as Arc<dyn berth_engine::EngineClient>,
+    );
+    SERVICES.with(|s| {
+        *s.borrow_mut() = Some(Services {
+            store: Arc::new(berth_store::Store::open_in_memory().expect("store")),
+            clients,
+            cancel: CancellationToken::new(),
+        });
+    });
+
+    let mut dom = VirtualDom::new(Dashboard);
+    // The sheet runs its end-of-run code in its first render, then goes.
+    // The stale reading is put in before it can answer.
+    let _ = dom.rebuild_to_vec();
+    let (store, mut open) = RIG
+        .with(|rig| rig.borrow_mut().take())
+        .expect("rig captured");
+    dom.in_runtime(|| {
+        store.seed(
+            &default_engine(),
+            Some(UsageEntry::Ready(before.clone())),
+            None,
+        );
+        open.set(false);
+    });
+    dom.render_immediate(&mut dioxus::core::NoOpMutations);
+
+    let waited = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let now = dom.in_runtime(|| store.usage.peek().get(&default_engine()).cloned());
+            if let Some(UsageEntry::Ready(usage)) = now {
+                if usage != before {
+                    return usage;
+                }
+            }
+            let _ = tokio::time::timeout(std::time::Duration::from_millis(20), dom.wait_for_work())
+                .await;
+            dom.render_immediate(&mut dioxus::core::NoOpMutations);
+        }
+    })
+    .await
+    .expect("the dashboard's disk usage was read again after the run");
+    let (_, reclaimable) = disk_summary(&waited, None);
+    assert_eq!(reclaimable.as_deref(), Some("0 B reclaimable"));
+}

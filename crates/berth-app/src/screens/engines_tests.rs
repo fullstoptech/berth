@@ -1288,3 +1288,51 @@ async fn engines_it_restart_default_profile_owner_present_only() {
     .expect("colima restart");
     assert!(control.status("default").await.expect("status").running);
 }
+
+// ---------------------------------------------------------------------
+// Clean up on the dashboard (after a run)
+// ---------------------------------------------------------------------
+
+/// The opening tag of the button with this label.
+fn button_tag(html: &str, label: &str) -> String {
+    let (before, _) = html
+        .split_once(&format!("class=\"btn-label\">{label}<"))
+        .unwrap_or_else(|| panic!("no {label} button: {html}"));
+    let start = before.rfind("<button").expect("a button tag");
+    before[start..].to_string()
+}
+
+#[test]
+fn engines_clean_up_is_offered_while_something_can_be_removed() {
+    let html = scene(DASHBOARD);
+    let tag = button_tag(&html, "Clean up\u{2026}");
+    assert!(!tag.contains("disabled"), "{tag}");
+    assert!(!tag.contains("data-tooltip"), "{tag}");
+}
+
+#[test]
+fn engines_clean_up_done_shows_zero_reclaimable_and_a_disabled_button_that_says_why() {
+    let html = scene("Clean up / done / 1440");
+    assert!(html.contains("0 B reclaimable"), "{html}");
+    let tag = button_tag(&html, "Clean up\u{2026}");
+    assert!(tag.contains("disabled"), "{tag}");
+    assert!(
+        tag.contains("data-tooltip=\"Nothing to clean up\""),
+        "{tag}"
+    );
+}
+
+#[test]
+fn engines_reclaimable_total_says_zero_when_nothing_is_left() {
+    let mut usage = world().disk_usage_by_engine["colima:default"].clone();
+    for group in [
+        &mut usage.images,
+        &mut usage.containers,
+        &mut usage.volumes,
+        &mut usage.build_cache,
+    ] {
+        group.reclaimable = bytesize::ByteSize(0);
+    }
+    let (_, reclaimable) = disk_summary(&usage, None);
+    assert_eq!(reclaimable.as_deref(), Some("0 B reclaimable"));
+}

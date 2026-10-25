@@ -38,8 +38,9 @@ enum Phase {
 }
 
 /// The entries the sheet opens with: the scene's, else built from the
-/// lists Berth holds and the engine's last `disk_usage`.
-fn initial_entries(
+/// lists Berth holds and the engine's last `disk_usage`. The dashboard asks
+/// the same question to know whether Clean up has anything to offer.
+pub(crate) fn initial_entries(
     state: &AppState,
     store: Option<DashboardStore>,
     engine: &EngineId,
@@ -47,14 +48,14 @@ fn initial_entries(
     if let Some(SceneEntries(entries)) = try_consume_context::<SceneEntries>() {
         return entries;
     }
-    let usage = store.and_then(|s| match s.usage.peek().get(engine) {
+    let usage = store.and_then(|s| match s.usage.read().get(engine) {
         Some(UsageEntry::Ready(usage)) => Some(usage.clone()),
         _ => None,
     });
-    let containers = state.containers.peek();
-    let images = state.images.peek();
-    let volumes = state.volumes.peek();
-    let networks = state.networks.peek();
+    let containers = state.containers.read();
+    let images = state.images.read();
+    let volumes = state.volumes.read();
+    let networks = state.networks.read();
     prune::candidates(
         engine,
         &Lists {
@@ -70,6 +71,21 @@ fn initial_entries(
 enum Msg {
     Progress(Progress),
     Done(prune::Outcome),
+}
+
+/// What a finished run leaves behind besides the sheet's own state: the
+/// activity line, and a fresh `disk_usage` so the dashboard shows what is
+/// reclaimable now (and offers Clean up only if something is left).
+fn after_run(
+    services: &Services,
+    store: Option<DashboardStore>,
+    engine: &EngineId,
+    outcome: &prune::Outcome,
+) {
+    prune::record(&services.store, outcome);
+    if let Some(store) = store {
+        store.refresh_usage(services, engine);
+    }
 }
 
 #[component]
@@ -148,10 +164,7 @@ pub fn CleanUpSheet(engine: EngineId) -> Element {
                     match msg {
                         Msg::Progress(p) => phase.set(Phase::Running(p)),
                         Msg::Done(outcome) => {
-                            prune::record(&services.store, &outcome);
-                            if let Some(store) = store {
-                                store.refresh_usage(&services, &engine);
-                            }
+                            after_run(&services, store, &engine, &outcome);
                             stop.set(None);
                             phase.set(Phase::Choosing);
                             if outcome.clean() {

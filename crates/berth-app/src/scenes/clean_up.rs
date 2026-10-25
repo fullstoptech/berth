@@ -117,6 +117,9 @@ fn clean_up_done(state: &mut AppState) {
             store.seed(&default, Some(UsageEntry::Ready(usage)), None);
         }
     }
+    // Everything the run could remove is gone, so Clean up has nothing to
+    // offer on the dashboard (the frame's greyed button).
+    provide_context(SceneEntries(Vec::new()));
     let outcome = crate::services::prune::Outcome {
         engine: default,
         removed: frame_entries()

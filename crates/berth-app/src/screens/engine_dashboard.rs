@@ -87,8 +87,9 @@ pub fn info_rows(engine: &Engine) -> Vec<(&'static str, String)> {
     rows
 }
 
-/// "22.5 of 60 GB used" and "5.7 GB reclaimable" from the usage and the VM
-/// disk (the usage's own total wins when it has one).
+/// "22.5 of 60 GB used" and "5.7 GB reclaimable" ("0 B reclaimable" when
+/// nothing is) from the usage and the VM disk (the usage's own total wins
+/// when it has one).
 #[must_use]
 pub fn disk_summary(
     usage: &berth_core::DiskUsage,
@@ -109,8 +110,12 @@ pub fn disk_summary(
             + usage.build_cache.reclaimable.as_u64()
             + usage.containers.reclaimable.as_u64(),
     );
-    let tail = (reclaimable.as_u64() > 0)
-        .then(|| format!("{} reclaimable", berth_core::fmt::bytes(reclaimable)));
+    // "0 B reclaimable" stays on screen after a clean up: it says the run
+    // worked.
+    let tail = Some(format!(
+        "{} reclaimable",
+        berth_core::fmt::bytes(reclaimable)
+    ));
     (head, tail)
 }
 
@@ -551,7 +556,27 @@ fn info_list(engine: &Engine) -> Element {
     }
 }
 
+/// Why "Clean up\u{2026}" is off, if it is: the engine is not running, or
+/// no group of the plan has anything in it.
+#[must_use]
+pub fn clean_up_blocker(
+    state: &AppState,
+    store: Option<DashboardStore>,
+    engine: &Engine,
+) -> Option<String> {
+    if engine.state != EngineState::Running {
+        return Some("Clean up needs a running engine".to_string());
+    }
+    crate::sheets::clean_up::initial_entries(state, store, &engine.id)
+        .is_empty()
+        .then(|| NOTHING_TO_CLEAN_UP.to_string())
+}
+
+/// The reason on a disabled "Clean up\u{2026}" when the plan is empty.
+pub const NOTHING_TO_CLEAN_UP: &str = "Nothing to clean up";
+
 fn disk_section(state: &mut AppState, store: Option<DashboardStore>, engine: &Engine) -> Element {
+    let blocker = clean_up_blocker(state, store, engine);
     let mut open = *state;
     let id = engine.id.clone();
     let running = engine.state == EngineState::Running;
@@ -610,8 +635,8 @@ fn disk_section(state: &mut AppState, store: Option<DashboardStore>, engine: &En
                     label: "Clean up\u{2026}".to_string(),
                     variant: ButtonVariant::Primary,
                     size: ControlSize::Md,
-                    disabled: !running,
-                    disabled_reason: (!running).then(|| "Clean up needs a running engine".to_string()),
+                    disabled: blocker.is_some(),
+                    disabled_reason: blocker,
                     onclick: move |_| open.overlays.write().push(Overlay::CleanUp(id.clone())),
                 }
             }
