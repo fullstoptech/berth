@@ -573,7 +573,7 @@ fn shell_inspector_frames_carry_their_class_width_and_handle() {
     let docked = render(rsx! { Inspector { width_px: 420 } });
     assert!(docked.contains("class=\"inspector\""), "{docked}");
     assert!(
-        docked.contains("style=\"width: 420px; min-width: 420px;\""),
+        docked.contains("style=\"width: 420px; min-width: 420px; flex: none;\""),
         "{docked}"
     );
     let overlay = render(rsx! { Inspector { frame: InspectorFrame::Overlay } });
@@ -694,7 +694,12 @@ fn shell_bottom_dock_split_puts_the_panel_left_and_the_inspector_right_without_d
         "panel on the left, inspector on the right"
     );
     // 40 % of the 1220 px region.
-    assert!(html.contains("width: 488px; min-width: 488px;"), "{html}");
+    // `flex: none` keeps `.inspector-bottom`'s `flex: 1` from splitting the
+    // region 50:50 whatever the width says.
+    assert!(
+        html.contains("width: 488px; min-width: 488px; flex: none;"),
+        "{html}"
+    );
     let at = html.find("split-handle-split").expect("a divider");
     let handle = &html[at - 40..at + 400];
     for needle in [

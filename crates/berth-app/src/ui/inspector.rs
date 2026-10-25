@@ -54,7 +54,7 @@ pub fn Inspector(
     #[props(default = rsx! {})] handle: Element,
     children: Element,
 ) -> Element {
-    let style = width_px.map(|w| format!("width: {w}px; min-width: {w}px;"));
+    let style = width_px.map(|w| format!("width: {w}px; min-width: {w}px; flex: none;"));
     rsx! {
         aside {
             class: frame.class(),
