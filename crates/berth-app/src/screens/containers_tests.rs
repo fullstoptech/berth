@@ -315,9 +315,9 @@ fn containers_tracks_at(
     let (selector, limit) = if narrow {
         ("narrow", 61.5)
     } else if uptime {
-        ("uptime", 68.0)
+        ("uptime", 68.5)
     } else if engine {
-        ("engine", 63.0)
+        ("engine", 63.5)
     } else {
         ("plain", 57.0)
     };
@@ -331,8 +331,8 @@ fn containers_tracks_at(
         _ => css::block(CONTAINERS_CSS, "\n.ct-table {"),
     };
     let no_image = em <= limit;
-    // Engine goes too below 55 em when there is no Uptime: the plain list.
-    let body = if selector == "engine" && em <= 55.0 {
+    // Engine goes too below 55.5 em when there is no Uptime: the plain list.
+    let body = if selector == "engine" && em <= 55.5 {
         css::block(CONTAINERS_CSS, "\n.ct-table {")
     } else {
         body
@@ -360,12 +360,38 @@ fn containers_table_fits_at_1024_and_1440_for_every_text_size() {
     for (width, narrow, uptime, engine) in cases {
         for scale in STEPS {
             let (_, tracks) = containers_tracks_at(width, scale, narrow, uptime, engine);
-            let used = css::min_sum(&tracks, scale) + 12.0 * (tracks.len() as f32 - 1.0) + 32.0;
+            // The page gutter is 16 px under 1200 px wide, 20 px from there up.
+            let gutters = if narrow { 32.0 } else { 40.0 };
+            let used = css::min_sum(&tracks, scale) + 12.0 * (tracks.len() as f32 - 1.0) + gutters;
             assert!(
                 used <= width + 0.5,
                 "{width} px at {scale} (uptime {uptime}, engine {engine}): needs {used} ({tracks:?})"
             );
         }
+    }
+}
+
+#[test]
+fn containers_wide_column_lists_fit_just_above_every_container_query_threshold() {
+    // The sweep above checks two window sizes; a threshold has to hold at any
+    // width of a 100 % text size. A table `limit` em wide (and a hair more)
+    // still has the list of the tier above it, and that list must fit. From
+    // 1200 px wide the page gutter is 20 px, so the lists need 8 px more than
+    // they did with 16.
+    for (limit, uptime, engine) in [
+        (57.0, false, false),
+        (63.5, false, true),
+        (55.5, false, true),
+        (68.5, true, false),
+        (68.5, true, true),
+    ] {
+        let width = (limit + 0.01) * 13.0;
+        let (_, tracks) = containers_tracks_at(width, 1.0, false, uptime, engine);
+        let used = css::min_sum(&tracks, 1.0) + 12.0 * (tracks.len() as f32 - 1.0) + 40.0;
+        assert!(
+            used <= width + 0.5,
+            "{limit} em (uptime {uptime}, engine {engine}): {width} px, needs {used} ({tracks:?})"
+        );
     }
 }
 
@@ -385,7 +411,7 @@ fn containers_tables_keep_image_at_100_percent_and_drop_it_at_150() {
         assert!(dropped, "{width} px at 150 % drops Image");
     }
     // The thresholds the sweeps above assume are the stylesheet's own.
-    for em in ["61.5", "57", "63", "55", "68"] {
+    for em in ["61.5", "57", "63.5", "55.5", "68.5"] {
         assert!(
             CONTAINERS_CSS.contains(&format!("@container containers (max-width: {em}em)")),
             "a {em} em block"

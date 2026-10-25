@@ -25,7 +25,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  padding: calc(var(--space-12) + 1px) var(--space-16) var(--space-6);
+  padding: var(--space-16) var(--gutter) var(--space-20);
 }
 .projects-header .badge-count {
   background: var(--color-surface-pressed);
@@ -54,7 +54,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
-  padding: 0 var(--space-16) var(--space-8);
+  padding: 0 var(--gutter) var(--space-8);
 }
 
 /* Table: its box sits on the page gutter (like the header, the cards and
@@ -62,7 +62,7 @@
 .projects-table {
   display: flex;
   flex-direction: column;
-  margin: 0 var(--space-16);
+  margin: var(--space-8) var(--gutter) 0;
   border-bottom: 1px solid var(--color-line);
 }
 .projects-head,
@@ -113,7 +113,7 @@
   white-space: nowrap;
 }
 .project-cell-actions {
-  gap: var(--space-4);
+  gap: var(--space-8);
   padding-right: 0;
   overflow: visible;
 }
@@ -251,7 +251,7 @@
    under the row. */
 @container projects (max-width: 92.3em) {
   .projects-table {
-    --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 56px);
+    --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 68px);
   }
   .projects-head > :nth-child(3),
   .projects-head > :nth-child(4),
@@ -273,7 +273,7 @@
    not-set-up hint use the Ports, CPU and Memory tracks together instead. */
 @container projects (max-width: 61.5em) {
   .projects-table {
-    --projects-cols: minmax(calc(96px * var(--text-scale, 1)), 116fr) minmax(0, 104fr) minmax(0, 112fr) 0px calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 56px);
+    --projects-cols: minmax(calc(96px * var(--text-scale, 1)), 116fr) minmax(0, 104fr) minmax(0, 112fr) 0px calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 68px);
   }
   .projects-head > :nth-child(6),
   .project-cell-ports {
@@ -317,10 +317,10 @@
    the text) plus the folder icon, the gap after it (space-8) and the cell's
    right padding (space-8), so a project name is not cut to "payment...".
    Services has no minimum and takes what is left: at 1024 px and 130 % that
-   is 179 / 178 px for Name / Services, at 150 % 204 / 100 px. */
+   is 179 / 178 px for Name / Services, at 150 % 204 / 88 px. */
 @container projects (max-width: 49.5em) {
   .projects-table {
-    --projects-cols: minmax(calc(14ch + var(--size-icon-md) + var(--space-16)), 116fr) minmax(0, 216fr) 0px calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 56px);
+    --projects-cols: minmax(calc(14ch + var(--size-icon-md) + var(--space-16)), 116fr) minmax(0, 216fr) 0px calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 68px);
   }
   .projects-head > :nth-child(2),
   .project-cell-path {
@@ -391,7 +391,7 @@
 
 /* Needs attention */
 .projects-attention {
-  padding: var(--space-24) var(--space-16) 0;
+  padding: var(--space-32) var(--gutter) 0;
 }
 .projects-section-title {
   margin: 0 0 var(--space-6);
@@ -441,7 +441,7 @@
 /* Recent activity: one line per entry; errors and warnings are tinted with a
    bar on the left, the rest are plain (frame "Projects / default / 1440"). */
 .projects-recent {
-  padding: var(--space-20) var(--space-16) 0;
+  padding: var(--space-32) var(--gutter) 0;
 }
 .recent-row {
   display: grid;

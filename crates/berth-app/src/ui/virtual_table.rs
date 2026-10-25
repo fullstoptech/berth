@@ -6,9 +6,9 @@ use dioxus::prelude::*;
 
 /// Rows rendered above and below the viewport (D24).
 pub const DEFAULT_OVERSCAN: usize = 10;
-/// Fallback row height in px, matching `--size-row` (28, 24 compact).
+/// Fallback row height in px, matching `--size-row` (32, 24 compact).
 /// The rendered height comes from CSS; this value only drives the range math.
-pub const DEFAULT_ROW_HEIGHT_PX: u32 = 28;
+pub const DEFAULT_ROW_HEIGHT_PX: u32 = 32;
 /// Fallback viewport height when the caller does not size the table.
 pub const DEFAULT_VIEWPORT_HEIGHT_PX: u32 = 560;
 

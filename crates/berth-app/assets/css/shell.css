@@ -177,7 +177,7 @@ html, body {
   gap: var(--space-6);
   box-sizing: border-box;
   width: 100%;
-  height: var(--size-row);
+  height: var(--size-control-md);
   padding: 0 var(--space-8) 0 var(--space-12) !important;
   border-radius: 0;
   text-align: left;

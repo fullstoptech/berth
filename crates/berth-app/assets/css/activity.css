@@ -11,7 +11,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  padding: var(--space-12) var(--space-16) var(--space-8);
+  padding: var(--space-16) var(--gutter) var(--space-8);
 }
 .activity-title {
   margin: 0;
@@ -28,13 +28,13 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-8);
-  padding: 0 var(--space-16) var(--space-12);
+  padding: 0 var(--gutter) var(--space-20);
 }
 .activity-filter-select {
   min-width: 150px;
 }
 .activity-banner {
-  padding: 0 var(--space-16) var(--space-8);
+  padding: 0 var(--gutter) var(--space-8);
 }
 .activity-table {
   flex: 1;

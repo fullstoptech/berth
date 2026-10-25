@@ -560,7 +560,7 @@ fn projects_table_hides_engine_and_branch_below_1200() {
 fn projects_table_columns_at_1024_leave_room_for_the_buttons() {
     // Main at 1024 is 1024 - 220 wide; the table has 16 px margins and rows
     // pad 8 px each side. The last track must keep the labelled buttons
-    // (Restart 65 + Start project 95 + two 24 px icons + 3 gaps of 4 = 216).
+    // (Restart 65 + Start project 95 + two 24 px icons + 3 gaps of 8 = 228).
     let tracks = css::tracks(&css::declaration(narrow_block(), "--projects-cols"));
     assert_eq!(tracks.len(), 7, "{tracks:?}");
     // Name, Ports, CPU, Memory and the buttons grow with the text size;
@@ -576,13 +576,15 @@ fn projects_table_columns_at_1024_leave_room_for_the_buttons() {
     assert_eq!(tracks[2], "minmax(0, 112fr)");
     let fixed = css::min_sum(&tracks, 1.0);
     let available = 1024.0 - 220.0 - 32.0 - 16.0;
+    // Their 104:112 split of what is left; the buttons' 12 px for wider gaps
+    // came out of it (it was 216 px).
     assert!(
-        (available - fixed - (104.0 + 112.0)).abs() < 0.5,
-        "at 100 % Path and Services get 104 and 112 px: fixed {fixed}"
+        (available - fixed - (104.0 + 112.0 - 12.0)).abs() < 0.5,
+        "at 100 % Path and Services share 204 px: fixed {fixed}"
     );
     let buttons = css::min_px(&tracks[6], 1.0);
     assert!(
-        (216.0..=232.0).contains(&buttons),
+        (228.0..=244.0).contains(&buttons),
         "{buttons} px for the buttons"
     );
 }
@@ -658,14 +660,19 @@ fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
     for width in [MAIN_1024, MAIN_1440] {
         for scale in STEPS {
             let tracks = projects_tracks_at(width, scale);
-            let room = width - 32.0 - 16.0 - css::min_sum(&tracks, scale);
+            // The table sits on the page gutter: 16 px under 1200 px wide,
+            // 20 px from there up; the rows pad 8 px each side.
+            let gutters = if width == MAIN_1024 { 32.0 } else { 40.0 };
+            let room = width - gutters - 16.0 - css::min_sum(&tracks, scale);
             // The buttons are a track of their own in the narrow lists and
             // the `1fr` in the wide one; Path and Services (or Services
             // alone, once Path is gone) keep some room.
-            let buttons = 160.0 * scale + 56.0;
+            let buttons = 160.0 * scale + 68.0;
             let (need, what) = match tracks.len() {
                 9 => (buttons, "the buttons"),
-                6 => (96.0, "Services"),
+                // 88, not 96: the buttons' gaps went from 4 to 8 px (D11), which takes
+                // 12 px from Services at 1024 px and 150 %, where it was 100.
+                6 => (88.0, "Services"),
                 _ => (120.0, "Path and Services"),
             };
             assert!(
@@ -759,11 +766,11 @@ fn projects_no_path_tier_keeps_names_14_characters_wide_and_nothing_clips() {
         // Services gives up room for it but never pushes the table wider
         // than the window, and CPU, Memory and the buttons keep their size.
         let room = MAIN_1024 - 32.0 - 16.0 - css::min_sum(&tracks, scale);
-        assert!(room >= 96.0, "{room} px left for Services at {scale}");
+        assert!(room >= 88.0, "{room} px left for Services at {scale}");
         for (i, base) in [(3, 48.0), (4, 56.0)] {
             assert_eq!(css::min_px(&tracks[i], scale), base * scale, "track {i}");
         }
-        assert!(css::min_px(&tracks[5], scale) >= 160.0 * scale + 56.0);
+        assert!(css::min_px(&tracks[5], scale) >= 160.0 * scale + 68.0);
     }
     // The minimum grows with the text, it is not a fixed px width.
     assert!(css::min_px(&tracks[0], 1.5) > css::min_px(&tracks[0], 1.3) + 20.0);
