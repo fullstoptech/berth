@@ -342,6 +342,9 @@ fn tab_body(
     if tab == DetailTab::Stats {
         return rsx! { crate::ui::metric_tile::StatsPanel { id: c.id.clone() } };
     }
+    if tab == DetailTab::Terminal {
+        return rsx! { crate::ui::terminal::TerminalPanel { container: c.id.clone() } };
+    }
     if tab == DetailTab::Files {
         return rsx! { crate::ui::FilesPanel { container: c.id.clone() } };
     }

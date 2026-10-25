@@ -99,14 +99,14 @@ impl DetailTab {
     pub fn built_in(self) -> Option<&'static str> {
         match self {
             Self::Logs => Some("P3-T2"),
-            Self::Terminal => Some("P3-T6"),
             Self::Limits => Some("P3-T7"),
             Self::Overview
             | Self::Inspect
             | Self::Env
             | Self::Mounts
             | Self::Stats
-            | Self::Files => None,
+            | Self::Files
+            | Self::Terminal => None,
         }
     }
 }
