@@ -13,6 +13,8 @@
 //! label, and removes the scratch container again on every exit path. No
 //! other container is touched; Colima is never touched.
 
+mod common;
+
 use std::sync::Arc;
 
 use dioxus::prelude::*;
@@ -67,6 +69,7 @@ async fn confirm_it_delete_berthfx_scratch_through_the_dialog_model() {
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let mut dom = VirtualDom::new(Harness);
     let _ = dom.rebuild_to_vec();
     let mut state = SLOT

@@ -13,6 +13,8 @@
 //!
 //! Nothing is stopped, removed or restarted; the engine is only read.
 
+mod common;
+
 use std::io::{Read, Write};
 use std::sync::Arc;
 
@@ -113,6 +115,7 @@ async fn containers_it_filter_berthfx_shows_four_rows_and_the_port_link_opens_ng
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let (dom, mut state) = harness();
     let search = berth_sys::SearchPath::from_process()
         .with_login_shell()

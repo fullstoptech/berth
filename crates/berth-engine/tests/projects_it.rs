@@ -11,6 +11,8 @@
 // does not reach them.
 #![allow(clippy::expect_used)]
 
+mod common;
+
 fn os(args: &[&str]) -> Vec<std::ffi::OsString> {
     args.iter().map(std::ffi::OsString::from).collect()
 }
@@ -148,6 +150,7 @@ async fn projects_it_groups_berthfx_and_reads_git_branch() {
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let search = berth_sys::SearchPath::from_process()
         .with_login_shell()
         .await;

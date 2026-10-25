@@ -1,0 +1,8 @@
+# Live-engine tests share the four berthfx fixture containers and stop and
+# restart them, so they run one at a time. Unit tests stay parallel.
+[test-groups]
+live-engine = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'binary(/_it$/) | binary(engine_read) | binary(mutate) | binary(streams)'
+test-group = 'live-engine'

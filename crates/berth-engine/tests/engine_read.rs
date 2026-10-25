@@ -1,6 +1,8 @@
 //! Live read side against the berthfx fixtures (P1-T4 done-when). Run with:
 //!   scripts/it.sh -p berth-engine engine_read
 
+mod common;
+
 use berth_engine::{BollardEngine, ColimaCli, EngineClient};
 
 #[tokio::test]
@@ -10,6 +12,7 @@ async fn engine_read_fixtures() {
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let search = berth_sys::SearchPath::from_process()
         .with_login_shell()
         .await;

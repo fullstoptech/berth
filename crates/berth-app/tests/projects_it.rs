@@ -12,6 +12,8 @@
 //! stopped and started, so any tree can run this) and the four fixture
 //! containers are started again on every exit path.
 
+mod common;
+
 use std::sync::Arc;
 
 use dioxus::prelude::*;
@@ -131,6 +133,7 @@ async fn projects_it_berthfx_row_shows_four_running_and_stop_project_stops_all_w
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let mut dom = VirtualDom::new(Harness);
     let _ = dom.rebuild_to_vec();
     let mut state = SLOT

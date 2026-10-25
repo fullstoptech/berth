@@ -7,6 +7,8 @@
 // does not reach them.
 #![allow(clippy::expect_used)]
 
+mod common;
+
 use std::time::Duration;
 
 use berth_engine::{BollardEngine, ColimaCli, EngineClient};
@@ -183,6 +185,7 @@ async fn streams_and_actions() {
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let client = connect().await;
     let web = fixture_id(&client, "berthfx-web-1").await;
 

@@ -9,6 +9,8 @@
 //! brings the fixtures up first). Only `berthfx-web-1` is restarted, and
 //! only after its fixture label is confirmed; Colima is never touched.
 
+mod common;
+
 use std::sync::Arc;
 
 use dioxus::prelude::*;
@@ -41,6 +43,7 @@ async fn palette_it_restart_berthfx_web_runs_the_top_result() {
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let mut dom = VirtualDom::new(Harness);
     let _ = dom.rebuild_to_vec();
     let mut state = SLOT

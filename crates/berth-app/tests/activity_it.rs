@@ -12,6 +12,8 @@
 //! Colima itself is never touched (the Colima runner is the mock) and the
 //! fixture container is started again on every exit path.
 
+mod common;
+
 use std::sync::Arc;
 
 use dioxus::prelude::*;
@@ -54,6 +56,7 @@ async fn activity_it_restart_adds_a_berth_entry_and_engine_entries_within_2s() {
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let mut dom = VirtualDom::new(Harness);
     let _ = dom.rebuild_to_vec();
     let mut state = SLOT

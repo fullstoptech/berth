@@ -3,6 +3,8 @@
 //!   scripts/it.sh -p berth-engine compose_it
 //! (which sets BERTH_IT=1 and brings the fixtures up first).
 
+mod common;
+
 use berth_engine::colima::ColimaControl;
 use berth_engine::{CliCompose, ColimaCli, ComposeRunner, EngineError};
 use futures::StreamExt;
@@ -88,6 +90,7 @@ async fn compose_it_restart_stop_start_config_validate() {
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let (cli, target) = cli_and_target().await;
 
     // Restart yields Progress events and Done{code:0}.

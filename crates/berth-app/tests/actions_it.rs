@@ -12,6 +12,8 @@
 //! Colima itself is never touched (the Colima runner is the mock), and the
 //! four fixture containers are started again on every exit path.
 
+mod common;
+
 use std::sync::Arc;
 
 use dioxus::prelude::*;
@@ -141,6 +143,7 @@ async fn actions_it_stop_restart_three_and_project_cycle_on_berthfx() {
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let (dom, mut state) = harness();
     let search = berth_sys::SearchPath::from_process()
         .with_login_shell()

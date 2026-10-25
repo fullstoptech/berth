@@ -20,7 +20,14 @@ while [ $# -gt 0 ]; do
 done
 
 export BERTH_IT=1
-scripts/fx-up.sh
+# A previous run can leave a fixture briefly `unhealthy` (the streams test
+# pauses web, so a probe fails until the next one passes); `up --wait` aborts
+# on that, so retry a few times before giving up.
+for attempt in 1 2 3 4 5; do
+  if scripts/fx-up.sh; then break; fi
+  if [ "$attempt" = 5 ]; then echo "it.sh: fixtures did not come up" >&2; exit 1; fi
+  sleep 4
+done
 
 NEXTEST_ARGS=(run "${PKG_ARGS[@]}" --run-ignored all)
 if [ -n "$FILTER" ]; then

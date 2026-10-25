@@ -5,6 +5,8 @@
 //! docker CLI, expects the signal to show Exited within 2 s, and starts
 //! it again on every exit path (asserts run only after the restart).
 
+mod common;
+
 use std::sync::Arc;
 
 use dioxus::prelude::*;
@@ -92,6 +94,7 @@ async fn engines_it_web_turns_exited_in_the_signal_within_2s_of_docker_stop() {
         eprintln!("BERTH_IT not set, skipping");
         return;
     }
+    common::settle_fixture().await;
     let (dom, mut state) = harness();
     let search = berth_sys::SearchPath::from_process()
         .with_login_shell()
