@@ -20,17 +20,19 @@ use berth_core::{
 
 use crate::actions::{action_by_id, mod_label, ActionId};
 use crate::services::actions::{
-    disabled_reason, dismiss, ActionsService, ContainerTarget, StateView,
+    disabled_reason, dismiss, with_view, ActionsService, ContainerTarget, StateView,
 };
+use crate::services::confirm;
 use crate::state::{AppState, EngineScope, PendingKey, PendingState, Section, Selection};
+use crate::ui::bulk_bar::{applicable, bulk_counts};
 use crate::ui::container_row::{
     ContainerRow, ContainerRowData, Meter, PortLink, RowAction, RowButton,
 };
 use crate::ui::{
-    count_label, inspector_visible, scope_includes, Badge, BadgeKind, Banner, BannerTone, Button,
-    ButtonVariant, CellAlign, ControlSize, EmptyState, GroupHeaderRow, IconButton, InlineMessage,
-    InlineTone, MenuEntry, SearchField, Select, SelectOption, SkeletonRows, SortDirection,
-    TableHeaderCell, VirtualTable,
+    count_label, inspector_visible, scope_includes, Badge, BadgeKind, Banner, BannerTone,
+    BulkAction, BulkBar, Button, ButtonVariant, CellAlign, ControlSize, EmptyState, GroupHeaderRow,
+    IconButton, InlineMessage, InlineTone, MenuEntry, SearchField, Select, SelectOption,
+    SkeletonRows, SortDirection, TableHeaderCell, VirtualTable,
 };
 
 /// The screen's CSS. Rendered with the screen (`style` element) so the
@@ -802,6 +804,7 @@ fn row_buttons(c: &Container, view: &StateView<'_>) -> Vec<RowButton> {
     };
     let toggle_reason = disabled_reason(&subject, toggle_id, view);
     let restart_reason = disabled_reason(&subject, "container.restart", view);
+    let delete_reason = disabled_reason(&subject, "container.delete", view);
     vec![
         button(
             RowAction::StartStop,
@@ -840,8 +843,8 @@ fn row_buttons(c: &Container, view: &StateView<'_>) -> Vec<RowButton> {
             "trash-2",
             format!("Delete {}", c.name),
             tooltip_for("Delete", "container.delete"),
-            Some("Delete confirmation is not built yet".to_string()),
-            false,
+            delete_reason,
+            pending_action == Some("container.delete"),
         ),
         button(
             RowAction::More,
@@ -985,6 +988,11 @@ fn run_container_action(
     id: &ContainerId,
     action: &RowAction,
 ) {
+    if *action == RowAction::Delete {
+        // Delete always asks first (D33); the dialog runs it.
+        confirm::open_delete(state, std::slice::from_ref(id));
+        return;
+    }
     let Some(service) = actions else { return };
     let Some((target, container_state)) = target_of(state, id) else {
         return;
@@ -1262,6 +1270,46 @@ fn GroupRowHost(info: GroupInfo) -> Element {
     }
 }
 
+/// The bulk bar over the current selection (two or more rows): counts per
+/// action from the same `disabled_reason` the row buttons use; Delete asks
+/// first through the confirm dialog (D33).
+#[component]
+fn BulkBarHost(ids: Vec<ContainerId>) -> Element {
+    let mut state = use_context::<AppState>();
+    let actions = try_consume_context::<ActionsService>();
+    let counts = {
+        let containers = state.containers.read();
+        let engines = state.engines.read();
+        let projects = state.projects.read();
+        let pending = state.pending.read();
+        let view = state_view_from(&state, &engines, &containers, &projects, &pending);
+        bulk_counts(&ids, &view)
+    };
+    let selected = ids.len();
+    let run_ids = ids.clone();
+    rsx! {
+        BulkBar {
+            selected,
+            counts,
+            onaction: move |action: BulkAction| {
+                let targets = with_view(&state, |view| applicable(&run_ids, action, view));
+                let command = match action {
+                    BulkAction::Delete => {
+                        confirm::open_delete(&mut state, &targets);
+                        return;
+                    }
+                    BulkAction::Start => ContainerAction::Start,
+                    BulkAction::Stop => ContainerAction::Stop { timeout_s: None },
+                    BulkAction::Restart => ContainerAction::Restart { timeout_s: None },
+                    BulkAction::Pause => ContainerAction::Pause,
+                };
+                run_group_action(&mut state, actions.as_ref(), &targets, &command);
+            },
+            onclear: move |()| state.selection.set(Selection::None),
+        }
+    }
+}
+
 #[component]
 fn FilterChip(chip: Chip, onremove: EventHandler<()>) -> Element {
     let label = chip.label();
@@ -1405,10 +1453,15 @@ pub fn ContainersScreen() -> Element {
     };
     let show_uptime = !docked_inspector;
     let show_engine = matches!(scope, EngineScope::All);
+    let bulk_ids: Option<Vec<ContainerId>> = match &*state.selection.read() {
+        Selection::Containers(ids) if ids.len() >= 2 => Some(ids.clone()),
+        _ => None,
+    };
     let grid = format!(
-        "ct-grid{}{}",
+        "ct-grid{}{}{}",
         if show_uptime { " ct-has-uptime" } else { "" },
-        if show_engine { " ct-has-engine" } else { "" }
+        if show_engine { " ct-has-engine" } else { "" },
+        if bulk_ids.is_some() { " ct-bulk" } else { "" }
     );
     let filter_active = filters.is_active();
     let epoch = *view.filter_epoch.read();
@@ -1501,6 +1554,10 @@ pub fn ContainersScreen() -> Element {
                     menu.set(None);
                 }
             },
+            if let Some(ids) = bulk_ids.clone() {
+                BulkBarHost { ids }
+            }
+            if bulk_ids.is_none() {
             div { class: "ct-header",
                 h1 { class: "ct-title", "Containers" }
                 Badge { kind: BadgeKind::Count, text: "{shown_total}" }
@@ -1543,7 +1600,8 @@ pub fn ContainersScreen() -> Element {
                     }
                 }
             }
-            if !chip_list.is_empty() {
+            }
+            if bulk_ids.is_none() && !chip_list.is_empty() {
                 div { class: "ct-chips", role: "group", "aria-label": "Active filters",
                     for chip in chip_list {
                         FilterChip {

@@ -7,7 +7,8 @@ use crate::state::{Section, Selection};
 /// so on; a project has its own screen, not an inspector.
 pub fn inspector_visible(section: Section, selection: &Selection) -> bool {
     match (section, selection) {
-        (Section::Containers, Selection::Containers(ids)) => !ids.is_empty(),
+        // Two or more selected rows show the bulk bar instead (P2-T8).
+        (Section::Containers, Selection::Containers(ids)) => ids.len() == 1,
         (Section::Images, Selection::Image(_))
         | (Section::Volumes, Selection::Volume(_))
         | (Section::Networks, Selection::Network(_))

@@ -1,0 +1,75 @@
+/* BulkBar (P2-T8): the floating action bar over the Containers table.
+   Colours and sizes come only from tokens.css. */
+
+.bulk-bar-wrap {
+  flex: none;
+  padding: var(--space-8) var(--space-16) var(--space-8);
+}
+.bulk-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 44px;
+  padding: 0 var(--space-12);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+}
+.bulk-selected {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  font-weight: var(--text-body-weight);
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.bulk-divider {
+  width: 1px;
+  height: var(--space-16);
+  margin-right: var(--space-8);
+  background: var(--color-line);
+}
+.bulk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  height: var(--size-control-md);
+  padding: 0 var(--space-12);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bulk-btn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+.bulk-btn:active:not(:disabled) {
+  background: var(--color-surface-pressed);
+}
+.bulk-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+.bulk-btn:disabled {
+  color: var(--color-ink-disabled);
+  cursor: default;
+}
+.bulk-btn-icon {
+  display: inline-flex;
+}
+.bulk-btn-danger {
+  border-color: var(--color-ink);
+}
+.bulk-btn-danger .bulk-btn-icon {
+  color: var(--color-danger);
+}
+.bulk-btn-danger:disabled {
+  border-color: var(--color-line);
+}
+.bulk-clear {
+  color: var(--color-ink);
+}

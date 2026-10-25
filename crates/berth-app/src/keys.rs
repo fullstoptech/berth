@@ -257,12 +257,30 @@ pub fn dispatch(state: &mut AppState, action: ActionId) {
             bottom.open = true;
             bottom.tab = BottomTab::Logs;
         }
+        // ⌫ on the selected containers asks first (D33, P2-T8).
+        "container.delete" | "bulk.delete" => open_delete_for_selection(state),
         // J/K and Space act on the visible list (P2-T7).
         "global.select_next" | "global.select_prev" | "global.toggle_inspector" => {
             crate::screens::containers::dispatch(state, action);
         }
         _ => {}
     }
+}
+
+/// Open the delete dialog for the selected containers that can be
+/// deleted. Only on the Containers screen and never over another overlay.
+fn open_delete_for_selection(state: &mut AppState) {
+    if *state.section.peek() != Section::Containers || !state.overlays.peek().is_empty() {
+        return;
+    }
+    let ids = match &*state.selection.peek() {
+        Selection::Containers(ids) => ids.clone(),
+        _ => return,
+    };
+    let deletable = crate::services::actions::with_view(state, |view| {
+        crate::ui::bulk_bar::applicable(&ids, crate::ui::BulkAction::Delete, view)
+    });
+    crate::services::confirm::open_delete(state, &deletable);
 }
 
 /// The one root `onkeydown` handler: map, `preventDefault` when handled,

@@ -206,6 +206,54 @@ fn containers_selected_light(state: &mut AppState) {
     state.settings.write().theme = berth_store::Theme::Light;
 }
 
+/// The mock world on the Containers screen in the light theme with the
+/// frames' three problems, nothing selected yet.
+fn containers_light_world(state: &mut AppState) {
+    load_mock_world(state);
+    state.settings.write().theme = berth_store::Theme::Light;
+    state.section.set(Section::Containers);
+    let containers = state.containers.peek().clone();
+    state.problems.set(mock_problems(&containers));
+}
+
+/// Light; the frame's four rows ticked: the api, the restarting worker,
+/// redis and mailpit of shop-api (P2-T8).
+fn containers_bulk(state: &mut AppState) {
+    containers_light_world(state);
+    let ids: Vec<berth_core::ContainerId> = [
+        "shop-api-api-1",
+        "shop-api-worker-1",
+        "shop-api-redis-1",
+        "shop-api-mailpit-1",
+    ]
+    .iter()
+    .filter_map(|name| {
+        state
+            .containers
+            .peek()
+            .iter()
+            .find(|c| c.name == *name)
+            .map(|c| c.id.clone())
+    })
+    .collect();
+    state.selection.set(Selection::Containers(ids));
+}
+
+/// Light; nothing selected, the delete dialog open for the exited
+/// `shop-api-db-1` that keeps volume `shop-api_pgdata` (P2-T8).
+fn containers_confirm_delete(state: &mut AppState) {
+    containers_light_world(state);
+    let db = state
+        .containers
+        .peek()
+        .iter()
+        .find(|c| c.name == "shop-api-db-1")
+        .map(|c| c.id.clone());
+    if let Some(id) = db {
+        crate::services::confirm::open_delete(state, &[id]);
+    }
+}
+
 /// The default engine has not answered yet: nothing loaded, no version.
 fn containers_loading(state: &mut AppState) {
     load_mock_world(state);
@@ -274,6 +322,14 @@ const SCENES: &[Scene] = &[
         setup: containers_selected,
     },
     Scene {
+        frame: "Containers / bulk / 1440",
+        setup: containers_bulk,
+    },
+    Scene {
+        frame: "Containers / confirm delete / 1440",
+        setup: containers_confirm_delete,
+    },
+    Scene {
         frame: "Containers / loading / 1440",
         setup: containers_loading,
     },
@@ -327,7 +383,7 @@ mod tests {
         assert!(find("Projects / empty / 1440").is_some());
         assert!(find("Components / primitives").is_some());
         assert!(find("Containers / selected / 1440").is_some());
-        assert_eq!(scenes().len(), 12);
+        assert_eq!(scenes().len(), 14);
         assert!(find("No such frame").is_none());
     }
 

@@ -183,6 +183,8 @@ fn OverlayStack() -> Element {
                 },
                 if matches!(overlay, Overlay::Palette) {
                     crate::screens::palette::PaletteScreen {}
+                } else if let Overlay::Confirm(model) = overlay {
+                    crate::ui::ConfirmOverlay { key: "{model.title}", model: model.clone() }
                 } else {
                     div {
                         class: "overlay-card",

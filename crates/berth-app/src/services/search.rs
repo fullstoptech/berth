@@ -31,12 +31,12 @@ use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
 use berth_core::{
-    ColimaOp, ContainerAction, ContainerState, EffectKind, EffectLine, EffectSummary, EngineAction,
-    EngineKind, EngineState, ProjectStatus, Subject,
+    ColimaOp, ContainerAction, ContainerState, EngineKind, EngineState, ProjectStatus, Subject,
 };
 
 use crate::actions::{action_by_id, ActionId};
 use crate::services::actions::{ActionsService, ContainerTarget, ProjectOp, StateView};
+use crate::services::confirm;
 use crate::state::{
     AppState, ConfirmModel, EngineScope, Overlay, Section, Selection, Toast, ToastTone,
 };
@@ -1281,20 +1281,9 @@ fn colima_op_of(id: &str) -> Option<ColimaOp> {
     }
 }
 
-fn effect(verb: &str, noun_one: &str, noun_many: &str, lines: Vec<EffectLine>) -> EffectSummary {
-    EffectSummary {
-        verb: verb.to_string(),
-        noun_one: noun_one.to_string(),
-        noun_many: noun_many.to_string(),
-        count: 1,
-        bytes: None,
-        lines,
-        typed_name: None,
-    }
-}
-
 /// The confirm dialog model for an action that asks first. `None` when the
-/// subject is gone or the action never confirms.
+/// subject is gone or the action never confirms. The summaries come from
+/// `services::confirm`, the one place that builds them (D33).
 fn confirm_model(state: &AppState, action: ActionId, subject: &Subject) -> Option<ConfirmModel> {
     match (subject, action) {
         (Subject::Engine(id), "engine.stop" | "engine.restart") => {
@@ -1306,61 +1295,16 @@ fn confirm_model(state: &AppState, action: ActionId, subject: &Subject) -> Optio
                 .iter()
                 .filter(|c| c.engine == engine.id && c.state == ContainerState::Running)
                 .count();
-            let op = colima_op_of(action)?;
-            let verb = if action == "engine.stop" {
-                "Stop"
-            } else {
-                "Restart"
-            };
-            let lines = vec![EffectLine {
-                kind: EffectKind::Changes,
-                text: format!(
-                    "{} stop while the engine {}",
-                    plural(running, "running container", "running containers"),
-                    if action == "engine.stop" {
-                        "is stopped"
-                    } else {
-                        "restarts"
-                    }
-                ),
-            }];
-            Some(ConfirmModel {
-                title: format!("{verb} engine {}?", engine.name),
-                effect: effect(verb, "engine", "engines", lines),
-                action: EngineAction::Colima { profile, op },
-                checkbox: None,
-            })
+            Some(confirm::engine_model(
+                &engine.name,
+                profile,
+                colima_op_of(action)?,
+                running,
+            ))
         }
-        (Subject::Container(id), "container.kill" | "container.delete") => {
-            let container = state
-                .containers
-                .peek()
-                .iter()
-                .find(|c| c.id == *id)?
-                .clone();
-            let kill = action == "container.kill";
-            let verb = if kill { "Kill" } else { "Delete" };
-            let line = if kill {
-                EffectLine {
-                    kind: EffectKind::Changes,
-                    text: format!("{} stops at once without a clean shutdown", container.name),
-                }
-            } else {
-                EffectLine {
-                    kind: EffectKind::Goes,
-                    text: format!("{} and its writable layer are deleted", container.name),
-                }
-            };
-            Some(ConfirmModel {
-                title: format!("{verb} {}?", container.name),
-                effect: effect(verb, "container", "containers", vec![line]),
-                action: EngineAction::Container {
-                    engine: container.engine,
-                    id: container.id,
-                    action: container_action_of(action)?,
-                },
-                checkbox: None,
-            })
+        (Subject::Container(id), "container.kill") => confirm::kill_model(state, id),
+        (Subject::Container(id), "container.delete") => {
+            confirm::delete_model(state, std::slice::from_ref(id))
         }
         _ => None,
     }

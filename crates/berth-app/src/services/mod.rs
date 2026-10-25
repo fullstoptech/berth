@@ -5,6 +5,7 @@ pub mod actions;
 pub mod activity;
 pub mod colima;
 pub mod compose;
+pub mod confirm;
 pub mod engines;
 pub mod search;
 

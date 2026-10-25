@@ -379,6 +379,14 @@
 .ct-row.ct-selected .ct-actions {
   background: var(--color-selection);
 }
+/* With several rows selected the bulk bar acts; the ticked rows keep their
+   status text and show no buttons of their own (frame "Containers / bulk"). */
+.ct-bulk .ct-row.ct-selected:not(:hover):not(:focus-within) .ct-actions {
+  display: none;
+}
+.ct-bulk .ct-row.ct-selected:not(:hover):not(:focus-within) .ct-status-text {
+  visibility: visible;
+}
 .ct-actions .icon-btn {
   flex: none;
 }
