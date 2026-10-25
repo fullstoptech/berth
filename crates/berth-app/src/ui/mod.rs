@@ -5,50 +5,66 @@
 
 pub mod badge;
 pub mod banner;
+pub mod bottom_panel;
 pub mod button;
 pub mod checkbox;
 pub mod empty_state;
+pub mod engine_switcher;
 pub mod group_header_row;
 pub mod icon;
 pub mod icon_button;
 pub mod inline_message;
+pub mod inspector;
 pub mod kbd;
 pub mod menu;
+pub mod palette_trigger;
 pub mod search_field;
 pub mod segmented_control;
 pub mod select;
+pub mod sidebar;
+pub mod sidebar_item;
 pub mod skeleton_row;
 pub mod status_badge;
+pub mod status_bar;
 pub mod status_dot;
 pub mod switch;
 pub mod table_header_cell;
 pub mod tabs;
 pub mod text_field;
+pub mod title_bar;
 pub mod toast;
 pub mod tooltip;
 pub mod virtual_table;
 
 pub use badge::{Badge, BadgeKind};
 pub use banner::{Banner, BannerTone};
+pub use bottom_panel::{clamp_panel_height, BottomPanel};
 pub use button::{Button, ButtonVariant};
 pub use checkbox::{CheckState, Checkbox};
 pub use empty_state::EmptyState;
+pub use engine_switcher::{engine_dot, scope_includes, EngineSwitcher};
 pub use group_header_row::{count_label, GroupHeaderRow};
 pub use icon::{Icon, IconSize};
 pub use icon_button::{IconButton, IconButtonTone};
 pub use inline_message::{InlineMessage, InlineTone};
+pub use inspector::{inspector_visible, Inspector};
 pub use kbd::{Kbd, KbdShortcut, KbdSymbol};
 pub use menu::{Menu, MenuEntry};
+pub use palette_trigger::PaletteTrigger;
 pub use search_field::SearchField;
 pub use segmented_control::{SegmentedControl, SegmentedItem};
 pub use select::{Select, SelectOption};
+pub use sidebar::{sidebar_model, Sidebar, SidebarModel};
+pub use sidebar_item::{project_dot, Dot, DotShape, DotSpec, SidebarItem};
 pub use skeleton_row::{SkeletonRow, SkeletonRows};
 pub use status_badge::StatusBadge;
+pub use status_bar::{engine_summary, problems_label, ProblemsChip, StatusBar};
 pub use status_dot::StatusDot;
 pub use switch::Switch;
 pub use table_header_cell::{CellAlign, SortDirection, TableHeaderCell};
 pub use tabs::{TabItem, Tabs, TabsVariant};
 pub use text_field::TextField;
+pub use title_bar::TitleBar;
 pub use toast::{dismiss_toast, toast_timeout, ToastStack};
 pub use tooltip::Tooltip;
 pub use virtual_table::{visible_range, VirtualTable};
@@ -337,5 +353,7 @@ pub fn PrimitivesGallery() -> Element {
     }
 }
 
+#[cfg(test)]
+mod shell_tests;
 #[cfg(test)]
 mod tests;

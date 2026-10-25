@@ -1,11 +1,11 @@
-use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
 
 use crate::assets;
 use crate::platform;
 use crate::scenes;
 use crate::services::{activity, engines, Services};
-use crate::state::{theme_script, use_app_state, AppState, Section};
+use crate::state::{theme_script, use_app_state, AppState, Overlay};
+use crate::ui::{inspector_visible, BottomPanel, Inspector, Sidebar, StatusBar, TitleBar};
 
 struct Boot {
     services: Services,
@@ -75,6 +75,7 @@ pub fn App() -> Element {
     platform::use_traffic_lights();
     let mut state = use_app_state();
     use_context_provider(|| state);
+    platform::use_menu_events(state);
 
     // Services spawn once, before scene/theme forcing below (D23).
     let boot = use_hook(|| std::rc::Rc::new(boot_services(state)));
@@ -119,72 +120,105 @@ pub fn App() -> Element {
     }
 }
 
+/// What an overlay is called until its own screen exists (P2-T8, P2-T9,
+/// P4 and P5 each replace the placeholder body for their variants).
+fn overlay_title(overlay: &Overlay) -> &'static str {
+    match overlay {
+        Overlay::Palette => "Command palette",
+        Overlay::Confirm(_) => "Confirm",
+        Overlay::ReviewChanges(_) => "Review changes",
+        Overlay::Generate(_) => "Generate",
+        Overlay::Detected(_) => "Detected",
+        Overlay::OpenFolder => "Open folder",
+        Overlay::DropFolder(_) => "Add folders",
+        Overlay::NewProject => "New project",
+        Overlay::EditRecreate(_) => "Edit and recreate",
+        Overlay::Run(_) => "Run image",
+        Overlay::CleanUp(_) => "Clean up",
+        Overlay::CreateVolume => "Create volume",
+        Overlay::CreateNetwork => "Create network",
+        Overlay::EditResources(_) => "Edit resources",
+        Overlay::AddEngine => "Add engine",
+        Overlay::AddRegistry => "Add registry",
+        Overlay::BuildImage => "Build image",
+        Overlay::AddService(_) => "Add service",
+    }
+}
+
+/// The overlay stack (PLAN 6.11): every entry dims what is below it, and
+/// Esc (keys.rs `overlay.close`) or a click on the dimmed area closes the
+/// top one only.
 #[component]
-fn NavItem(icon: &'static str, label: &'static str, target: Section) -> Element {
-    let state = use_context::<AppState>();
-    let selected = *state.section.read() == target;
-    let class = if selected {
-        "nav-item selected"
-    } else {
-        "nav-item"
-    };
+fn OverlayStack() -> Element {
+    let mut state = use_context::<AppState>();
+    let overlays = state.overlays.read().clone();
+    let top = overlays.len().saturating_sub(1);
     rsx! {
-        div { class,
-            svg {
-                r#use { href: "/icons.svg#{icon}" }
+        for (index, overlay) in overlays.iter().enumerate() {
+            div {
+                key: "{index}",
+                class: "overlay-scrim",
+                style: "z-index: {50 + index};",
+                onclick: move |_| {
+                    if index == top {
+                        state.overlays.write().pop();
+                    }
+                },
+                div {
+                    class: "overlay-card",
+                    role: "dialog",
+                    "aria-modal": "true",
+                    "aria-label": overlay_title(overlay),
+                    onclick: move |e| e.stop_propagation(),
+                    h2 { "{overlay_title(overlay)}" }
+                    p { "This screen is not built yet. Press Esc to close." }
+                }
             }
-            span { "{label}" }
         }
     }
 }
 
-/// The shell skeleton (P0-T4): title bar, sidebar navigation, empty main.
-/// Screen content lands per frame from Phase 2 on.
+/// The shell (PLAN 7.1): title bar over [sidebar | main + inspector over
+/// the bottom panel], status bar under everything, overlays on top. The
+/// root is focusable so the one keydown handler (keys.rs) sees shortcuts
+/// whenever nothing narrower holds focus. Screen content lands per frame
+/// from Phase 2 on.
 #[component]
 pub fn Shell() -> Element {
     let state = use_context::<AppState>();
-    let problem_count = state.problems.read().len();
-    let problems_label = if problem_count == 0 {
-        "No problems".to_string()
-    } else {
-        format!("{problem_count} problems")
-    };
+    let show_inspector = inspector_visible(*state.section.read(), &state.selection.read());
     rsx! {
         div {
             class: "shell",
+            tabindex: "-1",
+            onmounted: move |e| {
+                spawn(async move {
+                    let _ = e.set_focus(true).await;
+                });
+            },
             onkeydown: move |e| {
                 let mut state = state;
                 crate::keys::handle_root_keydown(&mut state, &e);
             },
-            div {
-                class: "titlebar",
-                onmousedown: move |e| {
-                    if e.data.trigger_button() == Some(MouseButton::Primary) {
-                        dioxus::desktop::window().drag();
+            TitleBar {}
+            div { class: "shell-body",
+                Sidebar {}
+                div { class: "shell-center",
+                    div { class: "shell-work",
+                        main { class: "main",
+                            if *state.dev_gallery.read() {
+                                crate::ui::PrimitivesGallery {}
+                            }
+                        }
+                        if show_inspector {
+                            Inspector {}
+                        }
                     }
-                },
-                div { class: "titlebar-search", "Search or run a command…" }
-                div { class: "titlebar-problems", "{problems_label}" }
-            }
-            div { class: "body",
-                nav { class: "sidebar",
-                    NavItem { icon: "folder", label: "Projects", target: Section::Projects }
-                    NavItem { icon: "box", label: "Containers", target: Section::Containers }
-                    NavItem { icon: "logs", label: "Logs", target: Section::Logs }
-                    NavItem { icon: "layers", label: "Images", target: Section::Images }
-                    NavItem { icon: "hard-drive", label: "Volumes", target: Section::Volumes }
-                    NavItem { icon: "network", label: "Networks", target: Section::Networks }
-                    NavItem { icon: "file-text", label: "Templates", target: Section::Templates }
-                    NavItem { icon: "server", label: "Engines", target: Section::Engines }
-                    NavItem { icon: "cloud", label: "Registries", target: Section::Registries }
-                    NavItem { icon: "activity", label: "Activity", target: Section::Activity }
-                }
-                main { class: "main",
-                    if *state.dev_gallery.read() {
-                        crate::ui::PrimitivesGallery {}
-                    }
+                    BottomPanel {}
                 }
             }
+            StatusBar {}
+            OverlayStack {}
         }
     }
 }

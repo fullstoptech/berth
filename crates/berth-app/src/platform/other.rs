@@ -13,3 +13,6 @@ pub fn config() -> Config {
 }
 
 pub fn use_traffic_lights() {}
+
+/// No native menu bar off macOS yet (D3).
+pub fn use_menu_events(_state: crate::state::AppState) {}

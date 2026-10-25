@@ -5,6 +5,6 @@ mod macos;
 mod other;
 
 #[cfg(target_os = "macos")]
-pub use macos::{config, use_traffic_lights};
+pub use macos::{config, use_menu_events, use_traffic_lights};
 #[cfg(not(target_os = "macos"))]
-pub use other::{config, use_traffic_lights};
+pub use other::{config, use_menu_events, use_traffic_lights};

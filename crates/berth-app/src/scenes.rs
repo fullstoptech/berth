@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 
 use crate::app::Shell;
-use crate::state::{use_app_state, AppState, Section};
+use crate::state::{use_app_state, AppState, EngineScope, Section, Selection};
 
 pub struct Scene {
     pub frame: &'static str,
@@ -20,6 +20,105 @@ fn components_primitives(state: &mut AppState) {
     state.dev_gallery.set(true);
 }
 
+/// The bundled mock world as the live app holds it under `BERTH_MOCK=1`:
+/// every engine, container, project and resource list, scoped to the
+/// default Colima profile (D81).
+fn load_mock_world(state: &mut AppState) {
+    let world = berth_engine::MockWorld::bundled();
+    state.engines.set(world.engines.clone());
+    state
+        .engine_scope
+        .set(EngineScope::One(berth_core::EngineId(
+            "colima:default".to_string(),
+        )));
+    state.containers.set(world.containers.clone());
+    state.projects.set(world.projects.clone());
+    state
+        .images
+        .set(world.images_by_engine.values().flatten().cloned().collect());
+    state.volumes.set(
+        world
+            .volumes_by_engine
+            .values()
+            .flatten()
+            .cloned()
+            .collect(),
+    );
+    state.networks.set(
+        world
+            .networks_by_engine
+            .values()
+            .flatten()
+            .cloned()
+            .collect(),
+    );
+}
+
+/// The three problems the frame's title bar and status bar count.
+fn mock_problems(containers: &[berth_core::Container]) -> Vec<berth_core::Problem> {
+    use berth_core::{Problem, ProblemId, ProblemKind, Severity, Subject};
+    let id_of = |name: &str| {
+        containers.iter().find(|c| c.name == name).map_or_else(
+            || berth_core::ContainerId(name.to_string()),
+            |c| c.id.clone(),
+        )
+    };
+    let first_seen = chrono::DateTime::from_timestamp(1_792_000_000, 0).unwrap_or_default();
+    let rows = [
+        (
+            ProblemKind::DependencyFailed {
+                service: "db".to_string(),
+            },
+            Severity::Error,
+            id_of("shop-api-worker-1"),
+            "worker keeps restarting",
+        ),
+        (
+            ProblemKind::PortAllocated { port: 5432 },
+            Severity::Error,
+            id_of("shop-api-db-1"),
+            "Port 5432 is already in use",
+        ),
+        (
+            ProblemKind::Unhealthy,
+            Severity::Warning,
+            id_of("analytics-ingest-1"),
+            "analytics-ingest-1 is unhealthy",
+        ),
+    ];
+    rows.into_iter()
+        .map(|(kind, severity, container, title)| {
+            let subject = Subject::Container(container);
+            Problem {
+                id: ProblemId::new(&kind, &subject),
+                kind,
+                severity,
+                subject,
+                title: title.to_string(),
+                explanation: String::new(),
+                evidence: Vec::new(),
+                fixes: Vec::new(),
+                first_seen,
+            }
+        })
+        .collect()
+}
+
+/// Dark; the restarting worker selected; chrome only (table P2-T7,
+/// inspector body P3-T3).
+fn containers_selected(state: &mut AppState) {
+    load_mock_world(state);
+    state.settings.write().theme = berth_store::Theme::Dark;
+    state.section.set(Section::Containers);
+    let containers = state.containers.peek().clone();
+    if let Some(worker) = containers.iter().find(|c| c.name == "shop-api-worker-1") {
+        state
+            .selection
+            .set(Selection::Containers(vec![worker.id.clone()]));
+    }
+    state.problems.set(mock_problems(&containers));
+}
+
 const SCENES: &[Scene] = &[
     Scene {
         frame: "Projects / empty / 1440",
@@ -28,6 +127,10 @@ const SCENES: &[Scene] = &[
     Scene {
         frame: "Components / primitives",
         setup: components_primitives,
+    },
+    Scene {
+        frame: "Containers / selected / 1440",
+        setup: containers_selected,
     },
 ];
 
@@ -73,7 +176,8 @@ mod tests {
     fn scenes_registry_contains_projects_empty() {
         assert!(find("Projects / empty / 1440").is_some());
         assert!(find("Components / primitives").is_some());
-        assert_eq!(scenes().len(), 2);
+        assert!(find("Containers / selected / 1440").is_some());
+        assert_eq!(scenes().len(), 3);
         assert!(find("No such frame").is_none());
     }
 
