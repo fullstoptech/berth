@@ -849,17 +849,18 @@ impl EngineClient for BollardEngine {
     ) -> Result<Vec<berth_core::FileEntry>, EngineError> {
         // Listing through the archive API (D51's fallback): works with no
         // shell and on stopped containers; volumes go through the helper.
-        let chunks: Vec<bytes::Bytes> = self
-            .download(target, path, Cancel::new())
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()?;
-        let mut tar_bytes = Vec::new();
-        for chunk in &chunks {
-            tar_bytes.extend_from_slice(chunk);
-        }
-        entries_from_tar(&tar_bytes)
+        // The tar streams through a parser that keeps headers only.
+        let shown = crate::files::normalize(path);
+        // The archive's root is named after the path the engine sees: a
+        // volume's `/` is the helper's mount point.
+        let in_path = match target {
+            berth_core::FileTarget::Container(_) => shown.clone(),
+            berth_core::FileTarget::Volume(_) => helper_path(path),
+        };
+        // Dropping this future cancels the download.
+        let cancel = Cancel::new();
+        let _stop = cancel.clone().drop_guard();
+        crate::files::list_from_stream(self.download(target, path, cancel), in_path, shown).await
     }
 
     fn download(
@@ -1296,66 +1297,6 @@ fn split_image_ref(reference: &str) -> (String, Option<String>) {
     }
 }
 
-/// Immediate children of the archived path, from a `download` tar.
-/// Docker's archive root entry is the basename of the requested path;
-/// entries below it are recursive, so deeper entries are dropped.
-fn entries_from_tar(tar_bytes: &[u8]) -> Result<Vec<berth_core::FileEntry>, EngineError> {
-    let mut archive = tar::Archive::new(std::io::Cursor::new(tar_bytes));
-    let entries = archive.entries().map_err(|e| EngineError::Parse {
-        what: "archive listing".to_string(),
-        message: e.to_string(),
-    })?;
-    let mut out = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| EngineError::Parse {
-            what: "archive listing".to_string(),
-            message: e.to_string(),
-        })?;
-        let path = entry.path().map_err(|e| EngineError::Parse {
-            what: "archive listing".to_string(),
-            message: e.to_string(),
-        })?;
-        let raw = path.to_string_lossy().trim_end_matches('/').to_string();
-        let parts: Vec<&str> = raw.split('/').filter(|p| !p.is_empty()).collect();
-        // Depth 1 is the archived root itself; depth 2 is a child.
-        // A single-file archive has only the depth-1 entry: list it.
-        let (name, is_root) = match parts.len() {
-            1 => (parts[0].to_string(), true),
-            2 => (parts[1].to_string(), false),
-            _ => continue,
-        };
-        let header = entry.header();
-        let kind = match header.entry_type() {
-            tar::EntryType::Directory => berth_core::FileKind::Dir,
-            tar::EntryType::Symlink | tar::EntryType::Link => berth_core::FileKind::Link,
-            tar::EntryType::Regular => berth_core::FileKind::File,
-            _ => berth_core::FileKind::Other,
-        };
-        out.push((
-            is_root,
-            berth_core::FileEntry {
-                name,
-                kind,
-                size: (kind == berth_core::FileKind::File)
-                    .then(|| bytesize::ByteSize(header.size().unwrap_or(0))),
-                modified: header.mtime().ok().and_then(|t| {
-                    chrono::DateTime::from_timestamp(i64::try_from(t).unwrap_or(0), 0)
-                }),
-            },
-        ));
-    }
-    // The root entry itself is never listed for a directory (an empty
-    // directory's archive holds only the root); a lone root file is.
-    let has_child = out.iter().any(|(is_root, _)| !is_root);
-    let mut out: Vec<berth_core::FileEntry> = out
-        .into_iter()
-        .filter(|(is_root, e)| !is_root || (!has_child && e.kind != berth_core::FileKind::Dir))
-        .map(|(_, e)| e)
-        .collect();
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(out)
-}
-
 fn channel_stream<T: Send + 'static>(
     rx: tokio::sync::mpsc::Receiver<T>,
 ) -> futures::stream::BoxStream<'static, T> {
@@ -1672,33 +1613,6 @@ mod tests {
             split_image_ref("alpine@sha256:abc"),
             ("alpine@sha256:abc".to_string(), None)
         );
-    }
-
-    #[test]
-    fn entries_from_tar_lists_immediate_children_only() {
-        let mut builder = tar::Builder::new(Vec::new());
-        let mut dir = tar::Header::new_gnu();
-        dir.set_entry_type(tar::EntryType::Directory);
-        dir.set_size(0);
-        builder
-            .append_data(&mut dir, "etc", std::io::empty())
-            .expect("tar dir");
-        let mut file = tar::Header::new_gnu();
-        file.set_size(5);
-        builder
-            .append_data(&mut file, "etc/os-release", &b"hello"[..])
-            .expect("tar file");
-        let mut nested = tar::Header::new_gnu();
-        nested.set_size(1);
-        builder
-            .append_data(&mut nested, "etc/nginx/nginx.conf", &b"x"[..])
-            .expect("tar nested");
-        let bytes = builder.into_inner().expect("tar bytes");
-        let entries = entries_from_tar(&bytes).expect("entries");
-        assert_eq!(entries.len(), 1, "{entries:?}");
-        assert_eq!(entries[0].name, "os-release");
-        assert_eq!(entries[0].kind, berth_core::FileKind::File);
-        assert_eq!(entries[0].size.map(|s| s.0), Some(5));
     }
 
     #[tokio::test]

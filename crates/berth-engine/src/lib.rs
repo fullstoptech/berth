@@ -4,6 +4,7 @@ pub mod colima;
 pub mod colima_parse;
 pub mod compose;
 pub mod discovery;
+mod files;
 pub mod git;
 pub mod mappers;
 pub mod mock;

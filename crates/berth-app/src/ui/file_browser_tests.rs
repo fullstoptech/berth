@@ -13,9 +13,8 @@ use tokio_util::sync::CancellationToken;
 use super::{item_count, modified_text_in, size_text, thousands, FileBrowser, Listing};
 use crate::services::confirm;
 use crate::services::files::{
-    self, breadcrumbs, build_upload_tar, extract_file, join_path, list_dir, list_from_tar,
-    normalize_dir, parent_dir, read_file, write_file, FileSource, FilesBackend, FilesError,
-    MemoryFiles,
+    self, breadcrumbs, build_upload_tar, extract_file, join_path, list_dir, normalize_dir,
+    parent_dir, read_file, write_file, FileSource, FilesBackend, FilesError, MemoryFiles,
 };
 use crate::state::use_app_state;
 use crate::ui::files_panel::{start_dir, FilesPanel};
@@ -298,67 +297,6 @@ fn file_browser_start_dir_is_the_first_mounted_folder() {
 }
 
 // ---------------------------------------------------------------------
-// Listing a tar
-// ---------------------------------------------------------------------
-
-#[test]
-fn file_browser_list_from_tar_keeps_the_children_and_skips_deeper_entries() {
-    let tar = tar_of(&[
-        ("html/", None),
-        ("html/index.html", Some(b"<h1>hi</h1>")),
-        ("html/sub/", None),
-        ("html/sub/deep.txt", Some(b"x")),
-        ("html/Zed.txt", Some(b"")),
-    ]);
-    let listed =
-        list_from_tar(std::io::Cursor::new(tar), "/usr/share/nginx/html").expect("a listing");
-    // Folders first, then names without regard to case.
-    assert_eq!(names(&listed), ["sub", "index.html", "Zed.txt"]);
-    assert_eq!(listed[0].kind, FileKind::Dir);
-    assert_eq!(listed[0].size, None);
-    assert_eq!(listed[1].size, Some(bytesize::ByteSize::b(11)));
-    assert_eq!(
-        listed[1].modified,
-        Utc.timestamp_opt(1_700_000_000, 0).single()
-    );
-}
-
-#[test]
-fn file_browser_list_from_tar_of_the_root_lists_the_top_level() {
-    // Docker names everything with a leading slash when the path is `/`.
-    let tar = tar_of(&[
-        ("/", None),
-        ("/.dockerenv", Some(b"")),
-        ("/bin/", None),
-        ("/bin/ls", Some(b"elf")),
-        ("/etc/", None),
-        ("/etc/hosts", Some(b"127.0.0.1")),
-    ]);
-    let listed = list_from_tar(std::io::Cursor::new(tar), "/").expect("a listing");
-    assert_eq!(names(&listed), ["bin", "etc", ".dockerenv"]);
-}
-
-#[test]
-fn file_browser_list_from_tar_of_an_empty_folder_is_empty() {
-    let tar = tar_of(&[("data/", None)]);
-    let listed = list_from_tar(std::io::Cursor::new(tar), "/data").expect("a listing");
-    assert!(listed.is_empty());
-}
-
-#[test]
-fn file_browser_list_from_tar_of_a_file_is_not_a_folder() {
-    let tar = tar_of(&[("hosts", Some(b"127.0.0.1"))]);
-    let err = list_from_tar(std::io::Cursor::new(tar), "/etc/hosts").unwrap_err();
-    assert_eq!(err, FilesError::NotADirectory("/etc/hosts".to_string()));
-}
-
-#[test]
-fn file_browser_list_from_tar_of_garbage_is_a_read_error() {
-    let err = list_from_tar(std::io::Cursor::new(vec![7_u8; 700]), "/x").unwrap_err();
-    assert!(matches!(err, FilesError::Engine(_)), "{err:?}");
-}
-
-// ---------------------------------------------------------------------
 // Download: the file out of the tar
 // ---------------------------------------------------------------------
 
@@ -546,6 +484,15 @@ async fn file_browser_service_lists_the_root() {
         .await
         .expect("a listing");
     assert_eq!(names(&listed), ["etc", "usr"]);
+}
+
+#[tokio::test]
+async fn file_browser_service_a_file_path_is_not_a_folder() {
+    let source: Arc<dyn FileSource> = nginx();
+    let err = list_dir(source, "/etc/hosts".to_string(), CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert_eq!(err, FilesError::NotADirectory("/etc/hosts".to_string()));
 }
 
 #[tokio::test]

@@ -3,18 +3,13 @@
 //! shell and works on stopped containers (P1-T6 accepted it in place of
 //! D51's `stat` helper).
 //!
-//! The pure half is tar in, tar out and path arithmetic: [`list_from_tar`]
-//! (headers only, data skipped), [`extract_file`] (one file from a
-//! download), [`build_upload_tar`] (one file for an upload), and the path
-//! helpers the breadcrumbs use. The I/O half is [`FileSource`], one
-//! container's archive stream and upload, with [`EngineFiles`] over an
-//! `EngineClient`; the UI never calls an engine, it calls [`list_dir`],
+//! The pure half is tar in, tar out and path arithmetic: [`extract_file`]
+//! (one file from a download), [`build_upload_tar`] (one file for an
+//! upload), and the path helpers the breadcrumbs use. The I/O half is
+//! [`FileSource`], one container's listing, archive stream and upload, with
+//! [`EngineFiles`] over an `EngineClient` (`list_files` streams tar headers
+//! only); the UI never calls an engine, it calls [`list_dir`],
 //! [`read_file`] and [`write_file`], which run on the I/O runtime.
-//!
-//! Why not `EngineClient::list_files`: it buffers the whole archive in
-//! memory (a folder is archived recursively) and misreads a listing of `/`
-//! (the root entry and its children both lose their depth). Listing here
-//! reads the same `download` stream but keeps only the headers.
 
 use std::io::Read;
 use std::sync::Arc;
@@ -179,68 +174,6 @@ fn parse_error(err: &std::io::Error) -> FilesError {
     FilesError::Engine(format!("Could not read the archive: {err}"))
 }
 
-/// The entries directly inside `dir`, from the tar the archive API returns
-/// for it. `dir` is normalized first. Docker names the archived folder
-/// itself by its basename (`html/`) and its content below it (`html/a`);
-/// for `/` there is no basename, so content starts at depth one (`/bin/`,
-/// `/bin/ls`). Deeper entries are skipped without reading their data, so
-/// the archive never sits in memory.
-///
-/// # Errors
-/// The archive is damaged, or `dir` turns out to be a file or a link.
-pub fn list_from_tar(reader: impl Read, dir: &str) -> Result<Vec<FileEntry>, FilesError> {
-    let dir = normalize_dir(dir);
-    let is_root = dir == "/";
-    let base = dir.rsplit('/').next().unwrap_or("").to_string();
-    let mut archive = tar::Archive::new(reader);
-    let entries = archive.entries().map_err(|e| parse_error(&e))?;
-    let mut out: Vec<FileEntry> = Vec::new();
-    let mut root_kind: Option<FileKind> = None;
-    for entry in entries {
-        let entry = entry.map_err(|e| parse_error(&e))?;
-        let path = entry.path().map_err(|e| parse_error(&e))?;
-        let raw = path.to_string_lossy().into_owned();
-        let parts: Vec<&str> = raw
-            .split('/')
-            .filter(|p| !p.is_empty() && *p != ".")
-            .collect();
-        let header = entry.header();
-        let kind = kind_of(header.entry_type());
-        let name = if is_root {
-            match parts.as_slice() {
-                [name] => (*name).to_string(),
-                _ => continue,
-            }
-        } else {
-            match parts.as_slice() {
-                [only] if *only == base => {
-                    root_kind = Some(kind);
-                    continue;
-                }
-                [first, name] if *first == base => (*name).to_string(),
-                _ => continue,
-            }
-        };
-        out.push(FileEntry {
-            name,
-            kind,
-            size: (kind == FileKind::File)
-                .then(|| bytesize::ByteSize::b(header.size().unwrap_or(0))),
-            modified: header
-                .mtime()
-                .ok()
-                .and_then(|t| DateTime::from_timestamp(i64::try_from(t).unwrap_or(0), 0)),
-        });
-    }
-    if let Some(kind) = root_kind {
-        if kind != FileKind::Dir {
-            return Err(FilesError::NotADirectory(dir));
-        }
-    }
-    sort_entries(&mut out);
-    Ok(out)
-}
-
 /// The content of the file called `name` in a download tar (the archive of
 /// a file holds one entry named by its basename).
 ///
@@ -316,6 +249,8 @@ pub fn build_upload_tar(
 /// One container's files as the archive API offers them.
 #[async_trait::async_trait]
 pub trait FileSource: Send + Sync {
+    /// The entries directly inside `dir`.
+    async fn list(&self, dir: &str) -> Result<Vec<FileEntry>, FilesError>;
     /// The tar stream for `path`.
     fn download(&self, path: &str, cancel: CancellationToken) -> Bs<Bytes>;
     /// Unpack `tar` into the folder `dir`, replacing files of the same name.
@@ -340,6 +275,10 @@ impl EngineFiles {
 
 #[async_trait::async_trait]
 impl FileSource for EngineFiles {
+    async fn list(&self, dir: &str) -> Result<Vec<FileEntry>, FilesError> {
+        Ok(self.client.list_files(&self.target, dir).await?)
+    }
+
     fn download(&self, path: &str, cancel: CancellationToken) -> Bs<Bytes> {
         self.client.download(&self.target, path, cancel)
     }
@@ -366,36 +305,7 @@ async fn on_io<T: Send + 'static>(
     rx.await.ok()
 }
 
-/// A blocking `Read` over a channel of chunks, for the tar parser, which
-/// reads synchronously. Ends when the sender is gone.
-struct ChannelReader {
-    rx: tokio::sync::mpsc::Receiver<Result<Bytes, FilesError>>,
-    chunk: Bytes,
-    failed: Option<FilesError>,
-}
-
-impl Read for ChannelReader {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        while self.chunk.is_empty() {
-            match self.rx.blocking_recv() {
-                Some(Ok(chunk)) => self.chunk = chunk,
-                Some(Err(err)) => {
-                    let message = err.to_string();
-                    self.failed = Some(err);
-                    return Err(std::io::Error::other(message));
-                }
-                None => return Ok(0),
-            }
-        }
-        let n = buf.len().min(self.chunk.len());
-        buf[..n].copy_from_slice(&self.chunk[..n]);
-        bytes::Buf::advance(&mut self.chunk, n);
-        Ok(n)
-    }
-}
-
-/// The entries inside `dir`, sorted folders first. The archive is read as
-/// it streams and never held whole. Cancel stops the read.
+/// The entries inside `dir`, sorted folders first. Cancel stops the read.
 ///
 /// # Errors
 /// The engine's message, a missing folder, or a path that is not a folder.
@@ -406,37 +316,14 @@ pub async fn list_dir(
 ) -> Result<Vec<FileEntry>, FilesError> {
     let dir = normalize_dir(&dir);
     on_io(async move {
-        let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, FilesError>>(8);
-        let mut stream = source.download(&dir, cancel.clone());
-        let pump = tokio::spawn(async move {
-            while let Some(item) = stream.next().await {
-                let item = item.map_err(FilesError::from);
-                let failed = item.is_err();
-                if tx.send(item).await.is_err() || failed {
-                    return;
-                }
-            }
-        });
-        let parse_dir = dir.clone();
-        let parsed = tokio::task::spawn_blocking(move || {
-            let mut reader = ChannelReader {
-                rx,
-                chunk: Bytes::new(),
-                failed: None,
-            };
-            let result = list_from_tar(&mut reader, &parse_dir);
-            // A failed stream surfaces as the engine's own message.
-            match (result, reader.failed.take()) {
-                (_, Some(err)) => Err(err),
-                (result, None) => result,
-            }
-        })
-        .await;
-        pump.abort();
-        if cancel.is_cancelled() {
-            return Err(FilesError::Cancelled);
-        }
-        parsed.unwrap_or_else(|e| Err(FilesError::Engine(e.to_string())))
+        let listed = tokio::select! {
+            biased;
+            () = cancel.cancelled() => return Err(FilesError::Cancelled),
+            listed = source.list(&dir) => listed,
+        };
+        let mut entries = listed?;
+        sort_entries(&mut entries);
+        Ok(entries)
     })
     .await
     .unwrap_or(Err(FilesError::Cancelled))
@@ -704,6 +591,41 @@ impl Default for MemoryFiles {
 
 #[async_trait::async_trait]
 impl FileSource for MemoryFiles {
+    async fn list(&self, dir: &str) -> Result<Vec<FileEntry>, FilesError> {
+        if let Some(message) = &self.failure {
+            return Err(FilesError::Engine(message.clone()));
+        }
+        let dir = normalize_dir(dir);
+        let nodes = self
+            .nodes
+            .lock()
+            .map_err(|_| FilesError::Engine("files are locked".to_string()))?;
+        if dir != "/" {
+            match nodes.get(&dir) {
+                None => {
+                    return Err(FilesError::NotFound(format!(
+                        "Could not find the file {dir} in container"
+                    )))
+                }
+                Some(node) if node.kind != FileKind::Dir => {
+                    return Err(FilesError::NotADirectory(dir));
+                }
+                Some(_) => {}
+            }
+        }
+        Ok(nodes
+            .iter()
+            .filter(|(path, _)| parent_dir(path) == dir && path.as_str() != "/")
+            .map(|(path, node)| FileEntry {
+                name: path.rsplit('/').next().unwrap_or("").to_string(),
+                kind: node.kind,
+                size: (node.kind == FileKind::File)
+                    .then(|| bytesize::ByteSize::b(node.contents.len() as u64)),
+                modified: DateTime::from_timestamp(node.modified, 0),
+            })
+            .collect())
+    }
+
     fn download(&self, path: &str, _cancel: CancellationToken) -> Bs<Bytes> {
         // Chunks of seven bytes, so a header is always split across reads.
         let items: Vec<Result<Bytes, EngineError>> = match self.archive(path) {
