@@ -665,7 +665,7 @@ fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
             let buttons = 160.0 * scale + 56.0;
             let (need, what) = match tracks.len() {
                 9 => (buttons, "the buttons"),
-                6 => (120.0, "Services"),
+                6 => (96.0, "Services"),
                 _ => (120.0, "Path and Services"),
             };
             assert!(
@@ -732,14 +732,41 @@ fn projects_no_path_tier_hides_path_and_gives_services_its_share() {
     assert_eq!(tracks.len(), 6, "{tracks:?}");
     assert_eq!(tracks[1], "minmax(0, 216fr)", "Services");
     assert_eq!(tracks[2], "0px", "Ports");
-    for i in [0, 3, 4, 5] {
+    for i in [3, 4, 5] {
         assert!(css::has_scale(&tracks[i]), "track {i} `{}`", tracks[i]);
     }
+    assert!(tracks[0].ends_with(", 116fr)"), "Name `{}`", tracks[0]);
     // The tier is narrower than the Ports tier it builds on.
     assert!(
         PROJECTS_CSS.find("max-width: 49.5em").expect("tier")
             > PROJECTS_CSS.find("max-width: 61.5em").expect("ports tier")
     );
+}
+
+#[test]
+fn projects_no_path_tier_keeps_names_14_characters_wide_and_nothing_clips() {
+    let tracks = css::tracks(&css::declaration(no_path_block(), "--projects-cols"));
+    for scale in [1.3, 1.5] {
+        // The Name track asks for 14 characters (a digit is 0.6 em, em is
+        // the 13 px body size times the scale) plus the folder icon, the gap
+        // after it and the cell's right padding.
+        let name = css::min_px(&tracks[0], scale);
+        let want = 14.0 * 0.6 * 13.0 * scale + 16.0 * scale + 8.0 + 8.0;
+        assert!(
+            (name - want).abs() < 0.5,
+            "Name asks for {name} px at {scale}, wants {want}"
+        );
+        // Services gives up room for it but never pushes the table wider
+        // than the window, and CPU, Memory and the buttons keep their size.
+        let room = MAIN_1024 - 32.0 - 16.0 - css::min_sum(&tracks, scale);
+        assert!(room >= 96.0, "{room} px left for Services at {scale}");
+        for (i, base) in [(3, 48.0), (4, 56.0)] {
+            assert_eq!(css::min_px(&tracks[i], scale), base * scale, "track {i}");
+        }
+        assert!(css::min_px(&tracks[5], scale) >= 160.0 * scale + 56.0);
+    }
+    // The minimum grows with the text, it is not a fixed px width.
+    assert!(css::min_px(&tracks[0], 1.5) > css::min_px(&tracks[0], 1.3) + 20.0);
 }
 
 #[test]

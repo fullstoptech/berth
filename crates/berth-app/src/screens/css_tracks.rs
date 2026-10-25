@@ -70,8 +70,39 @@ fn px(token: &str) -> f32 {
         .unwrap_or_else(|_| panic!("a px value, got `{token}`"))
 }
 
+/// The px a `+`-joined calc body comes to at `scale`. A term is `<n>px`,
+/// `<n>px * var(--text-scale, 1)`, `<n>ch` (a digit is 0.6 em wide, em being
+/// the 13 px body size times the scale), `var(--size-icon-md)` (16 px times the
+/// scale) or `var(--space-<n>)` (n px).
+fn term_sum(body: &str, scale: f32) -> f32 {
+    body.split(" + ")
+        .map(|term| {
+            let term = term.trim();
+            if let Some((base, _)) = term.split_once(" * ") {
+                px(base) * scale
+            } else if let Some(n) = term.strip_suffix("ch") {
+                n.parse::<f32>()
+                    .unwrap_or_else(|_| panic!("a ch value, got `{term}`"))
+                    * 0.6
+                    * 13.0
+                    * scale
+            } else if term == "var(--size-icon-md)" {
+                16.0 * scale
+            } else if let Some(n) = term
+                .strip_prefix("var(--space-")
+                .and_then(|t| t.strip_suffix(')'))
+            {
+                px(n)
+            } else {
+                px(term)
+            }
+        })
+        .sum()
+}
+
 /// The least width in px a track asks for at `scale`: `116px`,
-/// `calc(116px * var(--text-scale, 1))`, `calc(160px * var(--text-scale, 1) + 56px)`
+/// `calc(116px * var(--text-scale, 1))`, `calc(160px * var(--text-scale, 1) + 56px)`,
+/// `calc(14ch + var(--size-icon-md) + var(--space-16))`
 /// and `minmax(<min>, <max>)` (its min). A bare `fr` track asks for nothing.
 pub fn min_px(track: &str, scale: f32) -> f32 {
     if let Some(inner) = track.strip_prefix("minmax(") {
@@ -97,11 +128,7 @@ pub fn min_px(track: &str, scale: f32) -> f32 {
     }
     if let Some(inner) = track.strip_prefix("calc(") {
         let inner = inner.strip_suffix(')').unwrap_or(inner);
-        let (scaled, fixed) = inner.split_once(" + ").unwrap_or((inner, "0px"));
-        let (base, _) = scaled
-            .split_once(" * ")
-            .unwrap_or_else(|| panic!("a scaled term in `{track}`"));
-        return px(base) * scale + px(fixed);
+        return term_sum(inner, scale);
     }
     px(track)
 }

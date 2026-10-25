@@ -311,10 +311,16 @@
    neither side is a pixel away from flipping. Path's cells are removed from
    the grid, so the tracks lose its slot and Services takes its share (104fr
    joins 112fr). The full path stays on the Name cell's tooltip. A wide
-   window never gets here: 1440 px at 150 % is 62.6 em. */
+   window never gets here: 1440 px at 150 % is 62.6 em.
+
+   Name keeps at least 14 characters (14ch of the body font, so it grows with
+   the text) plus the folder icon, the gap after it (space-8) and the cell's
+   right padding (space-8), so a project name is not cut to "payment...".
+   Services has no minimum and takes what is left: at 1024 px and 130 % that
+   is 179 / 178 px for Name / Services, at 150 % 204 / 100 px. */
 @container projects (max-width: 49.5em) {
   .projects-table {
-    --projects-cols: minmax(calc(96px * var(--text-scale, 1)), 116fr) minmax(0, 216fr) 0px calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 56px);
+    --projects-cols: minmax(calc(14ch + var(--size-icon-md) + var(--space-16)), 116fr) minmax(0, 216fr) 0px calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 56px);
   }
   .projects-head > :nth-child(2),
   .project-cell-path {
