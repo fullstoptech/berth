@@ -538,6 +538,7 @@ fn recipe_for(
             pm,
             framework,
             version,
+            ..
         } => {
             let v = o
                 .node_version

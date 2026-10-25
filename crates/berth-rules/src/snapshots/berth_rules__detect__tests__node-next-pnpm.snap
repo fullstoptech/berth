@@ -16,6 +16,7 @@ stack:
   - Node:
       pm: pnpm
       framework: Next.js
+      framework_version: "15"
       version: "22"
 services_needed:
   - kind: Postgres

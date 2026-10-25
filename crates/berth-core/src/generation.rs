@@ -110,6 +110,8 @@ pub enum StackGuess {
     Node {
         pm: String,
         framework: Option<String>,
+        /// Major version of the detected framework's package: `15` from `next` `^15.0.3` (AD33).
+        framework_version: Option<String>,
         version: Option<String>,
     },
     Python {

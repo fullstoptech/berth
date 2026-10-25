@@ -8,6 +8,7 @@ stack:
   - Node:
       pm: npm
       framework: Vite
+      framework_version: "5"
       version: ~
 services_needed: []
 confidence: High

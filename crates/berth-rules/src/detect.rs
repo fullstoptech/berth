@@ -482,6 +482,28 @@ fn json_sections(text: &str, sections: &[&str]) -> (Vec<String>, Option<serde_no
     }
 }
 
+/// The version spec of `package` in `dependencies` or `devDependencies`, as written.
+fn package_spec(doc: &serde_norway::Value, package: &str) -> Option<String> {
+    ["dependencies", "devDependencies"]
+        .iter()
+        .find_map(|section| {
+            doc.get(*section)
+                .and_then(|s| s.get(package))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+}
+
+/// The major version in a package.json spec: `15` from `15.0.3`, `^15.0.3`, `~15.1`, `>=15 <17` or
+/// `v15.x`. Specs that name no number (`latest`, `*`, `workspace:*`) give `None`.
+fn major_of_spec(spec: &str) -> Option<String> {
+    let rest = spec
+        .trim()
+        .trim_start_matches(['^', '~', '>', '<', '=', 'v', ' ']);
+    let major: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    (!major.is_empty()).then_some(major)
+}
+
 fn node(files: &Files<'_>) -> Found<StackGuess> {
     let Some(text) = files.read("package.json")? else {
         return Ok(None);
@@ -513,16 +535,19 @@ fn node(files: &Files<'_>) -> Found<StackGuess> {
         .or(from_field)
         .unwrap_or_else(|| "npm".to_string());
 
-    let framework = if has("next") {
-        Some("Next.js")
+    let framework_package = if has("next") {
+        Some(("Next.js", "next"))
     } else if has("vite") {
-        Some("Vite")
+        Some(("Vite", "vite"))
     } else if has("express") {
-        Some("Express")
+        Some(("Express", "express"))
     } else {
         None
-    }
-    .map(str::to_string);
+    };
+    let framework = framework_package.map(|(name, _)| name.to_string());
+    let framework_version = framework_package
+        .and_then(|(_, package)| doc.as_ref().and_then(|d| package_spec(d, package)))
+        .and_then(|spec| major_of_spec(&spec));
 
     let version = files
         .read(".nvmrc")?
@@ -534,6 +559,7 @@ fn node(files: &Files<'_>) -> Found<StackGuess> {
         StackGuess::Node {
             pm,
             framework,
+            framework_version,
             version,
         },
         certain,
@@ -999,6 +1025,7 @@ mod tests {
             [StackGuess::Node {
                 pm: "yarn".into(),
                 framework: Some("Vite".into()),
+                framework_version: Some("5".into()),
                 version: Some("20.11.0".into())
             }]
         );
@@ -1014,6 +1041,34 @@ mod tests {
         let d = detect(bare.path()).expect("detect");
         assert!(matches!(&d.stack[0], StackGuess::Node { pm, .. } if pm == "npm"));
         assert_eq!(d.confidence, Confidence::Medium);
+    }
+
+    #[test]
+    fn detect_node_framework_version_is_the_major_of_the_spec() {
+        let version_of = |deps: &str| {
+            let dir = tempfile::tempdir().expect("tempdir");
+            write(
+                dir.path(),
+                "package.json",
+                &format!("{{\"dependencies\": {{{deps}}}}}"),
+            );
+            let d = detect(dir.path()).expect("detect");
+            match &d.stack[0] {
+                StackGuess::Node {
+                    framework_version, ..
+                } => framework_version.clone(),
+                other => panic!("not a node stack: {other:?}"),
+            }
+        };
+        assert_eq!(version_of("\"next\": \"15.0.3\""), Some("15".into()));
+        assert_eq!(version_of("\"next\": \"^14.2.1\""), Some("14".into()));
+        assert_eq!(version_of("\"next\": \"~13\""), Some("13".into()));
+        assert_eq!(version_of("\"next\": \">=15 <17\""), Some("15".into()));
+        // No number in the spec: no version, never a guess.
+        assert_eq!(version_of("\"next\": \"latest\""), None);
+        assert_eq!(version_of("\"next\": \"workspace:*\""), None);
+        // No framework: no framework version either, even if other packages have versions.
+        assert_eq!(version_of("\"left-pad\": \"1.3.0\""), None);
     }
 
     #[test]
