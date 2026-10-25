@@ -77,6 +77,8 @@ pub struct RowModel {
     pub seq: u64,
     /// `HH:MM:SS.mmm`, UTC.
     pub ts: String,
+    /// The full timestamp, so the UI can show local time and put UTC in a tooltip.
+    pub ts_utc: Option<DateTime<Utc>>,
     /// The name given to [`LogView::new`], else the first 12 characters of the container id.
     pub container: String,
     pub series: u8,
@@ -316,6 +318,7 @@ impl LogView {
         RowModel {
             seq: entry.seq,
             ts: entry.line.ts.format("%H:%M:%S%.3f").to_string(),
+            ts_utc: Some(entry.line.ts),
             container: self.container_name(&entry.line.container),
             series: entry.series,
             stream: entry.line.stream,
@@ -517,6 +520,21 @@ mod tests {
         assert_eq!(texts(&view), vec!["DEBUG d", "TRACE e"]);
         view.set_filter(only(&[]));
         assert_eq!(view.len(), 7);
+    }
+
+    #[test]
+    fn rows_carry_the_full_utc_timestamp_beside_the_utc_text() {
+        let mut view = LogView::new(10, BTreeMap::new());
+        let ts = Utc
+            .with_ymd_and_hms(2026, 10, 25, 23, 59, 58)
+            .single()
+            .expect("ts");
+        let mut l = line("a", Stream::Stdout, "hello");
+        l.ts = ts;
+        view.push_batch(vec![l]);
+        let row = &view.rows(0..1)[0];
+        assert_eq!(row.ts, "23:59:58.000");
+        assert_eq!(row.ts_utc, Some(ts));
     }
 
     #[test]

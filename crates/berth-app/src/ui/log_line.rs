@@ -5,6 +5,7 @@
 
 use berth_core::Stream;
 use berth_logs::{Fold, JsonSummary, Level, RowModel};
+use chrono::{Local, SecondsFormat, TimeZone};
 use dioxus::prelude::*;
 
 use super::icon::{Icon, IconSize};
@@ -95,6 +96,22 @@ fn level_word(level: Level) -> &'static str {
         Level::Info => "info",
         Level::Debug => "debug",
         Level::Trace => "trace",
+    }
+}
+
+/// The time cell of a row in `tz`, `HH:MM:SS.mmm`, and the exact UTC instant for its tooltip
+/// (ISO 8601 with Z). A row without a full timestamp shows its UTC text and has no tooltip.
+#[must_use]
+pub fn time_cell<Tz: TimeZone>(row: &RowModel, tz: &Tz) -> (String, Option<String>)
+where
+    Tz::Offset: std::fmt::Display,
+{
+    match row.ts_utc {
+        Some(ts) => (
+            ts.with_timezone(tz).format("%H:%M:%S%.3f").to_string(),
+            Some(ts.to_rfc3339_opts(SecondsFormat::Millis, true)),
+        ),
+        None => (row.ts.clone(), None),
     }
 }
 
@@ -225,7 +242,12 @@ pub fn LogLine(
             },
             span { class: "log-gutter", "aria-hidden": "true" }
             if opts.time {
-                span { class: "log-ts", "{row.ts}" }
+                {
+                    let (shown, utc) = time_cell(&row, &Local);
+                    rsx! {
+                        span { class: "log-ts", title: utc, "{shown}" }
+                    }
+                }
             }
             if opts.container {
                 span {
@@ -290,12 +312,15 @@ pub fn LogLine(
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
+
     use super::*;
 
     fn row(text: &str) -> RowModel {
         RowModel {
             seq: 1,
             ts: "14:02:12.031".to_string(),
+            ts_utc: None,
             container: "shop-api-worker-1".to_string(),
             series: 2,
             stream: Stream::Stdout,
@@ -306,6 +331,33 @@ mod tests {
             fold: Fold::None,
             matches: Vec::new(),
         }
+    }
+
+    #[test]
+    fn logs_line_time_cell_shows_local_time_and_puts_utc_in_the_tooltip() {
+        use chrono::FixedOffset;
+        let mut r = row("hello");
+        r.ts_utc = Some(
+            Utc.with_ymd_and_hms(2026, 10, 25, 23, 30, 5)
+                .single()
+                .expect("ts")
+                + chrono::Duration::milliseconds(31),
+        );
+        let plus_two = FixedOffset::east_opt(2 * 3600).expect("offset");
+        let (shown, tip) = time_cell(&r, &plus_two);
+        assert_eq!(shown, "01:30:05.031");
+        assert_eq!(tip.as_deref(), Some("2026-10-25T23:30:05.031Z"));
+        let minus_five_thirty = FixedOffset::west_opt(5 * 3600 + 1800).expect("offset");
+        assert_eq!(time_cell(&r, &minus_five_thirty).0, "18:00:05.031");
+        assert_eq!(time_cell(&r, &Utc).0, "23:30:05.031");
+    }
+
+    #[test]
+    fn logs_line_time_cell_without_a_full_timestamp_falls_back_to_the_utc_text() {
+        use chrono::FixedOffset;
+        let r = row("hello");
+        let plus_two = FixedOffset::east_opt(2 * 3600).expect("offset");
+        assert_eq!(time_cell(&r, &plus_two), ("14:02:12.031".to_string(), None));
     }
 
     #[test]
