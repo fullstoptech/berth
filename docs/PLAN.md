@@ -515,6 +515,7 @@ pub struct Image {
     pub id: String, pub repo_tags: Vec<String>, pub digests: Vec<String>, pub size: ByteSize,
     pub created: DateTime<Utc>, pub arch: Arch, pub os: String,
     pub used_by: Vec<ContainerId>, pub dangling: bool,
+    pub engine: EngineId, // D27 (2026-10-25): filled by the mapper, as for Container
 }
 pub struct ImageLayer { pub created_by: String, pub size: ByteSize, pub created: Option<DateTime<Utc>> }
 pub struct ImageDetail { pub image: Image, pub layers: Vec<ImageLayer>, pub env_keys: Vec<String>, pub exposed_ports: Vec<u16> }
@@ -524,11 +525,13 @@ pub struct Volume {
     pub name: String, pub driver: String, pub size: Option<ByteSize>, pub mountpoint: String,
     pub used_by: Vec<ContainerId>, pub project: Option<ProjectId>, pub created: Option<DateTime<Utc>>,
     pub labels: std::collections::BTreeMap<String, String>,
+    pub engine: EngineId, // D27
 }
 pub struct VolumeSpec { pub name: String, pub driver: String, pub driver_opts: std::collections::BTreeMap<String, String>, pub labels: std::collections::BTreeMap<String, String> }
 pub struct Network {
     pub id: String, pub name: String, pub driver: String, pub subnet: Option<String>, pub gateway: Option<String>,
     pub internal: bool, pub containers: Vec<ContainerId>, pub project: Option<ProjectId>, pub built_in: bool,
+    pub engine: EngineId, // D27
 }
 pub struct NetworkSpec { pub name: String, pub driver: String, pub subnet: Option<String>, pub gateway: Option<String>, pub internal: bool, pub attach: Vec<ContainerId>, pub labels: std::collections::BTreeMap<String, String> } // labels: D25b (2026-10-25)
 pub enum FileTarget { Container(ContainerId), Volume(String) }
