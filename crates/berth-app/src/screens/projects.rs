@@ -15,7 +15,10 @@ use crate::ui::{
     IconSize, SearchField, SegmentedControl, SegmentedItem, SkeletonRows, TableHeaderCell,
 };
 
-const PROJECTS_CSS: &str = include_str!("../../assets/css/projects.css");
+const PROJECTS_CSS: &str = concat!(
+    include_str!("../../assets/css/projects.css"),
+    include_str!("../../assets/css/projects_tiers.css")
+);
 
 /// The skeleton shows only after this long, so a fast engine never
 /// flashes it (brief 7.3 "loading: skeleton rows after 300 ms").

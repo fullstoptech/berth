@@ -39,7 +39,10 @@ use crate::ui::{
 
 /// The screen's CSS. Rendered with the screen (`style` element) so the
 /// screen owns its styling; colours come only from `tokens.css`.
-pub const CONTAINERS_CSS: &str = include_str!("../../assets/css/containers.css");
+pub const CONTAINERS_CSS: &str = concat!(
+    include_str!("../../assets/css/containers.css"),
+    include_str!("../../assets/css/containers_tiers.css")
+);
 
 // ---------------------------------------------------------------------
 // View state

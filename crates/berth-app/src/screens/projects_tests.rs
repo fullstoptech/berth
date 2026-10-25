@@ -518,27 +518,23 @@ fn projects_attention_orders_errors_first_newest_first_and_names_the_subject() {
 use super::super::css_tracks as css;
 use crate::text_scale::STEPS;
 
-/// The body of the container block that drops Engine and Branch.
-fn narrow_block() -> &'static str {
-    css::block(PROJECTS_CSS, "@container projects (max-width: 92.3em) {")
-}
+use super::super::table_tiers::{projects_lists, projects_tier_at, projects_tracks_at, View};
 
-/// The body of the container block that also drops Ports.
-fn narrowest_block() -> &'static str {
-    css::block(PROJECTS_CSS, "@container projects (max-width: 61.5em) {")
+/// The track list of tier `n` (0 the full list, 1 without Engine and
+/// Branch, 2 also without Ports, 3 also without Path).
+fn tier_tracks(n: usize) -> Vec<String> {
+    css::tracks(&projects_lists()[n])
 }
 
 #[test]
 fn projects_table_hides_engine_and_branch_below_1200() {
-    let block = narrow_block();
-    // The header's third and fourth cells and the row's two cells.
-    assert!(
-        block.contains(
-            ".projects-head > :nth-child(3),\n  .projects-head > :nth-child(4),\n  .project-cell-engine,\n  .project-cell-branch,"
-        ),
-        "{block}"
-    );
-    assert!(block.contains("display: none;"), "{block}");
+    // The header's third and fourth cells and the row's two cells, hidden
+    // by the generated tier (here at 130 %).
+    let hidden = ":root[data-text-scale=\"1.3\"] .projects-head > :nth-child(3),\n    \
+                  :root[data-text-scale=\"1.3\"] .projects-head > :nth-child(4),\n    \
+                  :root[data-text-scale=\"1.3\"] .project-cell-engine,\n    \
+                  :root[data-text-scale=\"1.3\"] .project-cell-branch,";
+    assert!(PROJECTS_CSS.contains(hidden), "{PROJECTS_CSS}");
     // The nth-child rule is only right while those two are the third and
     // fourth header cells, and the row cells carry the classes hidden above.
     let html = scene("Projects / default / 1440");
@@ -562,7 +558,7 @@ fn projects_table_columns_at_1024_leave_room_for_the_buttons() {
     // pad 8 px each side. The last track must keep the labelled buttons
     // (Restart 65 + Start project 95 + two 24 px icons + 3 gaps of 4 = 216;
     // the gaps are 8 px from 1200 px wide).
-    let tracks = css::tracks(&css::declaration(narrow_block(), "--projects-cols"));
+    let tracks = tier_tracks(1);
     assert_eq!(tracks.len(), 7, "{tracks:?}");
     // Name, Ports, CPU, Memory and the buttons grow with the text size;
     // Path and Services share what is left.
@@ -604,7 +600,7 @@ fn projects_table_wide_tracks_grow_with_the_text() {
 
 #[test]
 fn projects_table_ports_track_closes_in_the_narrowest_tier() {
-    let tracks = css::tracks(&css::declaration(narrowest_block(), "--projects-cols"));
+    let tracks = tier_tracks(2);
     assert_eq!(tracks.len(), 7, "{tracks:?}");
     assert_eq!(tracks[3], "0px", "the Ports track");
     for i in [0, 4, 5, 6] {
@@ -614,17 +610,6 @@ fn projects_table_ports_track_closes_in_the_narrowest_tier() {
             tracks[i]
         );
     }
-}
-
-/// The body of the container block that also drops Path.
-fn no_path_block() -> &'static str {
-    css::block(PROJECTS_CSS, "@container projects (max-width: 49.5em) {")
-}
-
-/// The container-query width in em for a screen `width` px wide at `scale`:
-/// ems resolve against the 13 px body size times the scale.
-fn em_at(width: f32, scale: f32) -> f32 {
-    width / (13.0 * scale)
 }
 
 /// Main-area widths of the two windows the tests sweep.
@@ -640,34 +625,30 @@ fn actions_vars(width: f32) -> [(&'static str, f32); 1] {
     )]
 }
 
+/// The viewport a main-area width stands for: the 1024 window is under 1200.
+fn view_of(width: f32) -> View {
+    if width <= MAIN_1024 {
+        View::Narrow
+    } else {
+        View::Wide
+    }
+}
+
 /// Whether the Path column is hidden: the width falls in the last tier.
 fn path_hidden_at(width: f32, scale: f32) -> bool {
-    em_at(width, scale) <= 49.5
+    projects_tier_at(view_of(width), width, scale) >= 3
 }
 
 /// The column list in force for a screen `width` px wide at `scale`.
-fn projects_tracks_at(width: f32, scale: f32) -> Vec<String> {
-    let em = em_at(width, scale);
-    let list = if em <= 49.5 {
-        css::declaration(no_path_block(), "--projects-cols")
-    } else if em <= 61.5 {
-        css::declaration(narrowest_block(), "--projects-cols")
-    } else if em <= 92.3 {
-        css::declaration(narrow_block(), "--projects-cols")
-    } else {
-        css::declaration(
-            css::block(PROJECTS_CSS, ".projects-screen {"),
-            "--projects-cols",
-        )
-    };
-    css::tracks(&list)
+fn projects_tracks(width: f32, scale: f32) -> Vec<String> {
+    projects_tracks_at(view_of(width), width, scale)
 }
 
 #[test]
 fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
     for width in [MAIN_1024, MAIN_1440] {
         for scale in STEPS {
-            let tracks = projects_tracks_at(width, scale);
+            let tracks = projects_tracks(width, scale);
             // The table sits on the page gutter: 16 px under 1200 px wide,
             // 20 px from there up; the rows pad 8 px each side.
             let gutters = if width == MAIN_1024 { 32.0 } else { 40.0 };
@@ -677,10 +658,11 @@ fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
             // the `1fr` in the wide one; Path and Services (or Services
             // alone, once Path is gone) keep some room.
             let buttons = 160.0 * scale + vars[0].1;
-            let (need, what) = match tracks.len() {
-                9 => (buttons, "the buttons"),
-                6 => (96.0, "Services"),
-                _ => (120.0, "Path and Services"),
+            let (need, what) = match projects_tier_at(view_of(width), width, scale) {
+                0 => (buttons, "the buttons"),
+                1 => (216.0, "Path and Services"),
+                2 => (250.0, "Path and Services"),
+                _ => (96.0, "Services"),
             };
             assert!(
                 room >= need,
@@ -712,7 +694,7 @@ fn projects_path_column_is_hidden_at_1024_from_130_percent_up_only() {
         (MAIN_1440, 1.0, 9),
     ] {
         assert_eq!(
-            projects_tracks_at(width, scale).len(),
+            projects_tracks(width, scale).len(),
             tracks,
             "{width} x {scale}"
         );
@@ -721,13 +703,11 @@ fn projects_path_column_is_hidden_at_1024_from_130_percent_up_only() {
 
 #[test]
 fn projects_no_path_tier_hides_path_and_gives_services_its_share() {
-    let block = no_path_block();
-    // The header's second cell and the row's Path cell.
-    assert!(
-        block.contains(".projects-head > :nth-child(2),\n  .project-cell-path {"),
-        "{block}"
-    );
-    assert!(block.contains("display: none;"), "{block}");
+    // The header's second cell and the row's Path cell, hidden by the
+    // generated tier (here at 130 %).
+    let hidden = ":root[data-text-scale=\"1.3\"] .projects-head > :nth-child(2),\n    \
+                  :root[data-text-scale=\"1.3\"] .project-cell-path {\n      display: none;";
+    assert!(PROJECTS_CSS.contains(hidden), "{PROJECTS_CSS}");
     // Child 2 is Path while the markup keeps that order; the row's cell
     // carries the class hidden above.
     let html = scene("Projects / default / 1440");
@@ -742,7 +722,7 @@ fn projects_no_path_tier_hides_path_and_gives_services_its_share() {
     // Services keep the 116:216 split of what is left (Services is Path's
     // 104 plus its own 112), Ports stays closed, the numeric tracks and the
     // buttons keep their size.
-    let tracks = css::tracks(&css::declaration(block, "--projects-cols"));
+    let tracks = tier_tracks(3);
     assert_eq!(tracks.len(), 6, "{tracks:?}");
     assert_eq!(tracks[1], "minmax(0, 216fr)", "Services");
     assert_eq!(tracks[2], "0px", "Ports");
@@ -750,16 +730,11 @@ fn projects_no_path_tier_hides_path_and_gives_services_its_share() {
         assert!(css::has_scale(&tracks[i]), "track {i} `{}`", tracks[i]);
     }
     assert!(tracks[0].ends_with(", 116fr)"), "Name `{}`", tracks[0]);
-    // The tier is narrower than the Ports tier it builds on.
-    assert!(
-        PROJECTS_CSS.find("max-width: 49.5em").expect("tier")
-            > PROJECTS_CSS.find("max-width: 61.5em").expect("ports tier")
-    );
 }
 
 #[test]
 fn projects_no_path_tier_keeps_names_14_characters_wide_and_nothing_clips() {
-    let tracks = css::tracks(&css::declaration(no_path_block(), "--projects-cols"));
+    let tracks = tier_tracks(3);
     for scale in [1.3, 1.5] {
         // The Name track asks for 14 characters (a digit is 0.6 em, em is
         // the 13 px body size times the scale) plus the folder icon, the gap

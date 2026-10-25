@@ -13,3 +13,5 @@ pub mod logs_scene;
 pub mod palette;
 pub mod projects;
 pub mod recent_activity;
+#[cfg(test)]
+pub(crate) mod table_tiers;

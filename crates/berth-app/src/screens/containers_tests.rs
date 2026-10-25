@@ -233,6 +233,7 @@ fn containers_scene_selected_1024_drops_uptime_and_engine_below_1200() {
 }
 
 use super::super::css_tracks as css;
+use super::super::table_tiers::{containers_state_at, Col, View};
 use crate::text_scale::STEPS;
 
 /// The body of the table's block for the viewports under 1200 px.
@@ -307,7 +308,8 @@ fn containers_every_column_list_scales_its_data_tracks() {
 }
 
 /// The list in force for a table `width` px wide at `scale`, for a
-/// viewport under (`narrow`) or over 1200 px with the given column classes.
+/// viewport under (`narrow`) or over 1200 px with the given column classes,
+/// from the generated tiers: whether Image is hidden and the tracks.
 fn containers_tracks_at(
     width: f32,
     scale: f32,
@@ -315,38 +317,9 @@ fn containers_tracks_at(
     uptime: bool,
     engine: bool,
 ) -> (bool, Vec<String>) {
-    let em = width / (13.0 * scale);
-    let (selector, limit) = if narrow {
-        ("narrow", 61.5)
-    } else if uptime {
-        ("uptime", 68.5)
-    } else if engine {
-        ("engine", 63.5)
-    } else {
-        ("plain", 57.0)
-    };
-    let body = match selector {
-        "narrow" => narrow_viewport_block(),
-        "uptime" if engine => {
-            css::block(CONTAINERS_CSS, "\n.ct-table.ct-has-uptime.ct-has-engine {")
-        }
-        "uptime" => css::block(CONTAINERS_CSS, "\n.ct-table.ct-has-uptime {"),
-        "engine" => css::block(CONTAINERS_CSS, "\n.ct-table.ct-has-engine {"),
-        _ => css::block(CONTAINERS_CSS, "\n.ct-table {"),
-    };
-    let no_image = em <= limit;
-    // Engine goes too below 55.5 em when there is no Uptime: the plain list.
-    let body = if selector == "engine" && em <= 55.5 {
-        css::block(CONTAINERS_CSS, "\n.ct-table {")
-    } else {
-        body
-    };
-    let name = if no_image {
-        "--ct-cols-noimage"
-    } else {
-        "--ct-cols"
-    };
-    (no_image, css::tracks(&css::declaration(body, name)))
+    let view = if narrow { View::Narrow } else { View::Wide };
+    let state = containers_state_at(view, uptime, engine, width, scale);
+    (state.hidden.contains(&Col::Image), state.tracks)
 }
 
 #[test]
@@ -443,54 +416,34 @@ fn assert_table_fits(width: f32, narrow: bool, uptime: bool, engine: bool) {
 }
 
 #[test]
-fn containers_wide_column_lists_fit_just_above_every_container_query_threshold() {
-    // The sweep above checks two window sizes; a threshold has to hold at any
-    // width of a 100 % text size. A table `limit` em wide (and a hair more)
-    // still has the list of the tier above it, and that list must fit. From
-    // 1200 px wide the page gutter is 20 px, so the lists need 8 px more than
-    // they did with 16.
-    for (limit, uptime, engine) in [
-        (57.0, false, false),
-        (63.5, false, true),
-        (55.5, false, true),
-        (68.5, true, false),
-        (68.5, true, true),
-    ] {
-        let width = (limit + 0.01) * 13.0;
-        let (_, tracks) = containers_tracks_at(width, 1.0, false, uptime, engine);
-        let used = css::min_sum(&tracks, 1.0) + 12.0 * (tracks.len() as f32 - 1.0) + 40.0;
-        assert!(
-            used <= width + 0.5,
-            "{limit} em (uptime {uptime}, engine {engine}): {width} px, needs {used} ({tracks:?})"
-        );
-    }
-}
-
-#[test]
-fn containers_tables_keep_image_at_100_percent_and_drop_it_at_150() {
-    // The frames at 100 % show Image everywhere; a bigger text size drops it.
-    for (width, narrow, uptime, engine) in [
-        (1024.0 - 220.0, true, false, false),
-        (1440.0 - 220.0 - 360.0, false, false, false),
-        (1440.0 - 220.0 - 360.0, false, false, true),
-        (1440.0 - 220.0, false, true, false),
-        (1440.0 - 220.0, false, true, true),
+fn containers_tables_keep_image_at_100_percent_and_drop_it_where_it_no_longer_fits() {
+    // The frames at 100 % show Image everywhere. A bigger text size drops it
+    // from the tables that no longer have the room: the 1024 and the docked
+    // inspector's, not the full-width 1220 px one.
+    for (width, narrow, uptime, engine, drops_at_150) in [
+        (1024.0 - 220.0, true, false, false, true),
+        (1440.0 - 220.0 - 360.0, false, false, false, true),
+        (1440.0 - 220.0 - 360.0, false, false, true, true),
+        (1440.0 - 220.0, false, true, false, false),
+        (1440.0 - 220.0, false, true, true, false),
     ] {
         let (dropped, _) = containers_tracks_at(width, 1.0, narrow, uptime, engine);
         assert!(!dropped, "{width} px at 100 % keeps Image");
         let (dropped, _) = containers_tracks_at(width, 1.5, narrow, uptime, engine);
-        assert!(dropped, "{width} px at 150 % drops Image");
+        assert_eq!(dropped, drops_at_150, "{width} px at 150 %");
     }
-    // The thresholds the sweeps above assume are the stylesheet's own.
-    for em in ["61.5", "57", "63.5", "55.5", "68.5"] {
+    // The generated tiers are in the stylesheet, for every text size.
+    for scale in STEPS {
         assert!(
-            CONTAINERS_CSS.contains(&format!("@container containers (max-width: {em}em)")),
-            "a {em} em block"
+            CONTAINERS_CSS.contains(&format!(":root[data-text-scale=\"{scale}\"]")) || scale == 1.0,
+            "tiers for {scale}"
         );
     }
+    assert!(!CONTAINERS_CSS.contains("em) {"), "no em thresholds left");
     // Cells and header cell both go with the track.
     assert!(CONTAINERS_CSS.contains(".ct-table .ct-image-head {\n      display: none;"));
     assert!(CONTAINERS_CSS.contains(".ct-table .ct-image,"));
+    assert!(CONTAINERS_CSS.contains(".ct-table.ct-has-uptime.ct-has-engine .ct-image-head"));
     let html = markup("Containers / selected / 1440");
     assert!(
         html.contains("class=\"ct-image-head\""),

@@ -61,14 +61,17 @@ pub fn row_height_px(density: Density, scale: f32) -> u32 {
     scaled_px(base, scale)
 }
 
-/// The JS that sets (or clears, at the default) `--text-scale` on `<html>`.
+/// The JS that sets (or clears, at the default) `--text-scale` on `<html>`
+/// and always sets `data-text-scale` to the step, which the generated table
+/// tiers (`screens/table_tiers.rs`) key their exact px thresholds on.
 pub fn script(scale: f32) -> String {
     let scale = snap(scale);
-    if scale == DEFAULT {
+    let property = if scale == DEFAULT {
         "document.documentElement.style.removeProperty('--text-scale');".to_string()
     } else {
         format!("document.documentElement.style.setProperty('--text-scale', '{scale}');")
-    }
+    };
+    format!("{property} document.documentElement.dataset.textScale = '{scale}';")
 }
 
 /// `BERTH_TEXT_SCALE` for development shots, like `BERTH_THEME`.
@@ -156,6 +159,10 @@ mod tests {
         assert!(script(1.0).contains("removeProperty('--text-scale')"));
         // Unknown values never reach the page.
         assert!(script(7.0).contains("'1.5'"));
+        // The attribute the table tiers key on carries the step, default included.
+        assert!(big.contains("dataset.textScale = '1.3'"), "{big}");
+        assert!(script(1.0).contains("dataset.textScale = '1'"));
+        assert!(script(0.85).contains("dataset.textScale = '0.85'"));
     }
 
     const TOKENS_CSS: &str = include_str!("../assets/css/tokens.css");
