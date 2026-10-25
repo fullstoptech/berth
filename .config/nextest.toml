@@ -6,3 +6,20 @@ live-engine = { max-threads = 1 }
 [[profile.default.overrides]]
 filter = 'binary(/_it$/) | binary(engine_read) | binary(mutate) | binary(streams)'
 test-group = 'live-engine'
+
+# Timing tests (D26) are named `perf_*` and marked #[ignore]. The default
+# suite counts work instead of timing it, so check.sh never runs them;
+# scripts/perf.sh runs only them, in --release, one at a time so they do not
+# compete for cores.
+[profile.default]
+default-filter = 'not test(/(^|::)perf_/)'
+
+[profile.perf]
+default-filter = 'test(/(^|::)perf_/)'
+
+[test-groups.perf]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = 'test(/(^|::)perf_/)'
+test-group = 'perf'

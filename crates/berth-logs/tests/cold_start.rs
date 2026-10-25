@@ -1,6 +1,6 @@
 //! The first `push_batch` on a fresh `LogView` costs a little more than a later one (lazy regexes,
 //! first-touch memory). The app builds its view and pushes a throwaway batch in the service task,
-//! off the UI path. Run with `--release --no-capture cold_start` to see the times.
+//! off the UI path. Wall-clock, so `scripts/perf.sh` runs them (D26).
 
 #![allow(clippy::expect_used)]
 
@@ -62,7 +62,8 @@ fn run(label: &str, warm: bool) -> (Duration, Vec<Duration>) {
 }
 
 #[test]
-fn cold_start_first_batch_cost() {
+#[ignore = "timing; run by scripts/perf.sh"]
+fn perf_cold_start_first_batch_cost() {
     let (first, _) = run("cold", false);
     // Generous: a debug build is 10x slower than release; this only guards against a pathological
     // up-front cost (the 47 ms once seen).
@@ -70,7 +71,8 @@ fn cold_start_first_batch_cost() {
 }
 
 #[test]
-fn cold_start_first_batch_cost_after_warm_up() {
+#[ignore = "timing; run by scripts/perf.sh"]
+fn perf_cold_start_first_batch_cost_after_warm_up() {
     let (first, _) = run("warm", true);
     assert!(first < Duration::from_millis(200), "{first:?}");
 }

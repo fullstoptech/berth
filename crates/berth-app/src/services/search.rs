@@ -772,6 +772,10 @@ struct Matching {
     matcher: Matcher,
     buf: Vec<char>,
     indices: Vec<u32>,
+    /// How many haystacks were scored; tests count work with it instead of
+    /// timing it (D26).
+    #[cfg(test)]
+    scored: usize,
 }
 
 impl Matching {
@@ -782,10 +786,16 @@ impl Matching {
             matcher: Matcher::new(config),
             buf: Vec::new(),
             indices: Vec::new(),
+            #[cfg(test)]
+            scored: 0,
         }
     }
 
     fn fuzzy(&mut self, atom: &Atom, haystack: &str) -> Option<u32> {
+        #[cfg(test)]
+        {
+            self.scored += 1;
+        }
         let score = atom
             .atom
             .score(Utf32Str::new(haystack, &mut self.buf), &mut self.matcher)?;
