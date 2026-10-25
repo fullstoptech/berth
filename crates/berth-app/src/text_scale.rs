@@ -184,6 +184,7 @@ mod tests {
         }
         for name in [
             "--size-row",
+            "--size-row-lg",
             "--size-control-sm",
             "--size-control-md",
             "--size-control-lg",

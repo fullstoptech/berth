@@ -185,7 +185,7 @@ tokens["space"] = {str(n): dim(f"{n}px") for n in (0, 2, 4, 6, 8, 12, 16, 20, 24
 tokens["radius"] = {k: dim(v) for k, v in {"sm": "3px", "md": "5px", "lg": "8px", "full": "999px"}.items()}
 tokens["size"] = {
     "control": {"sm": dim("24px"), "md": dim("28px"), "lg": dim("32px")},
-    "row": {"md": dim("32px"), "compact": dim("24px")},
+    "row": {"md": dim("32px"), "lg": dim("36px"), "compact": dim("24px")},
     "icon": {"sm": dim("14px"), "md": dim("16px")},
     "target": {"min": dim("24px")},
     "sidebar": dim("220px"),
@@ -194,7 +194,7 @@ tokens["size"] = {
 }
 # Page gutter: 16 px, 20 px once the window is 1200 px wide (where the inspector docks).
 tokens["layout"] = {"gutter": {"default": dim("16px"), "wide": dim("20px")}, "wide-min-width": dim("1200px")}
-tokens["density"] = {"compact": {"size": {"row": {"md": dim("24px")}, "control": {"md": dim("24px")}}, "space": {"12": dim("8px")}}}
+tokens["density"] = {"compact": {"size": {"row": {"md": dim("24px"), "lg": dim("28px")}, "control": {"md": dim("24px")}}, "space": {"12": dim("8px")}}}
 tokens["shadow"] = {
     "popover": {"$value": "0 4px 12px rgba(10, 14, 20, 0.12), 0 0 0 1px rgba(10, 14, 20, 0.06)", "$type": "shadow"},
     "sheet": {"$value": "0 12px 32px rgba(10, 14, 20, 0.18), 0 0 0 1px rgba(10, 14, 20, 0.08)", "$type": "shadow"},

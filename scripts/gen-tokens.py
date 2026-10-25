@@ -69,6 +69,7 @@ def main():
     for name in ("sm", "md", "lg"):
         out.append(f"  --size-control-{name}: {scaled(tokens['size']['control'][name]['$value'])};")
     out.append(f"  --size-row: {scaled_whole(tokens['size']['row']['md']['$value'])};")
+    out.append(f"  --size-row-lg: {scaled_whole(tokens['size']['row']['lg']['$value'])};")
     out.append(f"  --gutter: {tokens['layout']['gutter']['default']['$value']};")
     for name in ("sm", "md"):
         out.append(f"  --size-icon-{name}: {scaled(tokens['size']['icon'][name]['$value'])};")
@@ -102,6 +103,7 @@ def main():
 
     out.append(':root[data-density="compact"] {')
     out.append(f"  --size-row: {scaled_whole(tokens['density']['compact']['size']['row']['md']['$value'])};")
+    out.append(f"  --size-row-lg: {scaled_whole(tokens['density']['compact']['size']['row']['lg']['$value'])};")
     out.append(f"  --size-control-md: {scaled(tokens['density']['compact']['size']['control']['md']['$value'])};")
     out.append(f"  --space-12: {tokens['density']['compact']['space']['12']['$value']};")
     out.append("}")

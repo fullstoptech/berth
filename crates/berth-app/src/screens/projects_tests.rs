@@ -560,7 +560,8 @@ fn projects_table_hides_engine_and_branch_below_1200() {
 fn projects_table_columns_at_1024_leave_room_for_the_buttons() {
     // Main at 1024 is 1024 - 220 wide; the table has 16 px margins and rows
     // pad 8 px each side. The last track must keep the labelled buttons
-    // (Restart 65 + Start project 95 + two 24 px icons + 3 gaps of 8 = 228).
+    // (Restart 65 + Start project 95 + two 24 px icons + 3 gaps of 4 = 216;
+    // the gaps are 8 px from 1200 px wide).
     let tracks = css::tracks(&css::declaration(narrow_block(), "--projects-cols"));
     assert_eq!(tracks.len(), 7, "{tracks:?}");
     // Name, Ports, CPU, Memory and the buttons grow with the text size;
@@ -574,17 +575,15 @@ fn projects_table_columns_at_1024_leave_room_for_the_buttons() {
     }
     assert_eq!(tracks[1], "minmax(0, 104fr)");
     assert_eq!(tracks[2], "minmax(0, 112fr)");
-    let fixed = css::min_sum(&tracks, 1.0);
+    let fixed = css::min_sum_with(&tracks, 1.0, &actions_vars(MAIN_1024));
     let available = 1024.0 - 220.0 - 32.0 - 16.0;
-    // Their 104:112 split of what is left; the buttons' 12 px for wider gaps
-    // came out of it (it was 216 px).
     assert!(
-        (available - fixed - (104.0 + 112.0 - 12.0)).abs() < 0.5,
-        "at 100 % Path and Services share 204 px: fixed {fixed}"
+        (available - fixed - (104.0 + 112.0)).abs() < 0.5,
+        "at 100 % Path and Services get 104 and 112 px: fixed {fixed}"
     );
-    let buttons = css::min_px(&tracks[6], 1.0);
+    let buttons = css::min_px_with(&tracks[6], 1.0, &actions_vars(MAIN_1024));
     assert!(
-        (228.0..=244.0).contains(&buttons),
+        (216.0..=232.0).contains(&buttons),
         "{buttons} px for the buttons"
     );
 }
@@ -632,6 +631,15 @@ fn em_at(width: f32, scale: f32) -> f32 {
 const MAIN_1024: f32 = 1024.0 - 220.0;
 const MAIN_1440: f32 = 1440.0 - 220.0;
 
+/// The buttons' track takes 44 px (scaled text apart) plus three gaps: 4 px
+/// under 1200 px wide, 8 px from there up. `width` is a main width above.
+fn actions_vars(width: f32) -> [(&'static str, f32); 1] {
+    [(
+        "--projects-actions-w",
+        if width <= MAIN_1024 { 56.0 } else { 68.0 },
+    )]
+}
+
 /// Whether the Path column is hidden: the width falls in the last tier.
 fn path_hidden_at(width: f32, scale: f32) -> bool {
     em_at(width, scale) <= 49.5
@@ -663,16 +671,15 @@ fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
             // The table sits on the page gutter: 16 px under 1200 px wide,
             // 20 px from there up; the rows pad 8 px each side.
             let gutters = if width == MAIN_1024 { 32.0 } else { 40.0 };
-            let room = width - gutters - 16.0 - css::min_sum(&tracks, scale);
+            let vars = actions_vars(width);
+            let room = width - gutters - 16.0 - css::min_sum_with(&tracks, scale, &vars);
             // The buttons are a track of their own in the narrow lists and
             // the `1fr` in the wide one; Path and Services (or Services
             // alone, once Path is gone) keep some room.
-            let buttons = 160.0 * scale + 68.0;
+            let buttons = 160.0 * scale + vars[0].1;
             let (need, what) = match tracks.len() {
                 9 => (buttons, "the buttons"),
-                // 88, not 96: the buttons' gaps went from 4 to 8 px (D11), which takes
-                // 12 px from Services at 1024 px and 150 %, where it was 100.
-                6 => (88.0, "Services"),
+                6 => (96.0, "Services"),
                 _ => (120.0, "Path and Services"),
             };
             assert!(
@@ -765,12 +772,13 @@ fn projects_no_path_tier_keeps_names_14_characters_wide_and_nothing_clips() {
         );
         // Services gives up room for it but never pushes the table wider
         // than the window, and CPU, Memory and the buttons keep their size.
-        let room = MAIN_1024 - 32.0 - 16.0 - css::min_sum(&tracks, scale);
-        assert!(room >= 88.0, "{room} px left for Services at {scale}");
+        let vars = actions_vars(MAIN_1024);
+        let room = MAIN_1024 - 32.0 - 16.0 - css::min_sum_with(&tracks, scale, &vars);
+        assert!(room >= 96.0, "{room} px left for Services at {scale}");
         for (i, base) in [(3, 48.0), (4, 56.0)] {
             assert_eq!(css::min_px(&tracks[i], scale), base * scale, "track {i}");
         }
-        assert!(css::min_px(&tracks[5], scale) >= 160.0 * scale + 68.0);
+        assert!(css::min_px_with(&tracks[5], scale, &vars) >= 160.0 * scale + 56.0);
     }
     // The minimum grows with the text, it is not a fixed px width.
     assert!(css::min_px(&tracks[0], 1.5) > css::min_px(&tracks[0], 1.3) + 20.0);
@@ -982,4 +990,35 @@ fn projects_filter_text_count_counts_projects_only() {
     // The empty query matches the eight real projects, not nine.
     let (matched, _) = listed(&projects, &containers, &engines, "", ProjectFilter::All);
     assert_eq!(matched, 8);
+}
+
+#[test]
+fn projects_rows_use_the_large_row_token_and_a_divider() {
+    // The rule that sets the height (the grid rule before it names the row too).
+    let row = css::block(PROJECTS_CSS, "\n.project-row {\n  height");
+    assert!(row.contains(": var(--size-row-lg);"), "{row}");
+    assert!(
+        row.contains("border-bottom: 1px solid var(--color-line);"),
+        "{row}"
+    );
+    // The row's border is part of its height (grid rows are border-box).
+    let shared = css::block(PROJECTS_CSS, ".projects-head,\n.project-row {");
+    assert!(shared.contains("box-sizing: border-box;"), "{shared}");
+    assert!(!PROJECTS_CSS.contains("--projects-row"), "one row token");
+}
+
+#[test]
+fn projects_button_gap_is_4_under_1200_px_wide_and_8_from_there_up() {
+    let screen = css::block(PROJECTS_CSS, "\n.projects-screen {");
+    assert_eq!(
+        css::declaration(screen, "--projects-actions-gap"),
+        "var(--space-4)"
+    );
+    let wide = css::block(PROJECTS_CSS, "@media (min-width: 1200px) {");
+    assert!(
+        wide.contains("--projects-actions-gap: var(--space-8);"),
+        "{wide}"
+    );
+    let cell = css::block(PROJECTS_CSS, "\n.project-cell-actions {");
+    assert!(cell.contains("gap: var(--projects-actions-gap);"), "{cell}");
 }
