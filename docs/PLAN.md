@@ -1019,7 +1019,8 @@ pub struct LogFilter { pub stdout: bool, pub stderr: bool, pub levels: std::coll
 #[derive(Debug, Clone, Default)] pub struct SearchSummary { pub matches: u32, pub current: Option<u32> }   // "3 of 41"
 #[derive(Debug, Clone, Default)] pub struct ViewDelta { pub appended: u32, pub dropped: u32, pub new_while_paused: u32 }
 #[derive(Debug, Clone)]
-pub struct RowModel { pub seq: u64, pub ts: String, pub container: String, pub series: u8, pub stream: berth_core::Stream, pub level: Option<Level>, pub error_mark: bool, pub text: String, pub json: Option<JsonSummary>, pub fold: Fold, pub matches: Vec<std::ops::Range<usize>> }
+pub struct RowModel { pub seq: u64, pub ts: String, pub ts_utc: Option<chrono::DateTime<chrono::Utc>>, pub container: String, pub series: u8, pub stream: berth_core::Stream, pub level: Option<Level>, pub error_mark: bool, pub text: String, pub json: Option<JsonSummary>, pub fold: Fold, pub matches: Vec<std::ops::Range<usize>> }
+// ts_utc (architect, 2026-10-25, D20): the full timestamp, so the UI shows local time and puts UTC in a tooltip; `ts` stays the UTC HH:MM:SS.mmm used for text and copy.
 
 pub struct LogView { /* LogBuffer, filter, visible index list, folds expanded, search state, follow */ }
 impl LogView {
