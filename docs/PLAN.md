@@ -52,7 +52,7 @@ v1 is the brief's milestones M1 to M4. M5 and everything the brief marks "Later"
 
 ### 2.2 Later (no v1 task touches these)
 
-Visual Compose builder (M5). Kubernetes, Swarm, Nomad. Windows. A Linux package and a supported Linux GUI. Accounts, sync, roles, LDAP. Edge agents. Webhooks for redeploy. Coolify env editing, rollback, preview deployments, backups, server cleanup. Plugins with custom UI or WASM plugins. Network sandboxing of plugins. Auto-apply of fixes in watch mode. containerd and Incus runtimes. Languages other than English, right-to-left. ANSI colour rendering in logs (v1 strips escapes). A Rust-native terminal replacing xterm.js.
+Visual Compose builder (M5). Kubernetes, Swarm, Nomad. Windows. A Linux package and a supported Linux GUI. Accounts, sync, roles, LDAP. Edge agents. Webhooks for redeploy. Coolify env editing, rollback, preview deployments, backups, server cleanup. Plugins with custom UI or WASM plugins. Network sandboxing of plugins. Auto-apply of fixes in watch mode. containerd and Incus runtimes. Languages other than English, right-to-left. ANSI colour rendering in logs (v1 strips escapes). A Rust-native terminal replacing xterm.js. Undocking the inspector into its own window (D22, 2026-10-25).
 
 ---
 
@@ -788,7 +788,8 @@ pub struct Settings {
     pub theme: Theme, pub density: Density,
     pub text_scale: f32, // 0.85..=1.5, default 1.0 (owner request 2026-10-25)
     pub inspector_width_px: u32, // 320..=560, default 360 (owner request, D21, 2026-10-25)
-    pub inspector_dock: InspectorDock, // Right (default) or Bottom (D21)
+    pub inspector_dock: InspectorDock, // Right (default) or Bottom (D21; bottom is Chrome-DevTools-style, D22)
+    pub inspector_split_pct: u8, // bottom dock: inspector share of the bottom region, default 40, each pane >= 320 px (D22)
     pub default_engine: Option<berth_core::EngineId>,
     pub last_harness: Option<berth_core::HarnessId>,
     pub harness_paths: std::collections::BTreeMap<String, std::path::PathBuf>,   // user-chosen binaries
