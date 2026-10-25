@@ -8,7 +8,8 @@ use crate::classify::classify_with;
 use crate::fold::FoldTracker;
 use crate::{summarize_json, Fold, Level, LogEntry};
 
-/// Lines per level currently in the buffer (`Trace` counts as `Debug`).
+/// Lines per level currently in the buffer (`Trace` counts as `Debug`; a line with the error mark
+/// and no level counts as `Error`).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LevelCounts {
     pub error: u32,
@@ -26,6 +27,13 @@ impl LevelCounts {
             Level::Debug | Level::Trace => &mut self.debug,
         }
     }
+}
+
+/// The level a line counts under: its own, or `Error` when it has none and carries the error mark
+/// ("Error: connect ECONNREFUSED" has no level word but is an error line, as the Error chip and
+/// F8 treat it). A trace member never adds to the count: its head carries the mark.
+fn counted_level(level: Option<Level>, error_mark: bool, fold: Fold) -> Option<Level> {
+    level.or_else(|| (error_mark && !matches!(fold, Fold::Member { .. })).then_some(Level::Error))
 }
 
 #[derive(Debug)]
@@ -76,7 +84,7 @@ impl LogBuffer {
             }
             None => Fold::None,
         };
-        if let Some(level) = level {
+        if let Some(level) = counted_level(level, error_mark, fold) {
             *self.counts.slot(level) += 1;
         }
         self.entries.push_back(LogEntry {
@@ -90,7 +98,7 @@ impl LogBuffer {
         });
         while self.entries.len() > self.cap {
             if let Some(old) = self.entries.pop_front() {
-                if let Some(level) = old.level {
+                if let Some(level) = counted_level(old.level, old.error_mark, old.fold) {
                     let slot = self.counts.slot(level);
                     *slot = slot.saturating_sub(1);
                 }
@@ -240,6 +248,22 @@ pub(crate) mod tests {
                 debug: 1
             }
         );
+    }
+
+    #[test]
+    fn error_marked_lines_without_a_level_count_as_errors_once_per_trace() {
+        let mut buf = LogBuffer::new(10);
+        buf.push(out("Error: connect ECONNREFUSED 172.19.0.3:5432"), 1);
+        // A trace member that mentions an error word does not add to the count.
+        buf.push(out("    at Object.connect (node:net:1139:12)"), 1);
+        buf.push(out("Caused by: java.io.IOException: boom"), 1);
+        buf.push(out("plain line"), 1);
+        assert_eq!(buf.counts().error, 1, "{:?}", buf.counts());
+        // Dropping the head takes it off the count again.
+        let mut small = LogBuffer::new(1);
+        small.push(out("Error: connect ECONNREFUSED"), 1);
+        small.push(out("plain line"), 1);
+        assert_eq!(small.counts().error, 0);
     }
 
     #[test]

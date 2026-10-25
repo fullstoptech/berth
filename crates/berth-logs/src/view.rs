@@ -72,7 +72,7 @@ pub struct ViewDelta {
     pub new_while_paused: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RowModel {
     pub seq: u64,
     /// `HH:MM:SS.mmm`, UTC.

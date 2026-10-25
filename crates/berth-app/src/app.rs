@@ -309,6 +309,9 @@ pub fn Shell() -> Element {
                             if *state.section.read() == crate::state::Section::Containers {
                                 crate::screens::containers::ContainersScreen {}
                             }
+                            if *state.section.read() == crate::state::Section::Logs {
+                                crate::screens::logs::LogsScreen {}
+                            }
                         }
                         if show_inspector {
                             Inspector { overlay_open: crate::screens::containers::inspector_toggled(),

@@ -66,6 +66,19 @@ fn window_height() -> f64 {
         .height
 }
 
+/// The Logs tab: a log view over the selected containers (or the selected project's), opened by
+/// the Logs button on a row, ⌘L or the project row's Logs button.
+#[component]
+fn BottomLogs() -> Element {
+    let state = use_context::<AppState>();
+    let ids = crate::screens::logs::ids_from_selection(
+        &state.selection.read(),
+        &state.containers.read(),
+        &state.projects.read(),
+    );
+    rsx! { crate::screens::logs::LogPanel { containers: ids } }
+}
+
 /// Bottom panel (⌃`): tabs, a close button and a top edge you drag to
 /// resize, 160 px up to 60 % of the window. Tab bodies are filled by the
 /// log (P3-T2), terminal (P3-T6), problems and assistant tasks.
@@ -122,6 +135,9 @@ pub fn BottomPanel() -> Element {
             div { class: "bottom-body", role: "tabpanel",
                 if panel.tab == BottomTab::Terminal {
                     super::terminal::TerminalBody {}
+                }
+                if panel.tab == BottomTab::Logs {
+                    BottomLogs {}
                 }
             }
             if dragging {

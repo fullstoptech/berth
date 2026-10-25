@@ -7,6 +7,8 @@ pub mod container_detail;
 pub mod containers;
 #[cfg(test)]
 mod css_tracks;
+pub mod logs;
+pub mod logs_scene;
 pub mod palette;
 pub mod projects;
 pub mod recent_activity;
