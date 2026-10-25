@@ -3,5 +3,6 @@
 
 pub mod activity;
 pub mod activity_scene;
+pub mod containers;
 pub mod palette;
 pub mod projects;

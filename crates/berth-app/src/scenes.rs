@@ -157,8 +157,7 @@ fn mock_problems(containers: &[berth_core::Container]) -> Vec<berth_core::Proble
         .collect()
 }
 
-/// Dark; the restarting worker selected; chrome only (table P2-T7,
-/// inspector body P3-T3).
+/// Dark; the restarting worker selected (inspector body is P3-T3).
 fn containers_selected(state: &mut AppState) {
     load_mock_world(state);
     state.settings.write().theme = berth_store::Theme::Dark;
@@ -197,6 +196,37 @@ fn palette_open(state: &mut AppState) {
     state.overlays.write().push(crate::state::Overlay::Palette);
 }
 
+/// Same state as the dark frame, in the light theme.
+fn containers_selected_light(state: &mut AppState) {
+    containers_selected(state);
+    state.settings.write().theme = berth_store::Theme::Light;
+}
+
+/// The default engine has not answered yet: nothing loaded, no version.
+fn containers_loading(state: &mut AppState) {
+    load_mock_world(state);
+    state.settings.write().theme = berth_store::Theme::Light;
+    state.section.set(Section::Containers);
+    state.containers.set(Vec::new());
+    for engine in state.engines.write().iter_mut() {
+        if engine.id.0 == "colima:default" {
+            engine.docker_version = None;
+        }
+    }
+}
+
+/// The default Colima profile is stopped.
+fn containers_engine_stopped(state: &mut AppState) {
+    load_mock_world(state);
+    state.settings.write().theme = berth_store::Theme::Light;
+    state.section.set(Section::Containers);
+    for engine in state.engines.write().iter_mut() {
+        if engine.id.0 == "colima:default" {
+            engine.state = berth_core::EngineState::Stopped;
+        }
+    }
+}
+
 const SCENES: &[Scene] = &[
     Scene {
         frame: "Projects / empty / 1440",
@@ -230,6 +260,23 @@ const SCENES: &[Scene] = &[
         frame: "Palette / open / 1440",
         setup: palette_open,
     },
+    Scene {
+        frame: "Containers / selected / 1440 / light",
+        setup: containers_selected_light,
+    },
+    // Rendered at 1024x700 (BERTH_WINDOW=1024x700 for shots).
+    Scene {
+        frame: "Containers / selected / 1024",
+        setup: containers_selected,
+    },
+    Scene {
+        frame: "Containers / loading / 1440",
+        setup: containers_loading,
+    },
+    Scene {
+        frame: "Containers / engine stopped / 1440",
+        setup: containers_engine_stopped,
+    },
 ];
 
 pub fn scenes() -> &'static [Scene] {
@@ -244,6 +291,7 @@ pub fn find(frame: &str) -> Option<&'static Scene> {
 fn SceneRoot(frame: String) -> Element {
     let mut state = use_app_state();
     use_context_provider(|| state);
+    crate::screens::containers::provide_containers_view();
     let setup_frame = frame.clone();
     use_hook(move || {
         if let Some(scene) = find(&setup_frame) {
@@ -275,7 +323,7 @@ mod tests {
         assert!(find("Projects / empty / 1440").is_some());
         assert!(find("Components / primitives").is_some());
         assert!(find("Containers / selected / 1440").is_some());
-        assert!(scenes().len() >= 3);
+        assert_eq!(scenes().len(), 12);
         assert!(find("No such frame").is_none());
     }
 

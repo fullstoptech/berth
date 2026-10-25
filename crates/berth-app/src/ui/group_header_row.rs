@@ -22,6 +22,8 @@ pub fn GroupHeaderRow(
     action_label: Option<String>,
     ontoggle: Option<EventHandler<()>>,
     onaction: Option<EventHandler<()>>,
+    // Trailing icon buttons (the frame's group restart); empty by default.
+    children: Element,
 ) -> Element {
     let chevron = if expanded {
         "chevron-down"
@@ -64,6 +66,7 @@ pub fn GroupHeaderRow(
                     "{label}"
                 }
             }
+            {children}
         }
     }
 }

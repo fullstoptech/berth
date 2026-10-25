@@ -257,6 +257,10 @@ pub fn dispatch(state: &mut AppState, action: ActionId) {
             bottom.open = true;
             bottom.tab = BottomTab::Logs;
         }
+        // J/K and Space act on the visible list (P2-T7).
+        "global.select_next" | "global.select_prev" | "global.toggle_inspector" => {
+            crate::screens::containers::dispatch(state, action);
+        }
         _ => {}
     }
 }

@@ -89,6 +89,7 @@ pub fn App() -> Element {
     platform::use_traffic_lights();
     let mut state = use_app_state();
     use_context_provider(|| state);
+    crate::screens::containers::provide_containers_view();
     platform::use_menu_events(state);
 
     // Services spawn once, before scene/theme forcing below (D23).
@@ -235,9 +236,12 @@ pub fn Shell() -> Element {
                             if !*state.dev_gallery.read() && *state.section.read() == crate::state::Section::Projects {
                                 crate::screens::projects::ProjectsScreen {}
                             }
+                            if *state.section.read() == crate::state::Section::Containers {
+                                crate::screens::containers::ContainersScreen {}
+                            }
                         }
                         if show_inspector {
-                            Inspector {}
+                            Inspector { overlay_open: crate::screens::containers::inspector_toggled() }
                         }
                     }
                     BottomPanel {}

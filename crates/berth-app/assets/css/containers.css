@@ -1,0 +1,452 @@
+/* Containers screen and ContainerRow (P2-T7). Colours and sizes come only
+   from tokens.css. Rendered by the screen itself (see screens/containers.rs). */
+
+.containers-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.main:has(> .containers-screen) {
+  overflow: hidden;
+}
+
+/* Header: title, count, filter field, group-by select, inspector toggle */
+.ct-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16) 0;
+  flex: none;
+}
+.ct-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-body-weight);
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.ct-header .badge-count {
+  height: var(--size-control-sm);
+  padding: 0 var(--space-8);
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  border-radius: var(--radius-md);
+}
+.ct-spacer {
+  flex: 1;
+}
+.ct-filter {
+  width: 240px;
+  flex: none;
+}
+.ct-group {
+  width: 200px;
+  flex: none;
+}
+/* Below 1200 px the inspector is an overlay: this button opens it. */
+.ct-inspector-toggle {
+  display: none;
+  flex: none;
+}
+@media (max-width: 1199px) {
+  .ct-inspector-toggle {
+    display: block;
+  }
+  .ct-filter {
+    width: 240px;
+  }
+}
+/* Space hides the docked inspector at 1200 px and wider. */
+@media (min-width: 1200px) {
+  .inspector.inspector-open {
+    display: none;
+  }
+}
+
+/* Filter chips */
+.ct-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-16) 0;
+  flex: none;
+}
+.ct-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  height: var(--size-control-sm);
+  padding: 0 var(--space-4) 0 var(--space-8);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-ink);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  box-sizing: border-box;
+}
+.ct-chip .icon {
+  color: var(--color-ink-muted);
+}
+.ct-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: var(--size-icon-md);
+  height: var(--size-icon-md);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+.ct-chip-remove:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-ink);
+}
+.ct-chip-remove:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.ct-banners {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-24) var(--space-16) 0;
+  flex: none;
+}
+.ct-stopped .empty-state-hint {
+  font-family: var(--font-text);
+}
+.ct-stopped .empty-state-title {
+  font-weight: var(--text-label-weight);
+}
+.ct-stopped,
+.ct-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+.ct-stopped .inline-message {
+  justify-content: center;
+}
+
+/* Table: header and rows share one grid. Columns after the dot:
+   name, image, ports, CPU, memory, [uptime], [engine], status. */
+.ct-table {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin-top: var(--space-8);
+  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px minmax(144px, 1fr);
+}
+.ct-table.ct-has-uptime {
+  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px 56px minmax(144px, 1fr);
+}
+.ct-table.ct-has-engine {
+  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px minmax(70px, 0.6fr) minmax(144px, 1fr);
+}
+.ct-table.ct-has-uptime.ct-has-engine {
+  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px 56px minmax(70px, 0.6fr) minmax(144px, 1fr);
+}
+/* D78: below 1200 px the table drops Uptime and Engine. */
+@media (max-width: 1199px) {
+  .ct-table,
+  .ct-table.ct-has-uptime,
+  .ct-table.ct-has-engine,
+  .ct-table.ct-has-uptime.ct-has-engine {
+    --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px minmax(144px, 1fr);
+  }
+  .ct-table .ct-uptime,
+  .ct-table .ct-engine {
+    display: none;
+  }
+}
+
+.ct-head {
+  display: grid;
+  grid-template-columns: var(--ct-cols);
+  column-gap: var(--space-12);
+  align-items: center;
+  padding: 0 var(--space-16);
+  height: var(--size-control-sm);
+  min-height: var(--size-control-sm);
+  border-bottom: 1px solid var(--color-line);
+  flex: none;
+}
+.ct-head .table-header-cell {
+  padding: 0;
+  border-bottom: none;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+}
+.ct-head .table-header-cell.align-right {
+  justify-content: flex-end;
+}
+/* The virtual table fills what is left and scrolls on its own. */
+.ct-table .virtual-table {
+  flex: 1;
+  min-height: 0;
+  max-height: none !important;
+}
+.ct-table .vt-row {
+  display: block;
+  padding: 0;
+  gap: 0;
+  height: auto;
+  min-height: 0;
+  border-bottom: none;
+}
+.ct-table .vt-row:hover {
+  background: none;
+}
+.ct-skeleton {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  /* Skeleton rows show after 300 ms (brief 7.3): hidden, then revealed. */
+  opacity: 0;
+  animation: ct-reveal 0s linear 300ms forwards;
+}
+@keyframes ct-reveal {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ContainerRow */
+.ct-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--ct-cols);
+  column-gap: var(--space-12);
+  align-items: center;
+  height: var(--size-row);
+  padding: 0 var(--space-16);
+  border-bottom: 1px solid var(--color-line);
+  box-sizing: border-box;
+  font-size: var(--text-body-size);
+  color: var(--color-ink);
+  white-space: nowrap;
+  cursor: default;
+}
+.ct-row:hover {
+  background: var(--color-surface-hover);
+}
+.ct-row.ct-selected {
+  background: var(--color-selection);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.ct-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ct-check {
+  display: inline-flex;
+  align-items: center;
+  overflow: visible;
+}
+.ct-dot {
+  display: inline-flex;
+  align-items: center;
+}
+.ct-name {
+  font-weight: var(--text-body-weight);
+}
+.ct-image {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  color: var(--color-ink-muted);
+  /* The image keeps its tag: an ellipsis eats the start, as in the frames. */
+  direction: rtl;
+  text-align: left;
+}
+.ct-image-text {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.ct-ports {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.ct-port-link {
+  color: var(--color-ink);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.ct-port-link:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+.ct-port-link:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+.ct-port,
+.ct-port-more {
+  color: var(--color-ink-muted);
+}
+.ct-dash {
+  color: var(--color-ink-disabled);
+}
+.ct-meter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  font-variant-numeric: tabular-nums;
+  overflow: visible;
+}
+.ct-bar {
+  position: relative;
+  flex: none;
+  width: var(--space-24);
+  height: var(--space-4);
+  border-radius: var(--radius-full);
+  background: var(--color-line);
+  overflow: hidden;
+}
+.ct-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-ink-muted);
+}
+.ct-num {
+  min-width: 36px;
+  text-align: right;
+}
+.ct-uptime,
+.ct-engine {
+  color: var(--color-ink-muted);
+}
+.ct-status {
+  position: relative;
+  display: flex;
+  align-items: center;
+  overflow: visible;
+}
+.ct-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-ink);
+}
+.ct-row[aria-busy="true"] .ct-status-text {
+  color: var(--color-ink-muted);
+}
+
+/* Row buttons: on hover, keyboard focus and always on the selected row. */
+.ct-actions {
+  position: absolute;
+  inset: 0 calc(-1 * var(--space-16)) 0 0;
+  display: none;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0;
+  padding-right: var(--space-12);
+  background: inherit;
+}
+.ct-row:hover .ct-actions,
+.ct-row:focus-within .ct-actions,
+.ct-row.ct-selected .ct-actions {
+  display: flex;
+}
+.ct-row:hover .ct-status-text,
+.ct-row:focus-within .ct-status-text,
+.ct-row.ct-selected .ct-status-text {
+  visibility: hidden;
+}
+.ct-row:hover .ct-actions {
+  background: var(--color-surface-hover);
+}
+.ct-row.ct-selected .ct-actions {
+  background: var(--color-selection);
+}
+.ct-actions .icon-btn {
+  flex: none;
+}
+/* Tooltips hang below the button, as in the frame, so the first rows do
+   not push them under the header; right-aligned so they stay in view. */
+.ct-actions .icon-btn[data-tooltip]:hover::after,
+.ct-actions .icon-btn[data-tooltip]:focus-visible::after {
+  top: calc(100% + var(--space-4));
+  bottom: auto;
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* The row's more menu hangs under the status cell. */
+.ct-menu {
+  position: absolute;
+  top: 100%;
+  right: calc(-1 * var(--space-16));
+  z-index: 30;
+}
+
+/* Failed action message under the row (D34) */
+.ct-failure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  height: var(--size-row);
+  padding: 0 var(--space-16);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-danger-subtle);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.ct-failure .inline-message {
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ct-failure-dismiss {
+  flex: none;
+  height: var(--size-control-sm);
+  padding: 0 var(--space-8);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  cursor: pointer;
+}
+.ct-failure-dismiss:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-ink);
+}
+
+/* Group rows keep the P2-T4 look; the table draws their separators. */
+.ct-table .group-header-row {
+  padding-left: var(--space-8);
+  padding-right: var(--space-16);
+  border-top: none;
+}
+.ct-table .skeleton-row {
+  display: grid;
+  grid-template-columns: var(--ct-cols);
+  column-gap: var(--space-12);
+  padding: 0 var(--space-16);
+}

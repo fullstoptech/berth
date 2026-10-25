@@ -12,7 +12,10 @@ pub fn config() -> Config {
     use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
     let window = WindowBuilder::new()
         .with_title("Berth")
-        .with_inner_size(LogicalSize::new(1440.0, 900.0))
+        .with_inner_size(LogicalSize::new(
+            super::window_size().0,
+            super::window_size().1,
+        ))
         .with_min_inner_size(LogicalSize::new(900.0, 600.0))
         .with_titlebar_transparent(true)
         .with_fullsize_content_view(true)

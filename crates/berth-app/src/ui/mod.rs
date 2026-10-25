@@ -8,6 +8,7 @@ pub mod banner;
 pub mod bottom_panel;
 pub mod button;
 pub mod checkbox;
+pub mod container_row;
 pub mod empty_state;
 pub mod engine_switcher;
 pub mod group_header_row;

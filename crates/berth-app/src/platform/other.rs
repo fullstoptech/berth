@@ -5,7 +5,10 @@ use crate::assets;
 pub fn config() -> Config {
     let window = WindowBuilder::new()
         .with_title("Berth")
-        .with_inner_size(LogicalSize::new(1440.0, 900.0))
+        .with_inner_size(LogicalSize::new(
+            super::window_size().0,
+            super::window_size().1,
+        ))
         .with_min_inner_size(LogicalSize::new(900.0, 600.0));
     Config::new()
         .with_window(window)
