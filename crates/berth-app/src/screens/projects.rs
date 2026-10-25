@@ -669,8 +669,10 @@ pub fn ProjectsScreen() -> Element {
                             h2 { class: "projects-section-title",
                                 "Needs attention \u{00b7} {attention.len()}"
                             }
-                            for (index, item) in attention.into_iter().enumerate() {
-                                AttentionCard { key: "{index}", item }
+                            div { class: "attention-list",
+                                for (index, item) in attention.into_iter().enumerate() {
+                                    AttentionCard { key: "{index}", item }
+                                }
                             }
                         }
                     }

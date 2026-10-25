@@ -401,24 +401,30 @@
   padding: var(--space-32) var(--gutter) 0;
 }
 .projects-section-title {
-  margin: 0 0 var(--space-6);
+  margin: 0 0 var(--space-8);
   font-size: var(--text-body-size);
   line-height: var(--text-body-line);
   font-weight: var(--text-label-weight);
   color: var(--color-ink);
 }
+/* One bordered list: rows 32 px apart by a 1 px divider, not separate boxes. */
+.attention-list {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
 .attention-card {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  height: var(--size-control-lg);
-  margin-bottom: var(--space-6);
+  height: var(--size-row);
   padding: 0 var(--space-12);
   box-sizing: border-box;
-  background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-md);
   font-size: var(--text-body-size);
+}
+.attention-card + .attention-card {
+  border-top: 1px solid var(--color-line);
 }
 .attention-card .icon.tone-danger {
   color: var(--color-danger);

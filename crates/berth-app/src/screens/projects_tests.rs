@@ -993,6 +993,43 @@ fn projects_filter_text_count_counts_projects_only() {
 }
 
 #[test]
+fn projects_needs_attention_is_one_bordered_list_with_dividers() {
+    let html = scene("Projects / default / 1440");
+    assert_eq!(
+        html.matches("class=\"attention-list\"").count(),
+        1,
+        "{html}"
+    );
+    let list = html
+        .split("class=\"attention-list\"")
+        .nth(1)
+        .expect("the list");
+    assert_eq!(list.matches("class=\"attention-card\"").count(), 3);
+    let card = css::block(PROJECTS_CSS, "\n.attention-card {");
+    assert!(card.contains("height: var(--size-row);"), "{card}");
+    assert!(!card.contains("margin"), "rows do not float apart: {card}");
+    assert!(PROJECTS_CSS.contains(
+        ".attention-card + .attention-card {\n  border-top: 1px solid var(--color-line);"
+    ));
+    let list = css::block(PROJECTS_CSS, "\n.attention-list {");
+    assert!(
+        list.contains("border: 1px solid var(--color-line);"),
+        "{list}"
+    );
+    // Nothing below the list: the next section's 32 px above is the whole gap.
+    let section = css::block(PROJECTS_CSS, "\n.projects-attention {");
+    assert!(
+        section.contains("padding: var(--space-32) var(--gutter) 0;"),
+        "{section}"
+    );
+    let recent = css::block(PROJECTS_CSS, "\n.projects-recent {");
+    assert!(
+        recent.contains("padding: var(--space-32) var(--gutter) 0;"),
+        "{recent}"
+    );
+}
+
+#[test]
 fn projects_rows_use_the_large_row_token_and_a_divider() {
     // The rule that sets the height (the grid rule before it names the row too).
     let row = css::block(PROJECTS_CSS, "\n.project-row {\n  height");
