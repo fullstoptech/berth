@@ -523,9 +523,9 @@ pub fn ActivityScreen() -> Element {
     let shown = rows.read().len();
     let total = feed.read().len();
     let active = filters.read().is_active();
-    let row_height_px = match state.settings.read().density {
-        berth_store::Density::Compact => 24,
-        berth_store::Density::Comfortable => 28,
+    let row_height_px = {
+        let settings = state.settings.read();
+        crate::text_scale::row_height_px(settings.density, settings.text_scale)
     };
 
     let render_row = use_callback(move |i: usize| {

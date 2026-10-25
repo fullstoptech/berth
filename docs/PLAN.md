@@ -777,6 +777,7 @@ pub fn secret_store() -> std::sync::Arc<dyn SecretStore>;   // KeyringStore, fal
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub theme: Theme, pub density: Density,
+    pub text_scale: f32, // 0.85..=1.5, default 1.0 (owner request 2026-10-25)
     pub default_engine: Option<berth_core::EngineId>,
     pub last_harness: Option<berth_core::HarnessId>,
     pub harness_paths: std::collections::BTreeMap<String, std::path::PathBuf>,   // user-chosen binaries

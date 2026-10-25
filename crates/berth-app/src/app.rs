@@ -42,7 +42,9 @@ fn boot_services(state: AppState) -> Boot {
     };
     let store = std::sync::Arc::new(store);
     match store.settings() {
-        Ok(settings) => {
+        Ok(mut settings) => {
+            // A stored value that is not one of the steps snaps to the nearest.
+            settings.text_scale = crate::text_scale::snap(settings.text_scale);
             let mut state = state;
             state.settings.set(settings);
         }
@@ -119,12 +121,43 @@ pub fn App() -> Element {
                 state.settings.write().theme = theme;
             }
         }
+        // BERTH_TEXT_SCALE forces the text size for development shots.
+        if let Some(scale) = crate::text_scale::forced_from_env() {
+            state.settings.write().text_scale = scale;
+        }
+    });
+
+    // Text size changes are saved as they happen (one small write, off the
+    // UI path). The first run only records the loaded value, and a forced
+    // BERTH_TEXT_SCALE is never written to the owner's settings.
+    let store = boot.services.store.clone();
+    let saved_scale = use_hook(|| std::rc::Rc::new(std::cell::Cell::new(f32::NAN)));
+    use_effect(move || {
+        let settings = state.settings.read().clone();
+        if saved_scale.get().is_nan() {
+            saved_scale.set(settings.text_scale);
+            return;
+        }
+        if (saved_scale.get() - settings.text_scale).abs() < f32::EPSILON {
+            return;
+        }
+        saved_scale.set(settings.text_scale);
+        if crate::text_scale::forced_from_env().is_some() {
+            return;
+        }
+        let store = store.clone();
+        spawn(async move {
+            let saved = tokio::task::spawn_blocking(move || store.set_settings(&settings)).await;
+            if !matches!(saved, Ok(Ok(()))) {
+                tracing::warn!("settings save failed");
+            }
+        });
     });
 
     // Theme and density ride on <html> so tokens.css media rules apply (D7).
     use_effect(move || {
-        let settings = state.settings.peek();
-        let script = theme_script(settings.theme, settings.density);
+        let settings = state.settings.read();
+        let script = theme_script(settings.theme, settings.density, settings.text_scale);
         drop(settings);
         spawn(async move {
             let _ = document::eval(&script).await;

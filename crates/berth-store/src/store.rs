@@ -482,6 +482,17 @@ mod tests {
     }
 
     #[test]
+    fn settings_text_scale_survives_a_save_and_load() {
+        let store = Store::open_in_memory().expect("open");
+        let changed = Settings {
+            text_scale: 1.3,
+            ..Settings::default()
+        };
+        store.set_settings(&changed).expect("set");
+        assert!((store.settings().expect("get").text_scale - 1.3).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn opening_twice_runs_migrations_once_and_keeps_data() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("berth.db");

@@ -99,6 +99,11 @@ const ACTIONS: &[ActionDef] = &[
         Some("K"),
         S::Global,
     ),
+    // View > text size (owner request 2026-10-25). Bigger also answers to
+    // ⌘+ and ⌘⇧= (`keys::map_key`); only the ⌘= string is carried here.
+    def("view.text_bigger", "Bigger text", Some("⌘="), S::Global),
+    def("view.text_smaller", "Smaller text", Some("⌘-"), S::Global),
+    def("view.text_reset", "Actual text size", Some("⌘0"), S::Global),
     def("overlay.close", "Close", Some("Esc"), S::Global),
     def("palette.next", "Next result", Some("↓"), S::Global),
     def("palette.prev", "Previous result", Some("↑"), S::Global),

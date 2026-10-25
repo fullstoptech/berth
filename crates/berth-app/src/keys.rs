@@ -122,6 +122,8 @@ pub fn map_key(key: &str, mods: Modifiers, ctx: KeyContext) -> Option<ActionId> 
     if mods.meta && !mods.ctrl && !mods.alt {
         if mods.shift {
             return match key {
+                // ⌘⇧= types "+" on most layouts; same as ⌘+.
+                "+" | "=" => Some("view.text_bigger"),
                 "L" | "l" => Some("global.logs_section"),
                 "." if ctx.in_folder_browser => Some("folders.toggle_hidden"),
                 _ => None,
@@ -137,6 +139,9 @@ pub fn map_key(key: &str, mods: Modifiers, ctx: KeyContext) -> Option<ActionId> 
             "e" | "E" => Some("container.edit"),
             "r" | "R" => Some("container.restart"),
             "," => Some("global.settings"),
+            "=" | "+" => Some("view.text_bigger"),
+            "-" | "_" => Some("view.text_smaller"),
+            "0" => Some("view.text_reset"),
             "." => {
                 if ctx.in_assistant {
                     Some("assistant.stop_turn") // D77
@@ -239,6 +244,9 @@ pub fn dispatch(state: &mut AppState, action: ActionId) {
         "global.open_folder" => state.overlays.write().push(Overlay::OpenFolder),
         "global.new_project" => state.overlays.write().push(Overlay::NewProject),
         "global.settings" => state.section.set(Section::Settings),
+        "view.text_bigger" => step_text_scale(state, crate::text_scale::Step::Bigger),
+        "view.text_smaller" => step_text_scale(state, crate::text_scale::Step::Smaller),
+        "view.text_reset" => step_text_scale(state, crate::text_scale::Step::Reset),
         "global.logs_section" | "section.logs" => state.section.set(Section::Logs),
         "section.projects" => state.section.set(Section::Projects),
         "section.containers" => state.section.set(Section::Containers),
@@ -264,6 +272,15 @@ pub fn dispatch(state: &mut AppState, action: ActionId) {
             crate::screens::containers::dispatch(state, action);
         }
         _ => {}
+    }
+}
+
+/// Move the text size one step; the App root applies and saves it.
+fn step_text_scale(state: &mut AppState, step: crate::text_scale::Step) {
+    let current = state.settings.peek().text_scale;
+    let next = crate::text_scale::next_scale(current, step);
+    if (next - current).abs() > f32::EPSILON {
+        state.settings.write().text_scale = next;
     }
 }
 
@@ -334,7 +351,11 @@ mod tests {
             map_key("9", Modifiers::META, ctx()),
             Some("section.activity")
         );
-        assert_eq!(map_key("0", Modifiers::META, ctx()), None);
+        // ⌘0 is "Actual text size", not a section.
+        assert_eq!(
+            map_key("0", Modifiers::META, ctx()),
+            Some("view.text_reset")
+        );
     }
 
     #[test]
@@ -516,5 +537,82 @@ mod tests {
             map_key(".", meta_shift, browser),
             Some("folders.toggle_hidden")
         );
+    }
+
+    #[test]
+    fn text_size_keys_map_to_bigger_smaller_and_actual() {
+        let shift = Modifiers {
+            meta: true,
+            shift: true,
+            ..Modifiers::NONE
+        };
+        for (key, mods, expected) in [
+            ("=", Modifiers::META, "view.text_bigger"),
+            ("+", Modifiers::META, "view.text_bigger"),
+            // ⌘⇧= is the same chord as ⌘+ on a US keyboard.
+            ("+", shift, "view.text_bigger"),
+            ("=", shift, "view.text_bigger"),
+            ("-", Modifiers::META, "view.text_smaller"),
+            ("0", Modifiers::META, "view.text_reset"),
+        ] {
+            assert_eq!(map_key(key, mods, ctx()), Some(expected), "{key}");
+        }
+        // Bare keys and ⌃ chords are not text size.
+        assert_eq!(map_key("=", Modifiers::NONE, ctx()), None);
+        assert_eq!(map_key("-", Modifiers::CTRL, ctx()), None);
+        // ⌘0 does not collide with ⌘1..⌘9.
+        assert_eq!(
+            map_key("1", Modifiers::META, ctx()),
+            Some("section.projects")
+        );
+        // They work from a text input too.
+        let typing = KeyContext {
+            in_text_input: true,
+            ..ctx()
+        };
+        assert_eq!(
+            map_key("=", Modifiers::META, typing),
+            Some("view.text_bigger")
+        );
+    }
+
+    thread_local! {
+        static SLOT: std::cell::RefCell<Option<AppState>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    #[component]
+    fn Harness() -> Element {
+        let state = crate::state::use_app_state();
+        use_hook(move || SLOT.with(|slot| *slot.borrow_mut() = Some(state)));
+        rsx! { div {} }
+    }
+
+    #[test]
+    fn text_size_dispatch_steps_the_setting_and_stops_at_the_ends() {
+        let mut dom = VirtualDom::new(Harness);
+        let _ = dom.rebuild_to_vec();
+        let mut state = SLOT
+            .with(|slot| slot.borrow_mut().take())
+            .expect("harness captured AppState");
+        dom.in_runtime(|| {
+            let scale = |state: &AppState| state.settings.peek().text_scale;
+            assert_eq!(scale(&state), 1.0);
+            dispatch(&mut state, "view.text_bigger");
+            assert_eq!(scale(&state), 1.1);
+            dispatch(&mut state, "view.text_bigger");
+            dispatch(&mut state, "view.text_bigger");
+            assert_eq!(scale(&state), 1.3);
+            dispatch(&mut state, "view.text_reset");
+            assert_eq!(scale(&state), 1.0);
+            for _ in 0..5 {
+                dispatch(&mut state, "view.text_smaller");
+            }
+            assert_eq!(scale(&state), 0.85);
+            // A stored value that is not a step moves from its nearest step.
+            state.settings.write().text_scale = 1.12;
+            dispatch(&mut state, "view.text_bigger");
+            assert_eq!(scale(&state), 1.2);
+        });
     }
 }

@@ -198,8 +198,13 @@ pub fn use_app_state() -> AppState {
     }
 }
 
-/// The JS the theme effect runs for a theme (D7): sets or clears data-theme on <html>.
-pub fn theme_script(theme: berth_store::Theme, density: berth_store::Density) -> String {
+/// The JS the theme effect runs (D7): sets or clears data-theme, data-density
+/// and the `--text-scale` property on <html>.
+pub fn theme_script(
+    theme: berth_store::Theme,
+    density: berth_store::Density,
+    text_scale: f32,
+) -> String {
     let theme_js = match theme {
         berth_store::Theme::Light => "document.documentElement.dataset.theme = 'light';",
         berth_store::Theme::Dark => "document.documentElement.dataset.theme = 'dark';",
@@ -209,7 +214,10 @@ pub fn theme_script(theme: berth_store::Theme, density: berth_store::Density) ->
         berth_store::Density::Compact => "document.documentElement.dataset.density = 'compact';",
         berth_store::Density::Comfortable => "delete document.documentElement.dataset.density;",
     };
-    format!("{theme_js} {density_js}")
+    format!(
+        "{theme_js} {density_js} {}",
+        crate::text_scale::script(text_scale)
+    )
 }
 
 #[cfg(test)]
@@ -218,18 +226,21 @@ mod tests {
 
     #[test]
     fn theme_script_sets_and_clears_attributes_on_document_element() {
-        let dark = theme_script(berth_store::Theme::Dark, berth_store::Density::Compact);
+        let dark = theme_script(berth_store::Theme::Dark, berth_store::Density::Compact, 1.3);
         assert!(
             dark.contains("documentElement.dataset.theme = 'dark'"),
             "{dark}"
         );
         assert!(dark.contains("dataset.density = 'compact'"));
+        assert!(dark.contains("documentElement.style.setProperty('--text-scale', '1.3')"));
         let system = theme_script(
             berth_store::Theme::System,
             berth_store::Density::Comfortable,
+            1.0,
         );
         assert!(system.contains("delete document.documentElement.dataset.theme"));
         assert!(system.contains("delete document.documentElement.dataset.density"));
+        assert!(system.contains("removeProperty('--text-scale')"));
     }
 
     #[test]

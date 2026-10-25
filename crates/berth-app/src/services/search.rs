@@ -257,6 +257,9 @@ const GLOBALS: &[(ActionId, &str, &str)] = &[
     ("volume.create", "Create volume", "plus"),
     ("network.create", "Create network", "plus"),
     ("engine.add", "Add engine", "plus"),
+    ("view.text_bigger", "Bigger text", "plus"),
+    ("view.text_smaller", "Smaller text", "minus"),
+    ("view.text_reset", "Actual text size", "eye"),
 ];
 
 // ---------------------------------------------------------------------

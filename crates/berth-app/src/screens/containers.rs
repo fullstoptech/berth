@@ -1565,6 +1565,11 @@ pub fn ContainersScreen() -> Element {
     );
     let filter_active = filters.is_active();
     let epoch = *view.filter_epoch.read();
+    // The virtual table's maths must equal the stylesheet's `--size-row`.
+    let row_height_px = {
+        let settings = state.settings.read();
+        crate::text_scale::row_height_px(settings.density, settings.text_scale)
+    };
 
     let render_row = use_callback(move |i: usize| -> Element {
         let model = model.read();
@@ -1813,7 +1818,7 @@ pub fn ContainersScreen() -> Element {
                         VirtualTable {
                             total: row_count,
                             render_row,
-                            row_height_px: 28_u32,
+                            row_height_px,
                             viewport_height_px: 1100_u32,
                             overscan: 10_usize,
                         }

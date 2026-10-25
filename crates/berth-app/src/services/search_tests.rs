@@ -370,6 +370,28 @@ fn search_global_actions_carry_their_shortcut() {
 }
 
 #[test]
+fn search_palette_lists_the_text_size_actions_with_their_shortcuts() {
+    let world = mock();
+    let idx = index(&world, &Selection::None, &scope_default());
+    for (query, title, id, shortcut) in [
+        ("bigger text", "Bigger text", "view.text_bigger", "⌘="),
+        ("smaller text", "Smaller text", "view.text_smaller", "⌘-"),
+        ("actual text", "Actual text size", "view.text_reset", "⌘0"),
+    ] {
+        let first = idx.search(query, &[]).flat()[0].clone();
+        assert_eq!(first.title, title, "{query}");
+        assert_eq!(first.shortcut, Some(shortcut), "{query}");
+        assert_eq!(
+            first.target,
+            Target::Run {
+                action: id,
+                subject: None
+            }
+        );
+    }
+}
+
+#[test]
 fn search_every_palette_target_names_a_real_action_def() {
     for (id, _, _) in GLOBALS {
         assert!(action_by_id(id).is_some(), "{id} is not an ActionDef");

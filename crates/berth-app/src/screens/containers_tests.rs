@@ -228,14 +228,18 @@ fn containers_scene_selected_1024_drops_uptime_and_engine_below_1200() {
     );
 }
 
-/// The pixel width a track list entry asks for at least: `76px` or
-/// `minmax(120px, 1.3fr)`.
+/// The pixel width a track list entry asks for at least, at the default
+/// text size: `76px`, `minmax(120px, 1.3fr)` or
+/// `calc(76px * var(--text-scale, 1))` (the data columns grow with the text).
 fn track_min_px(track: &str) -> f32 {
     let inner = track
         .strip_prefix("minmax(")
         .map_or(track, |t| t.split(',').next().unwrap_or(t));
-    inner
+    let inner = inner
         .trim()
+        .strip_prefix("calc(")
+        .map_or(inner.trim(), |c| c.split(" * ").next().unwrap_or(c));
+    inner
         .trim_end_matches("px")
         .parse()
         .unwrap_or_else(|_| panic!("a px track, got {track}"))

@@ -165,19 +165,19 @@
   flex: 1;
   min-height: 0;
   margin-top: var(--space-8);
-  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px minmax(144px, 1fr);
+  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(144px * var(--text-scale, 1)), 1fr);
 }
 /* With Uptime and no inspector (frames "Containers / loading", "confirm
    delete", "Palette") Name, Image, Ports and Status measure 244, 204, 121
    and 276 px at 1440, so Status starts at x = 1148. */
 .ct-table.ct-has-uptime {
-  --ct-cols: 16px 8px minmax(110px, 2fr) minmax(90px, 1.7fr) minmax(88px, 1fr) 76px 84px 56px minmax(144px, 2.3fr);
+  --ct-cols: 16px 8px minmax(110px, 2fr) minmax(90px, 1.7fr) minmax(88px, 1fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) minmax(calc(144px * var(--text-scale, 1)), 2.3fr);
 }
 .ct-table.ct-has-engine {
-  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px minmax(70px, 0.6fr) minmax(144px, 1fr);
+  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(70px * var(--text-scale, 1)), 0.6fr) minmax(calc(144px * var(--text-scale, 1)), 1fr);
 }
 .ct-table.ct-has-uptime.ct-has-engine {
-  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px 56px minmax(70px, 0.6fr) minmax(144px, 1fr);
+  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) minmax(calc(70px * var(--text-scale, 1)), 0.6fr) minmax(calc(144px * var(--text-scale, 1)), 1fr);
 }
 /* D78: below 1200 px the table drops Uptime and Engine. */
 @media (max-width: 1199px) {
@@ -187,7 +187,7 @@
   .ct-table.ct-has-uptime.ct-has-engine {
     /* "Containers / selected / 1024": the four flexible columns measure
        120, 134, 112 and 138 px at 1024, which is their sum of minimums. */
-    --ct-cols: 16px 8px minmax(120px, 1.3fr) minmax(134px, 1fr) minmax(112px, 0.9fr) 76px 84px minmax(138px, 1fr);
+    --ct-cols: 16px 8px minmax(120px, 1.3fr) minmax(134px, 1fr) minmax(112px, 0.9fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(138px * var(--text-scale, 1)), 1fr);
   }
   .ct-table .ct-uptime,
   .ct-table .ct-engine {
