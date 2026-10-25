@@ -592,56 +592,61 @@ impl EngineClient for MockEngine {
     ) -> Bs<berth_core::PullProgress> {
         let reference = reference.to_string();
         let state = self.state.clone();
+        let engine = self.id.clone();
         futures::stream::unfold(
             (0_usize, cancel, reference, state),
-            |(step, cancel, reference, state)| async move {
-                if cancel.is_cancelled() {
-                    return None;
-                }
-                match step {
-                    0 => Some((
-                        Ok(berth_core::PullProgress {
-                            layer: Some("mock-layer".to_string()),
-                            status: format!("Pulling {reference}"),
-                            current: Some(0),
-                            total: Some(1),
-                        }),
-                        (1, cancel, reference, state),
-                    )),
-                    1 => {
-                        if let Ok(mut state) = state.lock() {
-                            if !state
-                                .images
-                                .iter()
-                                .any(|i| i.repo_tags.contains(&reference))
-                            {
-                                state.images.push(berth_core::Image {
-                                    id: format!(
-                                        "sha256:mock-{}",
-                                        reference.replace(['/', ':'], "-")
-                                    ),
-                                    repo_tags: vec![reference.clone()],
-                                    digests: Vec::new(),
-                                    size: bytesize::ByteSize::mb(10),
-                                    created: chrono::Utc::now(),
-                                    arch: berth_core::Arch::Aarch64,
-                                    os: "linux".to_string(),
-                                    used_by: Vec::new(),
-                                    dangling: false,
-                                });
-                            }
-                        }
-                        Some((
+            move |(step, cancel, reference, state)| {
+                let engine = engine.clone();
+                async move {
+                    if cancel.is_cancelled() {
+                        return None;
+                    }
+                    match step {
+                        0 => Some((
                             Ok(berth_core::PullProgress {
                                 layer: Some("mock-layer".to_string()),
-                                status: "Pull complete".to_string(),
-                                current: Some(1),
+                                status: format!("Pulling {reference}"),
+                                current: Some(0),
                                 total: Some(1),
                             }),
-                            (2, cancel, reference, state),
-                        ))
+                            (1, cancel, reference, state),
+                        )),
+                        1 => {
+                            if let Ok(mut state) = state.lock() {
+                                if !state
+                                    .images
+                                    .iter()
+                                    .any(|i| i.repo_tags.contains(&reference))
+                                {
+                                    state.images.push(berth_core::Image {
+                                        id: format!(
+                                            "sha256:mock-{}",
+                                            reference.replace(['/', ':'], "-")
+                                        ),
+                                        repo_tags: vec![reference.clone()],
+                                        digests: Vec::new(),
+                                        size: bytesize::ByteSize::mb(10),
+                                        created: chrono::Utc::now(),
+                                        arch: berth_core::Arch::Aarch64,
+                                        os: "linux".to_string(),
+                                        used_by: Vec::new(),
+                                        dangling: false,
+                                        engine: engine.clone(),
+                                    });
+                                }
+                            }
+                            Some((
+                                Ok(berth_core::PullProgress {
+                                    layer: Some("mock-layer".to_string()),
+                                    status: "Pull complete".to_string(),
+                                    current: Some(1),
+                                    total: Some(1),
+                                }),
+                                (2, cancel, reference, state),
+                            ))
+                        }
+                        _ => None,
                     }
-                    _ => None,
                 }
             },
         )
@@ -659,6 +664,19 @@ impl EngineClient for MockEngine {
         }
         let mut state = self.state.lock().map_err(|_| lock_err())?;
         state.images.retain(|i| i.id != detail.image.id);
+        Ok(())
+    }
+
+    async fn tag_image(&self, id: &str, repo: &str, tag: &str) -> Result<(), EngineError> {
+        let detail = self.image(id).await?;
+        let name = format!("{repo}:{tag}");
+        let mut state = self.state.lock().map_err(|_| lock_err())?;
+        if let Some(image) = state.images.iter_mut().find(|i| i.id == detail.image.id) {
+            if !image.repo_tags.contains(&name) {
+                image.repo_tags.push(name);
+            }
+            image.dangling = false;
+        }
         Ok(())
     }
 
@@ -695,6 +713,7 @@ impl EngineClient for MockEngine {
             project: None,
             created: Some(chrono::Utc::now()),
             labels: spec.labels.clone(),
+            engine: self.id.clone(),
         };
         let mut state = self.state.lock().map_err(|_| lock_err())?;
         if state.volumes.iter().any(|v| v.name == spec.name) {
@@ -731,6 +750,7 @@ impl EngineClient for MockEngine {
             containers: spec.attach.clone(),
             project: None,
             built_in: false,
+            engine: self.id.clone(),
         };
         let mut state = self.state.lock().map_err(|_| lock_err())?;
         if state.networks.iter().any(|n| n.name == spec.name) {

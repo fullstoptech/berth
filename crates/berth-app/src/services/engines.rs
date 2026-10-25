@@ -75,6 +75,12 @@ pub enum EngineUpdate {
         engine: berth_core::EngineId,
         reason: String,
     },
+    /// Colima started a profile (possibly with new resources): what it
+    /// reports now (P4-T6).
+    ProfileChanged {
+        engine: berth_core::EngineId,
+        profile: berth_core::ColimaProfile,
+    },
 }
 
 fn is_remote(kind: &berth_core::EngineKind) -> bool {
@@ -444,9 +450,9 @@ fn store_pins(store: &berth_store::Store) -> Vec<berth_core::PinnedFolder> {
     }
 }
 
-/// Owns the per-engine resource slices the flat signals cannot key by
-/// engine (`Image`/`Volume`/`Network` carry no engine field) and applies
-/// updates to the signals. One applier lives in the receiver task.
+/// Owns the per-engine resource slices, so one engine's update replaces
+/// only its own rows in the flat signals, and applies updates to the
+/// signals. One applier lives in the receiver task.
 #[derive(Default)]
 pub struct Applier {
     pins: Vec<berth_core::PinnedFolder>,
@@ -531,6 +537,7 @@ impl Applier {
                     }
                 }
                 drop(engines);
+                clear_retry(state, &engine);
                 state.snapshot_stale.set(false);
             }
             EngineUpdate::ContainerChanged {
@@ -588,13 +595,31 @@ impl Applier {
             EngineUpdate::EngineFailed { engine, reason } => {
                 let mut engines = state.engines.write();
                 if let Some(found) = engines.iter_mut().find(|e| e.id == engine) {
-                    found.state = berth_core::EngineState::Unreachable {
-                        reason,
-                        last_seen: None,
+                    use berth_core::EngineState as S;
+                    // A profile Colima stopped (or is starting) answers
+                    // nothing, and that is not a failure to report.
+                    let last_seen = match &found.state {
+                        S::Stopped | S::Stopping | S::Starting => None,
+                        S::Running => Some(chrono::Utc::now()),
+                        S::Unreachable { last_seen, .. } => *last_seen,
+                        S::Unsupported { .. } => None,
                     };
+                    if matches!(found.state, S::Running | S::Unreachable { .. }) {
+                        found.state = S::Unreachable { reason, last_seen };
+                    }
                 }
                 drop(engines);
+                clear_retry(state, &engine);
                 state.snapshot_stale.set(true);
+            }
+            EngineUpdate::ProfileChanged { engine, profile } => {
+                let mut engines = state.engines.write();
+                if let Some(found) = engines.iter_mut().find(|e| e.id == engine) {
+                    found.resources = Some(resources_of(&profile));
+                    if let Some(socket) = &profile.docker_socket {
+                        found.docker_host = Some(format!("unix://{}", socket.display()));
+                    }
+                }
             }
         }
     }
@@ -618,6 +643,31 @@ impl Applier {
                 .flat_map(|rows| rows.iter().cloned())
                 .collect(),
         );
+    }
+}
+
+/// The engine answered (or failed again): its "Retrying…" is over.
+fn clear_retry(state: &mut AppState, engine: &berth_core::EngineId) {
+    let key = crate::state::PendingKey {
+        subject: berth_core::Subject::Engine(engine.clone()),
+        action: "engine.retry",
+    };
+    if state.pending.peek().contains_key(&key) {
+        state.pending.write().remove(&key);
+    }
+}
+
+/// The VM sizes a Colima profile reports, as an engine shows them.
+fn resources_of(profile: &berth_core::ColimaProfile) -> berth_core::VmResources {
+    berth_core::VmResources {
+        cpus: profile.cpus,
+        memory: profile.memory,
+        disk: profile.disk,
+        arch: profile.arch.clone(),
+        vm_type: profile.vm_type.clone().unwrap_or(berth_core::VmType::Vz),
+        rosetta: profile.rosetta.unwrap_or(false),
+        runtime: profile.runtime,
+        mount_type: profile.mount_type.clone(),
     }
 }
 
@@ -717,6 +767,135 @@ pub struct EnginesHandle {
     cancel: CancellationToken,
     store: Arc<berth_store::Store>,
     state: AppState,
+    link: EngineLink,
+}
+
+impl EnginesHandle {
+    /// The link other services use to bring an engine back online.
+    #[must_use]
+    pub fn link(&self) -> EngineLink {
+        self.link.clone()
+    }
+}
+
+/// Brings one engine online after discovery has run (P4-T6): a Colima
+/// profile that was stopped at launch and has just been started, or an
+/// unreachable engine the user pressed Retry on. An engine that already has
+/// a client keeps its loop, which reconnects by itself; one without gets a
+/// client and a loop here. Cheap to clone.
+#[derive(Clone)]
+pub struct EngineLink {
+    inner: Arc<LinkInner>,
+}
+
+struct LinkInner {
+    clients: ClientMap,
+    store: Arc<berth_store::Store>,
+    pins: Vec<berth_core::PinnedFolder>,
+    tx: tokio::sync::mpsc::Sender<EngineUpdate>,
+    cancel: CancellationToken,
+    mock: bool,
+}
+
+impl EngineLink {
+    #[must_use]
+    pub fn new(
+        clients: ClientMap,
+        store: Arc<berth_store::Store>,
+        pins: Vec<berth_core::PinnedFolder>,
+        tx: tokio::sync::mpsc::Sender<EngineUpdate>,
+        cancel: CancellationToken,
+        mock: bool,
+    ) -> Self {
+        Self {
+            inner: Arc::new(LinkInner {
+                clients,
+                store,
+                pins,
+                tx,
+                cancel,
+                mock,
+            }),
+        }
+    }
+
+    /// Connect `engine` unless it has a client. `profile` is what Colima
+    /// reports for it now (its socket exists only once it runs); it is also
+    /// sent on so the sizes on screen follow an Apply.
+    pub fn connect(&self, engine: berth_core::Engine, profile: Option<berth_core::ColimaProfile>) {
+        let inner = Arc::clone(&self.inner);
+        spawn_io(async move { inner.connect(engine, profile).await });
+    }
+}
+
+impl LinkInner {
+    fn has_client(&self, id: &berth_core::EngineId) -> bool {
+        match self.clients.lock() {
+            Ok(map) => map.contains_key(id),
+            Err(poisoned) => poisoned.into_inner().contains_key(id),
+        }
+    }
+
+    async fn connect(
+        &self,
+        mut engine: berth_core::Engine,
+        profile: Option<berth_core::ColimaProfile>,
+    ) {
+        if let Some(profile) = profile {
+            if let Some(socket) = &profile.docker_socket {
+                engine.docker_host = Some(format!("unix://{}", socket.display()));
+            }
+            let update = EngineUpdate::ProfileChanged {
+                engine: engine.id.clone(),
+                profile,
+            };
+            if self.tx.send(update).await.is_err() {
+                return;
+            }
+        }
+        if self.has_client(&engine.id) {
+            return;
+        }
+        let client: Result<Arc<dyn berth_engine::EngineClient>, String> = if self.mock {
+            let world = super::mock_world_at(chrono::Utc::now());
+            berth_engine::MockEngine::from_world(world, &engine.id)
+                .map(|c| Arc::new(c) as Arc<dyn berth_engine::EngineClient>)
+                .map_err(|err| err.to_string())
+        } else {
+            berth_engine::BollardEngine::connect(&engine)
+                .map(|c| Arc::new(c) as Arc<dyn berth_engine::EngineClient>)
+                .map_err(|err| err.to_string())
+        };
+        match client {
+            Ok(client) => {
+                match self.clients.lock() {
+                    Ok(mut map) => map.insert(engine.id.clone(), Arc::clone(&client)),
+                    Err(poisoned) => poisoned
+                        .into_inner()
+                        .insert(engine.id.clone(), Arc::clone(&client)),
+                };
+                spawn_io(run_engine(
+                    client,
+                    Arc::clone(&self.store),
+                    self.pins.clone(),
+                    is_remote(&engine.kind),
+                    self.tx.clone(),
+                    self.cancel.child_token(),
+                    RECONNECT_DELAY,
+                ));
+            }
+            Err(reason) => {
+                tracing::warn!(%reason, engine = %engine.id.0, "engine connect failed");
+                let _ = self
+                    .tx
+                    .send(EngineUpdate::EngineFailed {
+                        engine: engine.id.clone(),
+                        reason,
+                    })
+                    .await;
+            }
+        }
+    }
 }
 
 impl Drop for EnginesHandle {
@@ -740,6 +919,10 @@ pub fn start(
     let run_store = Arc::clone(&store);
     let run_clients = Arc::clone(&clients);
     let run_cancel = cancel.clone();
+    let link_tx = tx.clone();
+    let link_store = Arc::clone(&store);
+    let link_clients = Arc::clone(&clients);
+    let link_cancel = cancel.clone();
     spawn_io(async move {
         let (engines, pins) = if mock {
             mock_world_parts(&run_clients)
@@ -789,10 +972,24 @@ pub fn start(
         }
     });
 
+    let link_pins = if mock {
+        berth_engine::MockWorld::bundled().pins
+    } else {
+        store_pins(&link_store)
+    };
+    let link = EngineLink::new(
+        link_clients,
+        link_store,
+        link_pins,
+        link_tx,
+        link_cancel,
+        mock,
+    );
     EnginesHandle {
         cancel,
         store,
         state,
+        link,
     }
 }
 
@@ -1408,6 +1605,122 @@ mod tests {
                 .any(|s| s.containers.contains(&victim.id)),
             "destroyed container left its service summary"
         );
+    }
+
+    /// The row ids the Containers table shows, top to bottom, in the
+    /// default view (no sort picked) for either grouping.
+    fn table_order(
+        dom: &VirtualDom,
+        state: &AppState,
+        group_by: crate::screens::containers::GroupBy,
+    ) -> Vec<String> {
+        use crate::screens::containers as screen;
+        dom.in_runtime(|| {
+            let containers = state.containers.peek();
+            let projects = state.projects.peek();
+            let engines = state.engines.peek();
+            let scope = crate::state::EngineScope::All;
+            let filters = screen::Filters::default();
+            // Every group open: a group that has nothing running folds
+            // itself away by default, which hides rows rather than moving
+            // them.
+            let mut collapsed = std::collections::BTreeMap::new();
+            collapsed.insert("unassigned".to_string(), false);
+            for project in projects.iter() {
+                collapsed.insert(format!("project:{}", project.id.0), false);
+            }
+            let pending = std::collections::BTreeMap::new();
+            let model = screen::build_list(&screen::ListInput {
+                containers: &containers,
+                projects: &projects,
+                engines: &engines,
+                scope: &scope,
+                filters: &filters,
+                group_by,
+                sort: None,
+                collapsed: &collapsed,
+                pending: &pending,
+            });
+            model
+                .selection_order()
+                .iter()
+                .filter_map(|id| containers.iter().find(|c| c.id == *id))
+                .map(|c| c.name.clone())
+                .collect()
+        })
+    }
+
+    /// Bug: an event refetches one container, the applier moved it to the
+    /// end of the list, and the table (which kept the list order) swapped
+    /// the row under the pointer. A row keeps its place through stop,
+    /// start, restart and a plain refetch.
+    #[test]
+    fn services_container_events_never_move_a_table_row() {
+        use crate::screens::containers::GroupBy;
+        let (dom, mut state) = harness();
+        let world = berth_engine::MockWorld::bundled();
+        let containers = world.containers_for(&default_engine_id());
+        let projects =
+            berth_engine::projects::group(&default_engine_id(), &containers, &world.pins, false);
+        let mut applier = Applier::new(world.pins.clone());
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::EnginesDiscovered(world.engines.clone()),
+        );
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::EngineData {
+                engine: default_engine_id(),
+                info: None,
+                containers: containers.clone(),
+                projects,
+                images: Vec::new(),
+                volumes: Vec::new(),
+                networks: Vec::new(),
+            },
+        );
+        let flat = table_order(&dom, &state, GroupBy::None);
+        let grouped = table_order(&dom, &state, GroupBy::Project);
+        assert!(flat.len() > 5, "rows: {}", flat.len());
+
+        let steps = [
+            berth_core::ContainerState::Exited,
+            berth_core::ContainerState::Running,
+            berth_core::ContainerState::Restarting,
+            berth_core::ContainerState::Running,
+        ];
+        for original in &containers {
+            for step in steps {
+                let mut changed = original.clone();
+                changed.state = step;
+                apply(
+                    &dom,
+                    &mut applier,
+                    &mut state,
+                    EngineUpdate::ContainerChanged {
+                        engine: default_engine_id(),
+                        id: original.id.clone(),
+                        container: Some(changed),
+                    },
+                );
+                assert_eq!(
+                    table_order(&dom, &state, GroupBy::None),
+                    flat,
+                    "{} -> {step:?} moved a flat row",
+                    original.name
+                );
+                assert_eq!(
+                    table_order(&dom, &state, GroupBy::Project),
+                    grouped,
+                    "{} -> {step:?} moved a grouped row",
+                    original.name
+                );
+            }
+        }
     }
 
     #[test]

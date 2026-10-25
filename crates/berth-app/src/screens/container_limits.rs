@@ -126,6 +126,7 @@ pub fn LimitsPanel(container: Container) -> Element {
                 Err(_) => (Offer::Nothing, false),
             };
             let (label, reason) = apply_button(offered, !errors.is_empty(), removes, &status);
+            let edit_reason = state.backing.read().unsupported_action("container.edit");
             let running = matches!(status, EditStatus::Running(_));
             let target = ContainerTarget::from(&container);
             let edit_id = id.clone();
@@ -182,6 +183,8 @@ pub fn LimitsPanel(container: Container) -> Element {
                         label: "Edit and recreate…".to_string(),
                         variant: ButtonVariant::Ghost,
                         size: ControlSize::Sm,
+                        disabled: edit_reason.is_some(),
+                        disabled_reason: edit_reason,
                         onclick: move |_| {
                             state
                                 .overlays

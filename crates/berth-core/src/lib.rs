@@ -51,7 +51,8 @@ pub use ids::{Actor, ContainerId, EngineId, HarnessId, OwnerId, ProblemId, Proje
 pub use image::{Image, ImageDetail, ImageLayer, ImageSearchHit, PullProgress};
 pub use network::{Network, NetworkSpec};
 pub use problem::{
-    ColimaOp, EngineAction, Fix, FixEffect, FixSource, Problem, ProblemKind, Severity, Subject,
+    ColimaOp, EngineAction, Fix, FixEffect, FixSource, Problem, ProblemKind, ResourceRef, Severity,
+    Subject,
 };
 pub use project::{GitInfo, PinnedFolder, Project, ProjectSource, ProjectStatus, ServiceSummary};
 pub use registry::{Registry, RegistryStatus};

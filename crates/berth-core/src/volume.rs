@@ -2,7 +2,7 @@ use bytesize::ByteSize;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{ContainerId, ProjectId};
+use crate::ids::{ContainerId, EngineId, ProjectId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Volume {
@@ -14,6 +14,8 @@ pub struct Volume {
     pub project: Option<ProjectId>,
     pub created: Option<DateTime<Utc>>,
     pub labels: std::collections::BTreeMap<String, String>,
+    /// The engine this volume is on (D27).
+    pub engine: EngineId,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VolumeSpec {
@@ -57,6 +59,7 @@ mod tests {
             project: None,
             created: None,
             labels: std::collections::BTreeMap::new(),
+            engine: EngineId("colima:default".to_string()),
         };
         let json = serde_json::to_string(&v).expect("serialize");
         assert_eq!(

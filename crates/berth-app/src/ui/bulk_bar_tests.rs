@@ -36,6 +36,7 @@ fn view_of<'a>(
         volumes: &[],
         networks: &[],
         pending,
+        backing: crate::services::backing::Backing::default(),
     }
 }
 

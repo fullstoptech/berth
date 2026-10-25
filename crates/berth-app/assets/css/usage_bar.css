@@ -1,0 +1,79 @@
+/* UsageBar (components-spec). Tokens only. */
+
+.usage-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.usage-track {
+  display: flex;
+  height: var(--space-16);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-line);
+}
+.usage-seg {
+  flex: none;
+  height: 100%;
+}
+.usage-s1 {
+  background: var(--color-ink);
+}
+.usage-s2 {
+  background: var(--color-ink-muted);
+}
+.usage-s3 {
+  background: var(--color-line-strong);
+}
+.usage-s4 {
+  background: var(--color-ink-disabled);
+}
+.usage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-20);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.usage-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--color-ink-muted);
+}
+.usage-swatch {
+  flex: none;
+  width: var(--space-8);
+  height: var(--space-8);
+  border-radius: var(--radius-full);
+}
+.usage-legend-value {
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+.usage-reason {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.usage-loading .usage-track {
+  background: linear-gradient(
+    90deg,
+    var(--color-line),
+    var(--color-surface-pressed),
+    var(--color-line)
+  );
+}
+/* Nearly full: the track edge and the legend values take the warning tone
+   (never colour alone: the summary label carries the figures too). */
+.usage-full .usage-track {
+  outline: 1px solid var(--color-warning);
+}
+.usage-full .usage-legend-value {
+  color: var(--color-warning);
+}

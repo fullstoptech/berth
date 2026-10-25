@@ -19,7 +19,8 @@ use bollard::query_parameters::{
     LogsOptionsBuilder, PruneBuildOptions, RemoveContainerOptionsBuilder,
     RemoveImageOptionsBuilder, RemoveVolumeOptions, RenameContainerOptionsBuilder,
     RestartContainerOptionsBuilder, SearchImagesOptionsBuilder, StartContainerOptions,
-    StatsOptionsBuilder, StopContainerOptionsBuilder, UploadToContainerOptionsBuilder,
+    StatsOptionsBuilder, StopContainerOptionsBuilder, TagImageOptionsBuilder,
+    UploadToContainerOptionsBuilder,
 };
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
@@ -29,10 +30,7 @@ use crate::client::{Bs, EngineClient, ExecHandle};
 use crate::mappers;
 use crate::EngineError;
 
-/// Bollard's per-request timeout installed by `connect_with_unix` (seconds).
-/// PLAN §6.5 asks for a 2 s connect timeout; bollard has no separate connect
-/// timeout for unix sockets, so the request timeout carries the 2 s budget.
-const CONNECT_TIMEOUT_SECS: u64 = 2;
+use crate::timeouts::{CallKind, LIST_INSPECT};
 
 pub struct BollardEngine {
     docker: bollard::Docker,
@@ -54,9 +52,7 @@ fn map_err(engine_name: &str, err: bollard::errors::Error) -> EngineError {
             reason: format!("socket {path} not found"),
         },
         B::DockerStreamError { error } => EngineError::Docker(error),
-        B::RequestTimeoutError => {
-            EngineError::Timeout(std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS))
-        }
+        B::RequestTimeoutError => EngineError::Timeout(LIST_INSPECT),
         other => EngineError::Unreachable {
             engine: engine_name.to_string(),
             reason: other.to_string(),
@@ -85,7 +81,7 @@ impl BollardEngine {
         };
         let docker = bollard::Docker::connect_with_unix(
             socket,
-            CONNECT_TIMEOUT_SECS,
+            LIST_INSPECT.as_secs(),
             bollard::API_DEFAULT_VERSION,
         )
         .map_err(|e| map_err(&engine.name, e))?;
@@ -99,6 +95,23 @@ impl BollardEngine {
 
     fn err(&self, e: bollard::errors::Error) -> EngineError {
         map_err(&self.engine_name, e)
+    }
+
+    /// The error of a call made through [`Self::docker_for`]: a timeout
+    /// names that call's budget, not the default one.
+    fn err_for(&self, kind: CallKind, e: bollard::errors::Error) -> EngineError {
+        match (e, kind.timeout()) {
+            (bollard::errors::Error::RequestTimeoutError, Some(limit)) => {
+                EngineError::Timeout(limit)
+            }
+            (e, _) => self.err(e),
+        }
+    }
+
+    /// The client with the request timeout of `kind` (D29). The default
+    /// client carries [`LIST_INSPECT`].
+    fn docker_for(&self, kind: CallKind) -> bollard::Docker {
+        self.docker.clone().with_timeout(kind.for_bollard())
     }
 
     async fn raw_containers(&self) -> Result<Vec<berth_core::Container>, EngineError> {
@@ -177,49 +190,32 @@ impl BollardEngine {
     /// created (never started) container, so no process ever runs in it.
     /// The image is never pulled here (the caller confirms that, P1-T6);
     /// a missing helper image is a Docker error naming it.
-    async fn helper_container(&self, volume: &str, read_only: bool) -> Result<String, EngineError> {
+    ///
+    /// The returned guard removes the container when it is dropped, so a
+    /// cancelled or dropped operation leaves nothing behind (D28).
+    async fn helper_container(
+        &self,
+        volume: &str,
+        read_only: bool,
+    ) -> Result<HelperGuard, EngineError> {
         if self.docker.inspect_image(HELPER_IMAGE).await.is_err() {
             return Err(EngineError::Docker(format!(
                 "helper image {HELPER_IMAGE} is not on this engine; pull it first"
             )));
         }
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos());
-        let name = format!("berthfx-scratch-helper-{nanos:x}");
-        let spec = berth_core::ContainerSpec {
-            name,
-            image: berth_core::ImageRef {
-                reference: HELPER_IMAGE.to_string(),
-                id: None,
-            },
-            command: Some(vec!["sleep".to_string(), "300".to_string()]),
-            entrypoint: None,
-            env: Vec::new(),
-            ports: Vec::new(),
-            mounts: vec![berth_core::Mount {
-                kind: berth_core::MountKind::Volume,
-                source: volume.to_string(),
-                destination: HELPER_MOUNT.to_string(),
-                read_only,
-                volume_name: Some(volume.to_string()),
-            }],
-            networks: Vec::new(),
-            labels: [("dev.berth.fixture".to_string(), "1".to_string())]
-                .into_iter()
-                .collect(),
-            restart: berth_core::RestartPolicy::No,
-            limits: berth_core::Limits::default(),
-            platform: None,
-            working_dir: None,
-            user: None,
-            healthcheck: None,
-            cap_add: Vec::new(),
-            cap_drop: Vec::new(),
-            network_aliases: std::collections::BTreeMap::new(),
-        };
-        let id = self.create_from_spec(&spec, false).await?;
-        Ok(id.0)
+        let spec = helper_spec(&helper_name(), volume, read_only);
+        let options = CreateContainerOptionsBuilder::new()
+            .name(&spec.name)
+            .build();
+        let created = self
+            .docker
+            .create_container(Some(options), helper_create_body(&spec))
+            .await
+            .map_err(|e| self.err(e))?;
+        Ok(HelperGuard {
+            docker: self.docker.clone(),
+            id: Some(created.id),
+        })
     }
 
     /// Resolve a `FileTarget` to (container id, in-container path,
@@ -229,12 +225,13 @@ impl BollardEngine {
         target: &berth_core::FileTarget,
         path: &str,
         read_only: bool,
-    ) -> Result<(String, String, Option<String>), EngineError> {
+    ) -> Result<(String, String, Option<HelperGuard>), EngineError> {
         match target {
             berth_core::FileTarget::Container(id) => Ok((id.0.clone(), path.to_string(), None)),
             berth_core::FileTarget::Volume(volume) => {
                 let helper = self.helper_container(volume, read_only).await?;
-                Ok((helper.clone(), helper_path(path), Some(helper)))
+                let id = helper.id().to_string();
+                Ok((id, helper_path(path), Some(helper)))
             }
         }
     }
@@ -242,6 +239,92 @@ impl BollardEngine {
 
 const HELPER_IMAGE: &str = "alpine:3";
 const HELPER_MOUNT: &str = "/__berth_vol";
+/// The label every helper container carries (D28). Fixtures use
+/// `dev.berth.fixture`; a helper never does, so test cleanup cannot mistake
+/// one for the other.
+const HELPER_LABEL: &str = "dev.berth.helper";
+
+fn helper_name() -> String {
+    format!("berth-helper-{}", uuid::Uuid::now_v7().simple())
+}
+
+fn helper_spec(name: &str, volume: &str, read_only: bool) -> berth_core::ContainerSpec {
+    berth_core::ContainerSpec {
+        name: name.to_string(),
+        image: berth_core::ImageRef {
+            reference: HELPER_IMAGE.to_string(),
+            id: None,
+        },
+        command: Some(vec!["sleep".to_string(), "300".to_string()]),
+        entrypoint: None,
+        env: Vec::new(),
+        ports: Vec::new(),
+        mounts: vec![berth_core::Mount {
+            kind: berth_core::MountKind::Volume,
+            source: volume.to_string(),
+            destination: HELPER_MOUNT.to_string(),
+            read_only,
+            volume_name: Some(volume.to_string()),
+        }],
+        networks: Vec::new(),
+        labels: [(HELPER_LABEL.to_string(), "1".to_string())]
+            .into_iter()
+            .collect(),
+        restart: berth_core::RestartPolicy::No,
+        limits: berth_core::Limits::default(),
+        platform: None,
+        working_dir: None,
+        user: None,
+        healthcheck: None,
+        cap_add: Vec::new(),
+        cap_drop: Vec::new(),
+        network_aliases: std::collections::BTreeMap::new(),
+    }
+}
+
+/// The create body of a helper: the spec's, with `auto_remove` so an
+/// engine that ever starts it removes it on exit.
+fn helper_create_body(spec: &berth_core::ContainerSpec) -> ContainerCreateBody {
+    let mut body = spec_to_create_body(spec);
+    let host = body.host_config.get_or_insert_with(HostConfig::default);
+    host.auto_remove = Some(true);
+    body
+}
+
+/// Owns one helper container. [`HelperGuard::remove`] removes it and waits;
+/// dropping the guard without that (a cancelled stream, a dropped future, a
+/// panic) force-removes it from a spawned task (D28).
+struct HelperGuard {
+    docker: bollard::Docker,
+    id: Option<String>,
+}
+
+impl HelperGuard {
+    fn id(&self) -> &str {
+        self.id.as_deref().unwrap_or_default()
+    }
+
+    async fn remove(mut self) {
+        if let Some(id) = self.id.take() {
+            let options = RemoveContainerOptionsBuilder::new().force(true).build();
+            let _ = self.docker.remove_container(&id, Some(options)).await;
+        }
+    }
+}
+
+impl Drop for HelperGuard {
+    fn drop(&mut self) {
+        let Some(id) = self.id.take() else { return };
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        let docker = self.docker.clone();
+        runtime.spawn(async move {
+            let options = RemoveContainerOptionsBuilder::new().force(true).build();
+            let _ = docker.remove_container(&id, Some(options)).await;
+        });
+    }
+}
 
 fn helper_path(path: &str) -> String {
     let rel = path.trim_matches('/');
@@ -330,7 +413,7 @@ impl EngineClient for BollardEngine {
             .map_err(|e| self.err(e))?;
         Ok(summaries
             .iter()
-            .map(|s| mappers::image(s, &containers))
+            .map(|s| mappers::image(&self.id, s, &containers))
             .collect())
     }
 
@@ -349,7 +432,7 @@ impl EngineClient for BollardEngine {
             .await
             .map_err(|e| self.err(e))?;
         let containers = self.raw_containers().await?;
-        let image = mappers::image_from_inspect(&inspect, &containers);
+        let image = mappers::image_from_inspect(&self.id, &inspect, &containers);
         let layers = history
             .iter()
             .map(|h| berth_core::ImageLayer {
@@ -398,7 +481,7 @@ impl EngineClient for BollardEngine {
             .volumes
             .unwrap_or_default()
             .iter()
-            .map(|v| mappers::volume(v, &containers))
+            .map(|v| mappers::volume(&self.id, v, &containers))
             .collect())
     }
 
@@ -412,7 +495,7 @@ impl EngineClient for BollardEngine {
         Ok(list
             .iter()
             .map(|n| {
-                let mut network = mappers::network(n);
+                let mut network = mappers::network(&self.id, n);
                 network.containers = containers
                     .iter()
                     .filter(|c| c.networks.iter().any(|name| name == &network.name))
@@ -425,26 +508,27 @@ impl EngineClient for BollardEngine {
 
     async fn disk_usage(&self) -> Result<berth_core::DiskUsage, EngineError> {
         let df = self
-            .docker
+            .docker_for(CallKind::DiskUsage)
             .df(None::<DataUsageOptions>)
             .await
-            .map_err(|e| self.err(e))?;
+            .map_err(|e| self.err_for(CallKind::DiskUsage, e))?;
         Ok(mappers::disk_usage(&df))
     }
 
     async fn volume_sizes(
         &self,
     ) -> Result<std::collections::BTreeMap<String, bytesize::ByteSize>, EngineError> {
+        // `system df` walks every volume, so it has its own budget (D29).
         let df = self
-            .docker
+            .docker_for(CallKind::DiskUsage)
             .df(None::<DataUsageOptions>)
             .await
-            .map_err(|e| self.err(e))?;
+            .map_err(|e| self.err_for(CallKind::DiskUsage, e))?;
         Ok(mappers::volume_sizes(&df))
     }
 
     fn events(&self, cancel: Cancel) -> Bs<berth_core::EngineEvent> {
-        let docker = self.docker.clone();
+        let docker = self.docker_for(CallKind::Events);
         let engine = self.id.clone();
         let name = self.engine_name.clone();
         let stream = docker.events(None::<bollard::query_parameters::EventsOptions>);
@@ -462,7 +546,7 @@ impl EngineClient for BollardEngine {
         q: berth_core::LogQuery,
         cancel: Cancel,
     ) -> Bs<berth_core::LogLine> {
-        let docker = self.docker.clone();
+        let docker = self.docker_for(CallKind::Logs);
         let name = self.engine_name.clone();
         let tail = q.tail.map_or_else(|| "all".to_string(), |t| t.to_string());
         let mut builder = LogsOptionsBuilder::new()
@@ -479,7 +563,7 @@ impl EngineClient for BollardEngine {
     }
 
     fn stats(&self, id: &berth_core::ContainerId, cancel: Cancel) -> Bs<berth_core::LiveStats> {
-        let docker = self.docker.clone();
+        let docker = self.docker_for(CallKind::Stats);
         let name = self.engine_name.clone();
         let options = StatsOptionsBuilder::new()
             .stream(true)
@@ -624,7 +708,7 @@ impl EngineClient for BollardEngine {
             self.act(id, berth_core::ContainerAction::Unpause).await?;
         }
         if was_running || was_paused {
-            // Bollard's per-request timeout is the 2 s connect budget, so a
+            // The list/inspect request timeout (5 s) is shorter than the stop, so a
             // container whose PID 1 ignores SIGTERM outlives the stop
             // request. The engine keeps stopping it server-side; poll for
             // the exit, then kill as the last resort.
@@ -748,7 +832,7 @@ impl EngineClient for BollardEngine {
                 }
             };
             let started = self
-                .docker
+                .docker_for(CallKind::Attach)
                 .start_exec(
                     &created.id,
                     Some(StartExecOptions {
@@ -908,7 +992,7 @@ impl EngineClient for BollardEngine {
                 .build();
             let mut stream = Box::pin(
                 engine
-                    .docker
+                    .docker_for(CallKind::Export)
                     .download_from_container(&container, Some(options)),
             );
             loop {
@@ -931,7 +1015,7 @@ impl EngineClient for BollardEngine {
                 }
             }
             if let Some(helper) = helper {
-                let _ = engine.remove_by_id(&helper, true).await;
+                helper.remove().await;
             }
         });
         channel_stream(rx)
@@ -948,12 +1032,12 @@ impl EngineClient for BollardEngine {
             .path(&in_path)
             .build();
         let result = self
-            .docker
+            .docker_for(CallKind::Upload)
             .upload_to_container(&container, Some(options), bollard::body_full(tar))
             .await
             .map_err(|e| self.err(e));
         if let Some(helper) = helper {
-            let _ = self.remove_by_id(&helper, true).await;
+            helper.remove().await;
         }
         result
     }
@@ -972,7 +1056,9 @@ impl EngineClient for BollardEngine {
         if let Some(platform) = platform {
             builder = builder.platform(platform);
         }
-        let stream = self.docker.create_image(Some(builder.build()), None, None);
+        let stream =
+            self.docker_for(CallKind::Pull)
+                .create_image(Some(builder.build()), None, None);
         cancellable(
             stream,
             cancel,
@@ -1000,6 +1086,14 @@ impl EngineClient for BollardEngine {
             .remove_image(id, Some(options), None)
             .await
             .map(|_| ())
+            .map_err(|e| self.err(e))
+    }
+
+    async fn tag_image(&self, id: &str, repo: &str, tag: &str) -> Result<(), EngineError> {
+        let options = TagImageOptionsBuilder::new().repo(repo).tag(tag).build();
+        self.docker
+            .tag_image(id, Some(options))
+            .await
             .map_err(|e| self.err(e))
     }
 
@@ -1054,7 +1148,7 @@ impl EngineClient for BollardEngine {
             .create_volume(config)
             .await
             .map_err(|e| self.err(e))?;
-        Ok(mappers::volume(&volume, &[]))
+        Ok(mappers::volume(&self.id, &volume, &[]))
     }
 
     async fn remove_volume(&self, name: &str) -> Result<(), EngineError> {
@@ -1087,6 +1181,13 @@ impl EngineClient for BollardEngine {
             driver: Some(spec.driver.clone()).filter(|d| !d.is_empty()),
             internal: Some(spec.internal),
             ipam,
+            labels: Some(
+                spec.labels
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            )
+            .filter(|labels: &std::collections::HashMap<String, String>| !labels.is_empty()),
             ..Default::default()
         };
         let created = self
@@ -1170,7 +1271,11 @@ impl EngineClient for BollardEngine {
                         (Ok(()), None)
                     } else {
                         build_cache_pruned = true;
-                        match self.docker.prune_build(None::<PruneBuildOptions>).await {
+                        match self
+                            .docker_for(CallKind::Build)
+                            .prune_build(None::<PruneBuildOptions>)
+                            .await
+                        {
                             Ok(resp) => (
                                 Ok(()),
                                 resp.space_reclaimed.map(|n| u64::try_from(n).unwrap_or(0)),
@@ -1510,6 +1615,25 @@ mod tests {
 
     fn fallback() -> chrono::DateTime<chrono::Utc> {
         chrono::DateTime::from_timestamp(7, 0).expect("ts")
+    }
+
+    #[test]
+    fn helper_create_config_has_the_helper_label_not_the_fixture_label() {
+        let name = helper_name();
+        assert!(name.starts_with("berth-helper-"), "{name}");
+        assert_ne!(name, helper_name(), "every helper gets its own name");
+        let body = helper_create_body(&helper_spec(&name, "some-volume", true));
+        let labels = body.labels.expect("labels");
+        assert_eq!(
+            labels.get("dev.berth.helper").map(String::as_str),
+            Some("1")
+        );
+        assert!(!labels.contains_key("dev.berth.fixture"), "{labels:?}");
+        let host = body.host_config.expect("host config");
+        assert_eq!(host.auto_remove, Some(true));
+        let mounts = host.mounts.expect("mounts");
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].read_only, Some(true));
     }
 
     #[test]

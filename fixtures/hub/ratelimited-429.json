@@ -1,0 +1,10 @@
+{
+  "note": "Synthesised, not recorded: a real 429 was not provoked (the anonymous limit is 180 requests per window). Header names x-ratelimit-limit/remaining/reset were recorded from 200 responses on 2026-10-25; x-ratelimit-reset there is a Unix timestamp in seconds. retry-after is the standard header.",
+  "status": 429,
+  "headers": {
+    "retry-after": "37",
+    "x-ratelimit-limit": "180",
+    "x-ratelimit-remaining": "0"
+  },
+  "body": { "message": "Too many requests", "errinfo": {} }
+}

@@ -1,70 +1,6 @@
-//! Confirm models (D33): the one place that builds the `EffectSummary` of
-//! a container or engine action that asks first. The dialog's button, its
-//! text and the result message all render from that one value
-//! ([`button_label`], the lines, [`result_label`]); `search.rs` (palette),
-//! the row, the bulk bar and ⌫ all come here.
-//!
-//! [`run`] is the other half: it sends a confirmed model to the actions
-//! service and returns the pending keys, so the caller can watch for the
-//! outcome ([`watch_result`]) and say it from the same summary.
+//! Container confirms: delete, kill, recreate with the latest image.
 
-use berth_core::{
-    ColimaOp, Container, ContainerAction, ContainerId, ContainerState, EffectKind, EffectLine,
-    EffectSummary, EngineAction, EngineId, Subject, Volume,
-};
-use dioxus::prelude::{ReadableExt, WritableExt};
-
-use crate::services::actions::{container_action_id, ActionsService, ContainerTarget};
-use crate::state::{AppState, ConfirmModel, PendingKey, PendingState, Toast, ToastTone};
-
-/// "1 container" or "3 containers".
-#[must_use]
-pub fn plural(n: usize, one: &str, many: &str) -> String {
-    if n == 1 {
-        format!("{n} {one}")
-    } else {
-        format!("{n} {many}")
-    }
-}
-
-fn line(kind: EffectKind, text: impl Into<String>) -> EffectLine {
-    EffectLine {
-        kind,
-        text: text.into(),
-    }
-}
-
-fn summary(
-    verb: &str,
-    noun_one: &str,
-    noun_many: &str,
-    count: usize,
-    lines: Vec<EffectLine>,
-) -> EffectSummary {
-    EffectSummary {
-        verb: verb.to_string(),
-        noun_one: noun_one.to_string(),
-        noun_many: noun_many.to_string(),
-        count: u32::try_from(count).unwrap_or(u32::MAX),
-        bytes: None,
-        lines,
-        typed_name: None,
-    }
-}
-
-fn is_active(state: ContainerState) -> bool {
-    matches!(
-        state,
-        ContainerState::Running | ContainerState::Restarting | ContainerState::Paused
-    )
-}
-
-/// Docker names an anonymous volume with 64 hex digits; a named volume
-/// survives `docker rm -v`.
-#[must_use]
-pub fn is_anonymous_volume(name: &str) -> bool {
-    name.len() == 64 && name.bytes().all(|b| b.is_ascii_hexdigit())
-}
+use super::*;
 
 /// The named volumes these containers mount, once each, in mount order.
 fn kept_volumes<'a>(containers: &[&'a Container]) -> Vec<&'a str> {
@@ -167,36 +103,6 @@ pub fn kill_effect(container: &Container) -> EffectSummary {
     )
 }
 
-/// What uploading one file into a container folder does (Files tab,
-/// P3-T8). `replaces` says a file of that name is already there; the
-/// upload would overwrite it, which is why the dialog asks at all. The
-/// size is in the text because `bytes` means "removes" in the footer.
-#[must_use]
-pub fn upload_effect(
-    dir: &str,
-    name: &str,
-    size: bytesize::ByteSize,
-    replaces: bool,
-) -> EffectSummary {
-    let mut lines = vec![line(
-        EffectKind::Writes,
-        format!("{name} ({}) to {dir}", berth_core::fmt::bytes(size)),
-    )];
-    if replaces {
-        lines.push(line(
-            EffectKind::Changes,
-            format!("The {name} already in {dir} is overwritten"),
-        ));
-    }
-    summary("Upload", "file", "files", 1, lines)
-}
-
-/// The upload dialog's title: names the file and where it goes.
-#[must_use]
-pub fn upload_title(dir: &str, name: &str) -> String {
-    format!("Upload {name} to {dir}?")
-}
-
 /// What recreating a container does (P3-T7, D18): the loss warning of the
 /// edit sheet, the dialog of "Recreate with latest image", the activity
 /// entry and the result all read this one summary. Settings the spec
@@ -239,57 +145,6 @@ pub fn recreate_result() -> String {
         1,
     )
 }
-
-/// What stopping or restarting a Colima engine does to its containers.
-#[must_use]
-pub fn engine_effect(stop: bool, running: usize) -> EffectSummary {
-    let (verb, when) = if stop {
-        ("Stop", "is stopped")
-    } else {
-        ("Restart", "restarts")
-    };
-    summary(
-        verb,
-        "engine",
-        "engines",
-        1,
-        vec![line(
-            EffectKind::Changes,
-            format!(
-                "{} stop while the engine {when}",
-                plural(running, "running container", "running containers")
-            ),
-        )],
-    )
-}
-
-/// The confirm button's text, from the summary alone: "Delete container",
-/// "Delete 4 containers", "Stop and delete" when something runs.
-#[must_use]
-pub fn button_label(effect: &EffectSummary) -> String {
-    let stops_first =
-        effect.verb == "Delete" && effect.lines.iter().any(|l| l.kind == EffectKind::Changes);
-    match (stops_first, effect.count) {
-        (true, 1) => "Stop and delete".to_string(),
-        (true, n) => format!("Stop and delete {n} {}", effect.noun_many),
-        (false, 1) => format!("{} {}", effect.verb, effect.noun_one),
-        (false, _) => effect.button_label(),
-    }
-}
-
-/// The result message when `done` of the summary's items went through:
-/// the same count and nouns as the button, in the past tense.
-#[must_use]
-pub fn result_label(effect: &EffectSummary, done: usize) -> String {
-    let mut done_effect = effect.clone();
-    done_effect.count = u32::try_from(done).unwrap_or(u32::MAX);
-    done_effect.bytes = None;
-    done_effect.result_label()
-}
-
-// ---------------------------------------------------------------------
-// Models
-// ---------------------------------------------------------------------
 
 fn find_containers<'a>(all: &'a [Container], ids: &[ContainerId]) -> Vec<&'a Container> {
     ids.iter()
@@ -407,26 +262,6 @@ pub fn recreate_latest_model(
     })
 }
 
-/// The stop or restart dialog for a Colima engine.
-#[must_use]
-pub fn engine_model(
-    engine: &EngineId,
-    engine_name: &str,
-    profile: String,
-    op: ColimaOp,
-    running: usize,
-) -> ConfirmModel {
-    let stop = matches!(op, ColimaOp::Stop);
-    let verb = if stop { "Stop" } else { "Restart" };
-    ConfirmModel {
-        title: format!("{verb} engine {engine_name}?"),
-        effect: engine_effect(stop, running),
-        action: EngineAction::Colima { profile, op },
-        checkbox: None,
-        targets: vec![Subject::Engine(engine.clone())],
-    }
-}
-
 /// Open the delete dialog for these containers on the overlay stack.
 /// Returns false when nothing is left to delete.
 pub fn open_delete(state: &mut AppState, ids: &[ContainerId]) -> bool {
@@ -438,18 +273,6 @@ pub fn open_delete(state: &mut AppState, ids: &[ContainerId]) -> bool {
         .write()
         .push(crate::state::Overlay::Confirm(model));
     true
-}
-
-// ---------------------------------------------------------------------
-// Running a confirmed model
-// ---------------------------------------------------------------------
-
-/// What [`run`] started: the pending keys to watch and the reasons the
-/// actions service refused the rest.
-#[derive(Debug, Default, PartialEq)]
-pub struct Launched {
-    pub keys: Vec<PendingKey>,
-    pub refused: Vec<String>,
 }
 
 fn launch_container(
@@ -501,68 +324,6 @@ pub fn with_volumes(action: &ContainerAction, checked: bool) -> ContainerAction 
     }
 }
 
-/// Send a confirmed model to the actions service. `checked` is the state
-/// of the dialog's checkbox (it means "also delete anonymous volumes" on a
-/// delete).
-pub fn run(
-    state: &mut AppState,
-    actions: &ActionsService,
-    model: &ConfirmModel,
-    checked: bool,
-) -> Launched {
-    let mut out = Launched::default();
-    match &model.action {
-        EngineAction::Container { action, .. } => {
-            let action = with_volumes(action, checked);
-            // One container action per target, each with its own pending
-            // state and activity entry. The selection is not consulted.
-            for target in &model.targets {
-                match target {
-                    Subject::Container(id) => {
-                        launch_container(state, actions, id, action.clone(), &mut out);
-                    }
-                    _ => out.refused.push("This is not a container".to_string()),
-                }
-            }
-        }
-        EngineAction::Colima { profile, op } => {
-            let engine = state
-                .engines
-                .peek()
-                .iter()
-                .find(|e| crate::services::colima::profile_of(e) == Some(profile.as_str()))
-                .cloned();
-            match engine {
-                Some(engine) => match actions.engine(state, &engine, op.clone()) {
-                    Ok(()) => out.keys.push(PendingKey {
-                        subject: Subject::Engine(engine.id.clone()),
-                        action: crate::services::colima::action_id(op),
-                    }),
-                    Err(reason) => out.refused.push(reason),
-                },
-                None => out.refused.push(format!("Engine {profile} is gone")),
-            }
-        }
-        // Edit and recreate, and recreate with the latest image (D18).
-        EngineAction::Recreate { id, spec, pull, .. } => {
-            for target in &model.targets {
-                match target {
-                    Subject::Container(target_id) if target_id == id => {
-                        launch_recreate(state, actions, target_id, spec, *pull, &mut out);
-                    }
-                    _ => out
-                        .refused
-                        .push("This is not the container to recreate".to_string()),
-                }
-            }
-        }
-        _ => out
-            .refused
-            .push("This action cannot run from here yet".to_string()),
-    }
-    out
-}
-
 fn launch_recreate(
     state: &mut AppState,
     actions: &ActionsService,
@@ -596,56 +357,46 @@ fn launch_recreate(
     }
 }
 
-/// How many of `keys` finished without a failure, once none is running.
-/// `None` while one still runs.
-#[must_use]
-pub fn finished_count(
-    pending: &std::collections::BTreeMap<PendingKey, PendingState>,
-    keys: &[PendingKey],
-) -> Option<usize> {
-    if keys
-        .iter()
-        .any(|k| matches!(pending.get(k), Some(PendingState::Running { .. })))
-    {
-        return None;
-    }
-    Some(
-        keys.iter()
-            .filter(|k| !matches!(pending.get(*k), Some(PendingState::Failed { .. })))
-            .count(),
-    )
-}
-
-fn push_toast(state: &mut AppState, text: String, tone: ToastTone) {
-    state.toasts.write().push(Toast {
-        id: uuid::Uuid::now_v7(),
-        text,
-        tone,
-        action: None,
-    });
-}
-
-/// After [`run`]: say what was refused, then wait for the started actions
-/// and say what went through, from the same summary the dialog showed.
-/// Failures stay on their rows (D34), so only successes are counted.
-pub async fn watch_result(mut state: AppState, effect: EffectSummary, launched: Launched) {
-    for reason in launched.refused {
-        push_toast(&mut state, reason, ToastTone::Danger);
-    }
-    if launched.keys.is_empty() {
-        return;
-    }
-    let done = loop {
-        if let Some(done) = finished_count(&state.pending.peek(), &launched.keys) {
-            break done;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+/// A container action: one start per target, each with its own pending
+/// state and activity entry. The selection is not consulted. A bulk model's
+/// action names its first target (PLAN §6 has no multi-container action), so
+/// that one must be the container the action names.
+pub(super) fn run(ctx: &mut Run<'_>) -> bool {
+    let EngineAction::Container { id, action, .. } = &ctx.model.action else {
+        return false;
     };
-    if done > 0 {
-        push_toast(&mut state, result_label(&effect, done), ToastTone::Success);
+    let action = with_volumes(action, ctx.checked);
+    if ctx.model.targets.first() != Some(&Subject::Container(id.clone())) {
+        ctx.out
+            .refused
+            .push("This is not the container to act on".to_string());
+        return true;
     }
+    ctx.each_named(
+        |target| matches!(target, Subject::Container(_)),
+        "This is not a container",
+        |ctx, target| {
+            if let Subject::Container(id) = target {
+                launch_container(ctx.state, ctx.actions, id, action.clone(), &mut ctx.out);
+            }
+        },
+    );
+    true
 }
 
-#[cfg(test)]
-#[path = "confirm_tests.rs"]
-mod tests;
+/// Edit and recreate, and recreate with the latest image (D18).
+pub(super) fn run_recreate(ctx: &mut Run<'_>) -> bool {
+    let EngineAction::Recreate { id, spec, pull, .. } = &ctx.model.action else {
+        return false;
+    };
+    ctx.each_named(
+        |target| matches!(target, Subject::Container(target_id) if target_id == id),
+        "This is not the container to recreate",
+        |ctx, target| {
+            if let Subject::Container(target_id) = target {
+                launch_recreate(ctx.state, ctx.actions, target_id, spec, *pull, &mut ctx.out);
+            }
+        },
+    );
+    true
+}

@@ -440,31 +440,12 @@ impl Index {
             Some(selected) => (selected != id).then(|| engine_name(id)),
             None => multi.then(|| engine_name(id)),
         };
-        // Images, volumes and networks carry no engine id (PLAN §6.2); the
-        // engines of the containers that use them stand in for one.
-        let engine_of: std::collections::HashMap<&berth_core::ContainerId, &berth_core::EngineId> =
-            view.containers.iter().map(|c| (&c.id, &c.engine)).collect();
-        let user_engines = |users: &[berth_core::ContainerId]| {
-            let mut engines: Vec<&berth_core::EngineId> = users
-                .iter()
-                .filter_map(|id| engine_of.get(id).copied())
-                .collect();
-            engines.sort();
-            engines.dedup();
-            engines
-        };
-        // On the selected engine when any user is; tagged when all of its
-        // users are elsewhere. Unused ones have no engine to name.
-        let resource_home =
-            |users: &[berth_core::ContainerId]| user_engines(users).into_iter().any(is_home);
-        let resource_suffix = |users: &[berth_core::ContainerId]| {
-            let engines = user_engines(users);
-            let elsewhere = selected_engine.is_some()
-                && !engines.is_empty()
-                && !engines.iter().any(|e| is_home(e));
-            if elsewhere {
-                let names: Vec<String> = engines.into_iter().map(engine_name).collect();
-                format!(" · {}", names.join(", "))
+        // Images, volumes and networks know their engine (D27). Off the
+        // selected engine, the result names it.
+        let resource_home = |engine: &berth_core::EngineId| is_home(engine);
+        let resource_suffix = |engine: &berth_core::EngineId| {
+            if selected_engine.is_some() && !is_home(engine) {
+                format!(" · {}", engine_name(engine))
             } else {
                 String::new()
             }
@@ -675,14 +656,14 @@ impl Index {
                 open_meta: format!(
                     "Image · {}{}",
                     berth_core::fmt::bytes(image.size),
-                    resource_suffix(&image.used_by)
+                    resource_suffix(&image.engine)
                 ),
                 verb_meta: String::new(),
                 ctx,
                 attention: 0,
                 caps: Vec::new(),
                 running: 0,
-                home: resource_home(&image.used_by),
+                home: resource_home(&image.engine),
             });
         }
         for volume in view.volumes {
@@ -701,16 +682,16 @@ impl Index {
                     Some(size) => format!(
                         "Volume · {}{}",
                         berth_core::fmt::bytes(size),
-                        resource_suffix(&volume.used_by)
+                        resource_suffix(&volume.engine)
                     ),
-                    None => format!("Volume{}", resource_suffix(&volume.used_by)),
+                    None => format!("Volume{}", resource_suffix(&volume.engine)),
                 },
                 verb_meta: String::new(),
                 ctx,
                 attention: 0,
                 caps: Vec::new(),
                 running: 0,
-                home: resource_home(&volume.used_by),
+                home: resource_home(&volume.engine),
             });
         }
         for network in view.networks {
@@ -726,14 +707,14 @@ impl Index {
                 open_meta: format!(
                     "Network · {}{}",
                     network.driver,
-                    resource_suffix(&network.containers)
+                    resource_suffix(&network.engine)
                 ),
                 verb_meta: String::new(),
                 ctx,
                 attention: 0,
                 caps: Vec::new(),
                 running: 0,
-                home: resource_home(&network.containers),
+                home: resource_home(&network.engine),
             });
         }
         Self { entries }
@@ -772,6 +753,10 @@ struct Matching {
     matcher: Matcher,
     buf: Vec<char>,
     indices: Vec<u32>,
+    /// How many haystacks were scored; tests count work with it instead of
+    /// timing it (D26).
+    #[cfg(test)]
+    scored: usize,
 }
 
 impl Matching {
@@ -782,10 +767,16 @@ impl Matching {
             matcher: Matcher::new(config),
             buf: Vec::new(),
             indices: Vec::new(),
+            #[cfg(test)]
+            scored: 0,
         }
     }
 
     fn fuzzy(&mut self, atom: &Atom, haystack: &str) -> Option<u32> {
+        #[cfg(test)]
+        {
+            self.scored += 1;
+        }
         let score = atom
             .atom
             .score(Utf32Str::new(haystack, &mut self.buf), &mut self.matcher)?;
@@ -1453,6 +1444,20 @@ pub fn run(
         open(state, &subject);
         crate::keys::dispatch(state, "container.logs");
         return RunOutcome::Done;
+    }
+    // Sheets, not actions: Edit resources and Clean up open over the shell.
+    if let Subject::Engine(id) = &subject {
+        match action {
+            "engine.edit_resources" => {
+                crate::sheets::edit_resources::open_sheet(state, id);
+                return RunOutcome::Done;
+            }
+            "engine.clean_up" => {
+                state.overlays.write().push(Overlay::CleanUp(id.clone()));
+                return RunOutcome::Done;
+            }
+            _ => {}
+        }
     }
     let Some(actions) = actions else {
         return RunOutcome::Refused("Actions are not running".to_string());

@@ -6,6 +6,7 @@
 
 use dioxus::prelude::*;
 
+use super::projects_order::FrozenOrder;
 use crate::services::actions::{ActionsService, StateView};
 use crate::state::{AppState, Section, Selection};
 use crate::ui::project_row::{row_model, ProjectRow};
@@ -15,7 +16,7 @@ use crate::ui::{
     IconSize, SearchField, SegmentedControl, SegmentedItem, SkeletonRows, TableHeaderCell,
 };
 
-const PROJECTS_CSS: &str = concat!(
+pub(crate) const PROJECTS_CSS: &str = concat!(
     include_str!("../../assets/css/projects.css"),
     include_str!("../../assets/css/projects_tiers.css")
 );
@@ -221,6 +222,26 @@ pub fn sort_rank(
         P::NotCreated => 4,
     };
     (loose, engine_down, rank)
+}
+
+/// The projects in table order: [`sort_rank`], then the engine's place in
+/// the engine list, then the order the engine itself listed them in (name,
+/// then folder: `berth_engine::projects::group`). The engines' slices are
+/// rewritten at the end of the list on every container event, so the slice
+/// order is never part of the key.
+pub fn ordered_projects<'a>(
+    projects: &'a [berth_core::Project],
+    engines: &[berth_core::Engine],
+) -> Vec<&'a berth_core::Project> {
+    let place = |p: &berth_core::Project| {
+        engines
+            .iter()
+            .position(|e| e.id == p.engine)
+            .unwrap_or(usize::MAX)
+    };
+    let mut ordered: Vec<&berth_core::Project> = projects.iter().collect();
+    ordered.sort_by_key(|p| (sort_rank(p, engines), place(p)));
+    ordered
 }
 
 /// What the main area shows (brief 7.3 states).
@@ -560,8 +581,9 @@ pub fn ProjectsScreen() -> Element {
     let stale = *state.snapshot_stale.read();
 
     let screen = screen_state(&engines, &projects, stale);
-    let mut ordered: Vec<&berth_core::Project> = projects.iter().collect();
-    ordered.sort_by_key(|p| sort_rank(p, &engines));
+    // Sorted once, when live data first shows; kept while the screen is open (D31).
+    let frozen = use_hook(|| std::rc::Rc::new(std::cell::RefCell::new(FrozenOrder::default())));
+    let ordered = frozen.borrow_mut().arrange(&projects, &engines, !stale);
     let counts = filter_counts(&ordered);
     let listing = list_projects(
         &ordered,
@@ -581,6 +603,7 @@ pub fn ProjectsScreen() -> Element {
         volumes: &volumes,
         networks: &networks,
         pending: &pending,
+        backing: *state.backing.peek(),
     };
     let mut sorted_problems: Vec<berth_core::Problem> = problems.clone();
     sorted_problems.sort_by(|a, b| {
@@ -590,7 +613,13 @@ pub fn ProjectsScreen() -> Element {
     });
     let rows: Vec<_> = visible
         .iter()
-        .map(|p| row_model(p, &view, &sorted_problems, &home))
+        .map(|p| {
+            let mut model = row_model(p, &view, &sorted_problems, &home);
+            model.problem_slot = frozen
+                .borrow_mut()
+                .slot(&model.id, model.problem_summary.is_some());
+            model
+        })
         .collect();
     let attention = attention_items(
         &problems,

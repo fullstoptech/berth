@@ -1,0 +1,387 @@
+/* Networks screen, its detail in the inspector and the create sheet
+   (P4-T5). Colours and sizes come only from tokens.css (D4). No frame
+   exists: the header is Containers', the table is Containers' with the
+   projects screen's plain rows (a network list is short). */
+
+.networks-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-bottom: var(--space-24);
+  font-size: var(--text-body-size);
+  /* The column-dropping rules (networks_tiers.css, generated from the track
+     lists below by screens/table_tiers.rs) key on this screen's width. */
+  container: networks / inline-size;
+}
+
+/* Header: title, count, filter field, primary action */
+.nw-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--gutter) var(--space-12);
+  flex: none;
+}
+.nw-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-body-weight);
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.nw-header .badge-count {
+  height: var(--size-control-sm);
+  padding: 0 var(--space-8);
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  border-radius: var(--radius-md);
+}
+.nw-spacer {
+  flex: 1;
+}
+.nw-filter {
+  flex: 0 1 240px;
+  min-width: calc(120px * var(--text-scale, 1));
+}
+.nw-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: 0 var(--gutter) var(--space-12);
+}
+.nw-failure {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.nw-failure > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Table. The track lists below are the source of the generated tiers:
+   Project goes first, then Driver. Every track that holds text grows with
+   the text size (--text-scale). */
+.nw-table {
+  --nw-cols: minmax(calc(120px * var(--text-scale, 1)), 3fr) calc(72px * var(--text-scale, 1)) calc(124px * var(--text-scale, 1)) calc(88px * var(--text-scale, 1)) minmax(calc(96px * var(--text-scale, 1)), 2fr) calc(88px * var(--text-scale, 1));
+  --nw-cols-noproject: minmax(calc(120px * var(--text-scale, 1)), 1fr) calc(72px * var(--text-scale, 1)) calc(124px * var(--text-scale, 1)) calc(88px * var(--text-scale, 1)) calc(88px * var(--text-scale, 1));
+  --nw-cols-compact: minmax(calc(120px * var(--text-scale, 1)), 1fr) calc(124px * var(--text-scale, 1)) calc(88px * var(--text-scale, 1)) calc(88px * var(--text-scale, 1));
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.nw-head,
+.nw-row {
+  display: grid;
+  grid-template-columns: var(--nw-cols);
+  column-gap: var(--space-12);
+  align-items: center;
+  padding: 0 calc(var(--gutter) - var(--space-8));
+  margin: 0 var(--space-8);
+  box-sizing: border-box;
+}
+.nw-head {
+  border-bottom: 1px solid var(--color-line);
+}
+.nw-head .table-header-cell {
+  padding: 0;
+  border-bottom: none;
+}
+.nw-row {
+  height: var(--size-row);
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink);
+  white-space: nowrap;
+  cursor: default;
+}
+.nw-row:hover {
+  background: var(--color-surface-hover);
+}
+.nw-row:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.nw-row.nw-selected {
+  background: var(--color-selection);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.nw-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nw-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.nw-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nw-name .icon {
+  flex: none;
+  color: var(--color-ink-muted);
+}
+.nw-engine-tag {
+  flex: none;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+}
+.nw-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.nw-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.nw-muted {
+  color: var(--color-ink-muted);
+}
+.nw-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
+  overflow: visible;
+}
+.nw-locked {
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  cursor: help;
+}
+.nw-empty {
+  padding: var(--space-48) var(--gutter);
+}
+
+/* Detail in the inspector */
+.nd {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+.nd-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-16) var(--space-12) var(--space-12);
+}
+.nd-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.nd-name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-h2-size);
+  line-height: var(--text-h2-line);
+  font-weight: var(--text-body-weight);
+}
+.nd-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+.nd-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) 0 var(--space-16);
+}
+.nd-note {
+  margin: var(--space-8) var(--space-12);
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.nd-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-16) var(--space-12) 0;
+}
+.nd-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+.nd-section-title {
+  margin: 0;
+  font-size: var(--text-h3-size);
+  line-height: var(--text-h3-line);
+  font-weight: var(--text-h3-weight);
+}
+.nd-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nd-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--size-row);
+  border-bottom: 1px solid var(--color-line);
+}
+.nd-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.nd-item-name:hover {
+  text-decoration: underline;
+}
+.nd-item-name:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+.nd-item-meta {
+  flex: none;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+}
+.nd-menu-host {
+  position: relative;
+}
+.nd-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  max-height: calc(var(--size-row) * 8);
+  overflow-y: auto;
+  margin-top: var(--space-4);
+}
+
+/* The Networks row of a container's Overview: it draws like a row of the
+   key-value list above it. */
+.cn-value {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-4);
+}
+.cn-list {
+  gap: 0;
+}
+.cn-list .nd-item {
+  border-bottom: none;
+  min-height: var(--size-control-md);
+}
+.cn-value .nd-menu-host {
+  align-self: flex-start;
+}
+
+/* Create sheet */
+.overlay-scrim:has(> .nc-sheet) {
+  padding-top: var(--space-48);
+  background: color-mix(in srgb, var(--neutral-dark-50) 40%, transparent);
+}
+.nc-sheet {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(34rem, calc(100vw - var(--space-32)));
+  max-height: calc(100vh - var(--space-48) - var(--space-24));
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sheet);
+  color: var(--color-ink);
+}
+.nc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--space-24);
+  border-bottom: 1px solid var(--color-line);
+}
+.nc-title {
+  margin: 0;
+  font-size: var(--text-body-lg-size);
+  line-height: var(--text-body-lg-line);
+  font-weight: var(--text-body-weight);
+}
+.nc-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-16) var(--space-24);
+}
+.nc-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-12);
+}
+.nc-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.nc-group-title {
+  margin: 0;
+  font-size: var(--text-h3-size);
+  line-height: var(--text-h3-line);
+  font-weight: var(--text-h3-weight);
+}
+.nc-muted {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.nc-attach {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(var(--size-row) * 5);
+  overflow-y: auto;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+.nc-attach-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--size-row);
+  padding: 0 var(--space-12);
+  border-bottom: 1px solid var(--color-line);
+}
+.nc-attach-row:last-child {
+  border-bottom: none;
+}
+.nc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-24);
+  border-top: 1px solid var(--color-line);
+}

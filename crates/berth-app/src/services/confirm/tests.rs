@@ -713,6 +713,41 @@ fn confirm_every_builder_fills_targets_that_match_its_count() {
     }
 }
 
+#[test]
+fn confirm_refuses_targets_that_are_not_the_ones_its_action_names() {
+    let mut rig = rig();
+    let api = rig.id("shop-api-api-1");
+    let db = rig.id("shop-api-db-1");
+    let mut state = rig.state;
+    // A kill dialog for one container, its target swapped for another.
+    let mut kill = rig
+        .dom
+        .in_runtime(|| kill_model(&rig.state, &api).expect("kill model"));
+    kill.targets = vec![berth_core::Subject::Container(db)];
+    let launched = rig
+        .dom
+        .in_runtime(|| run(&mut state, &rig.service, &kill, false));
+    assert!(launched.keys.is_empty(), "{:?}", launched.keys);
+    assert_eq!(launched.refused, ["This is not the container to act on"]);
+    // An engine stop whose target is some other engine.
+    let mut stop = engine_model(
+        &default_engine(),
+        "default",
+        "default".to_string(),
+        berth_core::ColimaOp::Stop,
+        3,
+    );
+    stop.targets = vec![berth_core::Subject::Engine(berth_core::EngineId(
+        "colima:other".to_string(),
+    ))];
+    let launched = rig
+        .dom
+        .in_runtime(|| run(&mut state, &rig.service, &stop, false));
+    assert!(launched.keys.is_empty(), "{:?}", launched.keys);
+    assert_eq!(launched.refused.len(), 1);
+    rig.state = state;
+}
+
 #[tokio::test]
 async fn confirm_bulk_delete_acts_on_its_own_targets_when_the_selection_changes() {
     let mut rig = rig();

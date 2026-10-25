@@ -1,0 +1,67 @@
+/* ProgressBar (P4-T1; components-spec: label, value, bytes; determinate or
+   indeterminate). Tokens only. The screen that draws one includes this. */
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+.progress-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-body-size);
+}
+.progress-value {
+  flex: none;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  font-variant-numeric: tabular-nums;
+}
+.progress-track {
+  position: relative;
+  height: var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-pressed);
+  overflow: hidden;
+}
+.progress-thin .progress-track {
+  height: var(--space-2);
+}
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+}
+.progress-indeterminate .progress-fill {
+  width: 30%;
+  animation: progress-slide 1.2s ease-in-out infinite;
+}
+@keyframes progress-slide {
+  from {
+    margin-left: -30%;
+  }
+  to {
+    margin-left: 100%;
+  }
+}
+.progress-detail {
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate .progress-fill {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}

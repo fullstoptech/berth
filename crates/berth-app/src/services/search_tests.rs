@@ -47,6 +47,7 @@ fn index(world: &World, selection: &Selection, scope: &EngineScope) -> Index {
             volumes: &world.volumes,
             networks: &world.networks,
             pending: &world.pending,
+            backing: crate::services::backing::Backing::default(),
         },
         selection,
         scope,
@@ -882,36 +883,103 @@ mod run {
 // Speed
 // ---------------------------------------------------------------------
 
-#[test]
-fn search_a_thousand_containers_answers_within_the_ui_budget() {
+/// A world of `n` containers over 40 projects.
+fn crowded(n: usize) -> World {
     let mut world = mock();
     let template = world.containers[0].clone();
-    world.containers = (0..1000)
-        .map(|n| {
+    world.containers = (0..n)
+        .map(|i| {
             let mut c = template.clone();
-            c.id = ContainerId(format!("id{n:04}"));
-            c.name = format!("svc-{n}-web-1");
-            c.compose_project = Some(format!("proj-{}", n % 40));
+            c.id = ContainerId(format!("id{i:04}"));
+            c.name = format!("svc-{i}-web-1");
+            c.compose_project = Some(format!("proj-{}", i % 40));
             c
         })
         .collect();
+    world
+}
+
+/// How many haystacks one query scored.
+fn scored_by(idx: &Index, query: &str) -> usize {
+    let before = with_matching(|m| m.scored);
+    let _ = idx.search(query, &[]);
+    with_matching(|m| m.scored) - before
+}
+
+const SPEED_QUERIES: [&str; 4] = ["rest", "restart svc-77", "web", "svc-9"];
+
+/// The 4 ms UI budget (CLAUDE.md) is held by doing a bounded amount of work
+/// per query; the wall-clock check is `perf_search_*` (scripts/perf.sh).
+/// Each entry is scored a bounded number of times per atom (its name for the
+/// verbs, then its name and secondary fields for the record), so the work
+/// grows with the number of entries and never faster.
+#[test]
+fn search_a_thousand_containers_scores_each_entry_a_bounded_number_of_times() {
+    let world = crowded(1000);
+    let idx = index(&world, &Selection::None, &scope_default());
+    assert!(
+        idx.entries.len() >= 1000,
+        "{} entries indexed",
+        idx.entries.len()
+    );
+    let per_atom_bound: usize = idx.entries.iter().map(|e| 2 + e.secondary.len()).sum();
+    // Globals and verb labels are scored per atom too, whatever the world.
+    let fixed_bound = 4 * (GLOBALS.len() + 3 * 40);
+    for query in SPEED_QUERIES {
+        let atoms = parse_atoms(query).len();
+        let scored = scored_by(&idx, query);
+        assert!(
+            scored >= idx.entries.len(),
+            "{query:?}: {scored} haystacks scored for {} entries",
+            idx.entries.len()
+        );
+        assert!(
+            scored <= atoms * (per_atom_bound + fixed_bound),
+            "{query:?}: {scored} haystacks scored, over {atoms} x ({per_atom_bound} + {fixed_bound})"
+        );
+    }
+}
+
+#[test]
+fn search_work_grows_in_step_with_the_number_of_containers() {
+    let small = index(&crowded(500), &Selection::None, &scope_default());
+    let large = index(&crowded(1000), &Selection::None, &scope_default());
+    for query in SPEED_QUERIES {
+        let extra = scored_by(&large, query) - scored_by(&small, query);
+        let atoms = parse_atoms(query).len();
+        // 500 more entries, each scored at most (2 + secondary) times per
+        // atom: a quadratic search would blow far past this.
+        let secondary = large.entries.iter().map(|e| e.secondary.len()).max();
+        let bound = 500 * atoms * (2 + secondary.unwrap_or(0));
+        assert!(
+            extra <= bound,
+            "{query:?}: {extra} more haystacks scored for 500 more containers, bound {bound}"
+        );
+        assert!(
+            extra >= 500,
+            "{query:?}: only {extra} more haystacks scored"
+        );
+    }
+}
+
+#[test]
+#[ignore = "timing; run by scripts/perf.sh"]
+fn perf_search_a_thousand_containers_answers_within_the_ui_budget() {
+    let world = crowded(1000);
     let idx = index(&world, &Selection::None, &scope_default());
     let _warm = idx.search("rest", &[]);
     let runs = 20u32;
     let started = std::time::Instant::now();
-    for query in ["rest", "restart svc-77", "web", "svc-9"]
-        .iter()
-        .cycle()
-        .take(runs as usize)
-    {
+    for query in SPEED_QUERIES.iter().cycle().take(runs as usize) {
         let _ = idx.search(query, &[]);
     }
     let per_query = started.elapsed() / runs;
-    println!("search over 1000 containers: {per_query:?} per query (debug build)");
-    // A debug build runs this about ten times slower than release; the 4 ms
-    // UI budget (CLAUDE.md) is checked in release by the printed number.
+    println!("search over 1000 containers: {per_query:?} per query");
+    // The 4 ms UI budget (CLAUDE.md), in release; a debug build is about ten
+    // times slower.
+    let budget = if cfg!(debug_assertions) { 40 } else { 4 };
     assert!(
-        per_query < std::time::Duration::from_millis(40),
+        per_query < std::time::Duration::from_millis(budget),
         "{per_query:?}"
     );
 }

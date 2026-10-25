@@ -16,7 +16,8 @@ expression: images
     },
     "os": "",
     "used_by": [],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
   },
   {
     "id": "[id]",
@@ -31,7 +32,8 @@ expression: images
     },
     "os": "",
     "used_by": [],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
   },
   {
     "id": "[id]",
@@ -46,7 +48,8 @@ expression: images
     },
     "os": "",
     "used_by": [],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
   },
   {
     "id": "[id]",
@@ -61,6 +64,7 @@ expression: images
     },
     "os": "",
     "used_by": [],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
   }
 ]

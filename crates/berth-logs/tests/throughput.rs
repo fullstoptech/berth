@@ -1,8 +1,9 @@
 //! PLAN §1.3 / D23 / D25: 10,000 lines a second through `batch`, `PreparedBatch::new` (outside the
 //! view lock) and `LogView::commit_batch` (under it), at most one batch per 16 ms tick, and no
-//! commit holding the lock for more than 4 ms (checked in a release build only). Run with
-//! `cargo nextest run -p berth-logs --release --no-capture throughput` to see the numbers; the
-//! other assertions hold in a debug build too.
+//! commit holding the lock for more than 4 ms. The default suite checks the counts (every line
+//! reaches the view, in batches of at most `MAX_BATCH_LINES`, the same content as a synchronous
+//! push); the rates and the lock hold are `perf_throughput`, which `scripts/perf.sh` runs in a
+//! release build (D26). `scripts/perf.sh` prints the numbers.
 //!
 //! Two measurements, because one number cannot say both things:
 //! - saturated: the source never waits, so the rate is what the pipeline can do (CPU bound on the
@@ -176,6 +177,18 @@ async fn saturated_source() -> Run {
     let run = run(stream::iter(all).boxed(), TOTAL).await;
 
     assert!(
+        run.batches >= TOTAL.div_ceil(MAX_BATCH_LINES),
+        "a saturated source must be spread over batches of at most {MAX_BATCH_LINES} lines"
+    );
+    // More lines than the ring holds: the oldest were dropped and the view says so.
+    assert_eq!(run.view.dropped(), (TOTAL - RING) as u64);
+    assert_same_content(&run.view, &want);
+    run
+}
+
+/// The saturated run's rate and tick count: wall-clock, so perf only.
+fn assert_saturated_timing(run: &Run) {
+    assert!(
         run.lines_per_second() >= 10_000.0,
         "{:.0} lines/s is under the 10,000 lines/s budget",
         run.lines_per_second()
@@ -186,14 +199,6 @@ async fn saturated_source() -> Run {
         run.batches,
         run.ticks()
     );
-    assert!(
-        run.batches >= TOTAL.div_ceil(MAX_BATCH_LINES),
-        "a saturated source must be spread over batches of at most {MAX_BATCH_LINES} lines"
-    );
-    // More lines than the ring holds: the oldest were dropped and the view says so.
-    assert_eq!(run.view.dropped(), (TOTAL - RING) as u64);
-    assert_same_content(&run.view, &want);
-    run
 }
 
 async fn paced_source_batches_once_per_tick() -> Run {
@@ -245,24 +250,38 @@ async fn paced_source_batches_once_per_tick() -> Run {
 /// commit, so that is the time held to the budget (the unlocked prepare is only reported).
 const LOCK_HOLD_BUDGET: Duration = Duration::from_millis(4);
 
-/// Prints the run and, in a release build, holds its longest lock hold to [`LOCK_HOLD_BUDGET`] (a
-/// debug build is an order of magnitude slower and is only checked for correctness).
+/// Prints the run and holds its longest lock hold to [`LOCK_HOLD_BUDGET`] (a debug build is an
+/// order of magnitude slower, so there the bound is ten times wider).
 fn report_within_lock_budget(label: &str, run: &Run) {
     run.report(label);
-    if !cfg!(debug_assertions) {
-        assert!(
-            run.max_commit <= LOCK_HOLD_BUDGET,
-            "{label}: the view lock was held for {:?} by one commit_batch of at most {MAX_BATCH_LINES} lines, over the 4 ms UI budget",
-            run.max_commit
-        );
-    }
+    let budget = if cfg!(debug_assertions) {
+        LOCK_HOLD_BUDGET * 10
+    } else {
+        LOCK_HOLD_BUDGET
+    };
+    assert!(
+        run.max_commit <= budget,
+        "{label}: the view lock was held for {:?} by one commit_batch of at most {MAX_BATCH_LINES} lines, over the {budget:?} budget",
+        run.max_commit
+    );
 }
 
-/// One test, not two: nextest runs tests in parallel, and a saturated run on the next core would
-/// stretch the paced run's commit times.
+/// Counts only: no line is lost or reordered between the source and the view, however fast the
+/// source is.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn throughput() {
-    report_within_lock_budget("saturated", &saturated_source().await);
+async fn throughput_saturated_source_reaches_the_view_in_bounded_batches() {
+    let run = saturated_source().await;
+    assert!(run.largest_batch <= MAX_BATCH_LINES);
+}
+
+/// One test, not two: a saturated run on the next core would stretch the paced run's commit
+/// times. Wall-clock, so `scripts/perf.sh` only.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "timing; run by scripts/perf.sh"]
+async fn perf_throughput() {
+    let saturated = saturated_source().await;
+    assert_saturated_timing(&saturated);
+    report_within_lock_budget("saturated", &saturated);
     report_within_lock_budget(
         "paced 15,000 lines/s",
         &paced_source_batches_once_per_tick().await,

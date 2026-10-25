@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::engine::Arch;
-use crate::ids::ContainerId;
+use crate::ids::{ContainerId, EngineId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Image {
@@ -16,6 +16,8 @@ pub struct Image {
     pub os: String,
     pub used_by: Vec<ContainerId>,
     pub dangling: bool,
+    /// The engine this image is on (D27); the mapper fills it as for `Container`.
+    pub engine: EngineId,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageLayer {
@@ -62,6 +64,7 @@ mod tests {
                 os: "linux".to_string(),
                 used_by: vec![],
                 dangling: false,
+                engine: EngineId("colima:default".to_string()),
             },
             layers: vec![ImageLayer {
                 created_by: "RUN true".to_string(),

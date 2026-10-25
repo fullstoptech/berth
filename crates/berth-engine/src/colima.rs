@@ -180,4 +180,4 @@ impl ColimaControl for ColimaCli {
     }
 }
 
-pub use crate::mock::colima::MockColima;
+pub use crate::mock::colima::{MockColima, MockColimaCall};

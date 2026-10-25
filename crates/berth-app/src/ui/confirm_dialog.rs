@@ -49,6 +49,10 @@ pub fn ConfirmDialog(
     title: String,
     effect: EffectSummary,
     #[props(default)] checkbox: Option<(String, bool)>,
+    /// The confirm button's look: danger unless the action only adds
+    /// (a download).
+    #[props(default = ButtonVariant::Danger)]
+    confirm_variant: ButtonVariant,
     oncheck: EventHandler<bool>,
     oncancel: EventHandler<()>,
     onconfirm: EventHandler<()>,
@@ -110,7 +114,7 @@ pub fn ConfirmDialog(
                 }
                 Button {
                     label,
-                    variant: ButtonVariant::Danger,
+                    variant: confirm_variant,
                     size: ControlSize::Md,
                     disabled: !unlocked,
                     disabled_reason: reason,

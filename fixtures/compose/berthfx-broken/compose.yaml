@@ -7,7 +7,7 @@ services:
     image: alpine:3
     labels: [dev.berth.fixture=1]
     mem_limit: 16m
-    command: ["sh", "-c", "x=''; while :; do x=\"$x$(head -c 1048576 /dev/zero | tr '\\0' x)\"; done"]
+    command: ["sh", "-c", "x=''; while :; do x=\"$$x$$(head -c 1048576 /dev/zero | tr '\\0' x)\"; done"]
   badimage:
     image: berthfx/does-not-exist:1
     labels: [dev.berth.fixture=1]

@@ -289,8 +289,10 @@ mod tests {
         assert!(matches!(err, SysError::NotFound { .. }), "{err}");
     }
 
-    #[tokio::test]
-    async fn cancel_kills_sleep_within_500ms() {
+    /// Cancels `sleep 30` after 100 ms and returns how long the stream took to end, with what it
+    /// yielded. The stream ending at all before the outer 5 s timeout proves the child was killed
+    /// (it would sleep for 30 s).
+    async fn cancel_a_sleeper() -> (std::time::Duration, Vec<Result<ProcessLine, SysError>>) {
         let cancel = token();
         let stream = spawn_lines(
             std::path::Path::new("/bin/sh"),
@@ -306,14 +308,25 @@ mod tests {
             .await
             .expect("stream ends")
             .expect("task joins");
-        assert!(
-            started.elapsed() < std::time::Duration::from_millis(500),
-            "took {:?}",
-            started.elapsed()
-        );
+        (started.elapsed(), items)
+    }
+
+    #[tokio::test]
+    async fn cancel_kills_sleep_and_ends_the_stream_with_cancelled() {
+        let (_, items) = cancel_a_sleeper().await;
         assert!(
             items.iter().any(|i| matches!(i, Err(SysError::Cancelled))),
             "{items:?}"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "timing; run by scripts/perf.sh"]
+    async fn perf_cancel_kills_sleep_within_500ms() {
+        let (took, _) = cancel_a_sleeper().await;
+        assert!(
+            took < std::time::Duration::from_millis(500),
+            "took {took:?}"
         );
     }
 

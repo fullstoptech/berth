@@ -126,7 +126,7 @@ pub async fn run_edit(
     }
 }
 
-async fn guard<T>(
+pub(crate) async fn guard<T>(
     cancel: &CancellationToken,
     call: impl std::future::Future<Output = Result<T, berth_engine::EngineError>>,
 ) -> Result<T, String> {

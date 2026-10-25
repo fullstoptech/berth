@@ -1880,7 +1880,8 @@
     "used_by": [
      "68e23ffac0b2883a3afc324e66e1eacdc71c7fb0b660a551e8f63dda32af68a5"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:01aeddb96fc693b98225e47cc57bd1524a344e18076460f9e5786b79073ff986",
@@ -1896,7 +1897,8 @@
      "7b2e91c04f3a1d2c994fbddf06009d9ecc7f96acdcbf230401dcc6980553c52a",
      "175c77fe7c78a006b2ed731a1e37d3c6b13c00c0c3add710bf8619fb40b0ddd6"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:fc0cf5409512f1d0236b7a8f296275fe413dbbe3d76f36bbe6de6bb47d151cdb",
@@ -1911,7 +1913,8 @@
     "used_by": [
      "4dea802030e24a85780e8a27ded0ad09fe32690fb8b3a6eedf860a7a3aeebde5"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:5d304140d35a65e18bc395216ac5d1fbda8a6048023973cc1dd1a289423766b5",
@@ -1926,7 +1929,8 @@
     "used_by": [
      "368e4c42cdef1b006f2774049bb32100b6dd8781a01de29b8cb19a2eae6f50a2"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:7aed49c9778696cabec3f1e4fe2c0b7c71f037d220ec4a9f8263945235d0d5f5",
@@ -1941,7 +1945,8 @@
     "used_by": [
      "256d4b5d0c3a5c3f44c20214973389d0c0d2ca4f52d799136ffc033cb1f01487"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:cd6982af7fb901d788a9339445216c4a89862b94673b87e9ea0f4ec38c08b862",
@@ -1956,7 +1961,8 @@
     "used_by": [
      "fd53f76045e0acd404f6843e4259b058fab60c874205221954b0f377a5ecb7df"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:e323286e4ddfb79ec30e866280982240ac2736145a396ab10cbbd809f4b08188",
@@ -1971,7 +1977,8 @@
     "used_by": [
      "e214c12863c6de3e71db7ff5e4269f494947c8288eb44ba7f24dfeed55702a4c"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:d29dd21673896933d5646f7d8a16a0936340383043b13ee89652f7079b97ee10",
@@ -1986,7 +1993,8 @@
     "used_by": [
      "526298543550f16107227afb5b7132a3137d93218f164f8d22ff3390ad30f34f"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:68a1fd8a6b64673595eb37bdfca4bfbb75c93b3cb98fb9617df17b41ae8eb4a3",
@@ -2001,7 +2009,8 @@
     "used_by": [
      "614c5bcdf4554afe0d3812d66f9db8c8955a65f7bd6cf6762a643ce18c2c4572"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:22c1edb32d80d7d5460fa55063156af7fa5daa79bf932170a06e30c9d8fbb09f",
@@ -2016,7 +2025,8 @@
     "used_by": [
      "20244446461475ca8d46516543e8be566709b65b2b8b83e4d35eb626a325ab18"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:9178bb6c5a6055f2f6c3bd89e724ff80425bed4460b564396e312593664f2e4f",
@@ -2031,7 +2041,8 @@
     "used_by": [
      "297eb2a162b6d4c3fb3437d7520215c787e7b56887947bc6419e4a560320337c"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:5e54769a3119b4b98232dbc90de0a83f94d42d1c140b626038dad453d6388e73",
@@ -2046,7 +2057,8 @@
     "used_by": [
      "1b1133c3f2be2cad9a8afe83b29dfb1f36fc0cce7b0c96a946cf65990a250b70"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:d3355cc2f5b81ecb83e2d704093522de62d73fb2660dd3a91f7811443015a9bb",
@@ -2061,7 +2073,8 @@
     "used_by": [
      "56dcc5ad4e6c4f2dd47052edb6ee048712fe118e8e8522db28754b124e2eebd6"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:1d0447543fac833cc86eed3edb0988e1c6ea7dfb011f7448f93bf50a6f1486d0",
@@ -2076,7 +2089,8 @@
     "used_by": [
      "d1ffda6db597d62f1b3bccb64f6fb810c6f5a094d056b3c1b6db4270325d3a04"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:83075afea33660ca1911ce1905dee384079ed856397e0e5a9249435b22c35dc8",
@@ -2091,7 +2105,8 @@
     "used_by": [
      "d75ad5f765176b8c9b838f7b01e45741782a4ca07b16d530e708bb0d313c0a13"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:59ab5ab3c94d2f5bf4f2895b2c7d1ee62ccb27127ac7f9da36862593d17ed34e",
@@ -2106,7 +2121,8 @@
     "used_by": [
      "566985d0d3bc6fee3b6ff707b6e4297d88913f130860e3e9a9fd76dc1f87cca5"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:d3dfed77bb64d7d29a735783a2a90e9a1979dacbe1b8dead996d9ebc78544336",
@@ -2121,7 +2137,8 @@
     "used_by": [
      "c1497b230deeff52eb997687e4e5aa2f0618bc0836e2d287401dc668a4f9342f"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:469a2a9433f0e4049d189e26039f80ca25346945225c8e352f61edb38a3b75ef",
@@ -2136,7 +2153,8 @@
     "used_by": [
      "445e8708b7f89c50c62cfeffd046f1c25268a363f68593f29121ebc4ef9780af"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:67ebd6b7fdac9623240fc6b4b0741a7aafb98ea0ae7f7f10d6d70f01374872f1",
@@ -2149,7 +2167,8 @@
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:65b8118ded1f9a62a4e7682a6176a874a59f241d0223ee7f6b0c25f1da77fc92",
@@ -2164,7 +2183,8 @@
     "used_by": [
      "770f64c281819b42e1ebb3a10d7c7b2932d8aff65fc431af38a28e894405bc01"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:3d4254b621f6b6ee010965ad22d1b81a6e70fdb07abe0f1e7cd610b6c218f5ac",
@@ -2179,7 +2199,8 @@
     "used_by": [
      "eec5b7b720088fccf27055d55a82aad90cb02c5f71073c23ec091463c7467770"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:f19713e2a8a3a4bc2b946383672313b837128689d6de3c2b9cf6aad9c8cabef4",
@@ -2194,7 +2215,8 @@
     "used_by": [
      "fbfbcd8a6f134cf76b92699cfb0cf2987d527c51d83affc44a74f9426e341335"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:24be26c978eb06d85b80836bee5c506c18c4c3fe52c7e7d52d348c2f25b574fd",
@@ -2209,7 +2231,8 @@
     "used_by": [
      "eb954f7fc9f9017ca579e3fc7d9837ab58d9314be4d6125fde0f17b01f726645"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:e47d276d4dfc58c1e3f6e82c4642a9169493a506a4306588bac636d95c36450d",
@@ -2222,7 +2245,8 @@
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:3726e854f7e14d58c1dc2b1156c3759b194984a1e8484ee0f3e637bc0212cad8",
@@ -2235,7 +2259,8 @@
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:de622b39a2edabb4433ba42b1ef35072efece6e45e08e9ad3ce679ec7c8f1c04",
@@ -2248,7 +2273,8 @@
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:381fc7e2657b19e78a79f3804e934ba6575692bcc8d787ec1ab884e08ce4a837",
@@ -2259,7 +2285,8 @@
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [],
-    "dangling": true
+    "dangling": true,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:156e97b91bb470efe3171d43b0b935190f686285014e334c9c79f93d4bda69cd",
@@ -2270,7 +2297,8 @@
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [],
-    "dangling": true
+    "dangling": true,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:5dcc090ededa4e84a787c7da1cf3966c94cdee1b72fd220c2e7949783cf29706",
@@ -2281,7 +2309,8 @@
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [],
-    "dangling": true
+    "dangling": true,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:0818bd72470ce4592d6374e1ae784e7ce802ffc1f8cd091cd01b3b543d362ea5",
@@ -2294,7 +2323,8 @@
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    },
    {
     "id": "sha256:bd59573624a6dac5c681b33040e36e440782131c5b3e3871d49857f1980b5ca9",
@@ -2307,7 +2337,8 @@
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:default"
    }
   ],
   "colima:work": [
@@ -2324,7 +2355,8 @@
     "used_by": [
      "ac8199d763002cc96643065d69092bdd765f795013cea48cdc086e980b80ea02"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:work"
    },
    {
     "id": "sha256:9d35244937750d4db65504cf5f798bd1086aae649d243a9bc961f4273aa0b0b8",
@@ -2339,7 +2371,8 @@
     "used_by": [
      "12e8fd88c7bd17f4c6f37cad4a1d8f89fb58d8da43f51a7c652a8106c79c2914"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:work"
    },
    {
     "id": "sha256:83075afea33660ca1911ce1905dee384079ed856397e0e5a9249435b22c35dc8",
@@ -2354,7 +2387,8 @@
     "used_by": [
      "1a2dc5f33b7a0eb79290c0e7b0216044ba2288ab7248ac5d3977cdff20c603fa"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:work"
    },
    {
     "id": "sha256:65b8118ded1f9a62a4e7682a6176a874a59f241d0223ee7f6b0c25f1da77fc92",
@@ -2369,7 +2403,8 @@
     "used_by": [
      "aec6da793f5b7576b6c02bfdf0cb5c5a0459fa0874595cff24df76f873d57be9"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:work"
    },
    {
     "id": "sha256:f57f4c3f4b0d7bf48038a055aed964eff72c2c76902d9dfe58f51b26b0267297",
@@ -2384,7 +2419,8 @@
     "used_by": [
      "8ec5f659ec1281389773665f671ba48ca645c6f534d7014e830fb465d27d8a9d"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:work"
    },
    {
     "id": "sha256:7aed49c9778696cabec3f1e4fe2c0b7c71f037d220ec4a9f8263945235d0d5f5",
@@ -2399,7 +2435,8 @@
     "used_by": [
      "27d1d7c546479f18253569007e3b7b701340cca258e781308282f6e7b34fe7eb"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "colima:work"
    }
   ],
   "ssh:hetzner-1": [
@@ -2416,7 +2453,8 @@
     "used_by": [
      "7bfb665b3d592f9865d454fc721f25d674be5f90e9e6ba71c64b720f761e5e20"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "sha256:22c1edb32d80d7d5460fa55063156af7fa5daa79bf932170a06e30c9d8fbb09f",
@@ -2431,7 +2469,8 @@
     "used_by": [
      "ed4e0e13e33e76b369485526300b59167d8dd563c488f319af78fc0dcca8912a"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "sha256:1b40509195ad02d36fcaa0e6f98984bb5954a7e38b2275f631c13f9bea29deeb",
@@ -2446,7 +2485,8 @@
     "used_by": [
      "09a13109a09e70d1a3449209d123fd01d687e7eeccf6186bda3f5a6dd6cf0825"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "sha256:570584c78a1f93a3f7ef46ce1a337b0747dca3915a701f82e8b3d01d53618bfc",
@@ -2461,7 +2501,8 @@
     "used_by": [
      "5d01c8cb55d4de7ae2de65a7071ac6f6cc8d3eef987a94b6c0a1d8953c3bc2a2"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "sha256:2a7e7c60168cab290cc33b00416c7b6734e97bf8a51d9488eeaa9a29e1e5cad6",
@@ -2476,7 +2517,8 @@
     "used_by": [
      "b55d7ea6f7df4965e760862657bcbb52f8f28402b252e6fe4ecb8cf921d32430"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "sha256:fae3bf0e409fa2425ece0d57ef0f1a955f8f4673b84a1f93fd3bc2a43a36c1a0",
@@ -2491,7 +2533,8 @@
     "used_by": [
      "e38bd36c6261e5030e893c64c1fe465d40d917db463c340e119be443c4af40bb"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "sha256:f1013e6eea19d2db0ef77d8b50c27e201380e2cfa8bcc73f4f7553e60895b0e3",
@@ -2506,7 +2549,8 @@
     "used_by": [
      "5ba331dbc20f9d502c5a72dd396a52671ab90d34af8ddcfd566636a1b3bd47b0"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "sha256:d516c64a82bfb74931eb01fdff993e78773722e419c52232f89f5d8e6da3687e",
@@ -2521,7 +2565,8 @@
     "used_by": [
      "fee858c0ab1f34d5e9597abb8b4be48caddbd676f75143470ac06e0a63e58034"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "sha256:a37eb8905a0e98887d0410d654e771d12d8e889fe0951f0e580779572cc50120",
@@ -2536,7 +2581,8 @@
     "used_by": [
      "ea4a9fcb13d422f69b334d79eb82a6fb411bda7aee3068d3fe4eea762f3db6e7"
     ],
-    "dangling": false
+    "dangling": false,
+    "engine": "ssh:hetzner-1"
    }
   ]
  },
@@ -2552,7 +2598,8 @@
     ],
     "project": "bf1ea56a4202fef9",
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "analytics_clickhouse-data",
@@ -2564,7 +2611,8 @@
     ],
     "project": "fa4e93e67d893b04",
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "analytics_grafana-data",
@@ -2576,7 +2624,8 @@
     ],
     "project": "fa4e93e67d893b04",
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "ml-notebooks_datasets",
@@ -2588,7 +2637,8 @@
     ],
     "project": "fbb434612145138a",
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "berth-site_node-cache",
@@ -2600,7 +2650,8 @@
     ],
     "project": "fa98a539f6437c5e",
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "stale-cache",
@@ -2610,7 +2661,8 @@
     "used_by": [],
     "project": null,
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "old-uploads",
@@ -2620,7 +2672,8 @@
     "used_by": [],
     "project": null,
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "tmp-export",
@@ -2630,7 +2683,8 @@
     "used_by": [],
     "project": null,
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "shop-api_redis-data",
@@ -2642,7 +2696,8 @@
     ],
     "project": "bf1ea56a4202fef9",
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "berth-site_caddy-data",
@@ -2654,7 +2709,8 @@
     ],
     "project": "fa98a539f6437c5e",
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "analytics_ingest-spool",
@@ -2666,7 +2722,8 @@
     ],
     "project": "fa4e93e67d893b04",
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    },
    {
     "name": "pg-scratch-data",
@@ -2678,7 +2735,8 @@
     ],
     "project": null,
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:default"
    }
   ],
   "colima:work": [
@@ -2692,7 +2750,8 @@
     ],
     "project": null,
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "colima:work"
    }
   ],
   "ssh:hetzner-1": [
@@ -2706,7 +2765,8 @@
     ],
     "project": null,
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "ssh:hetzner-1"
    },
    {
     "name": "landing_assets",
@@ -2718,7 +2778,8 @@
     ],
     "project": null,
     "created": "2026-10-20T10:00:00Z",
-    "labels": {}
+    "labels": {},
+    "engine": "ssh:hetzner-1"
    }
   ]
  },
@@ -2747,7 +2808,8 @@
      "a198ab3bde5acae63db0db3c683c17d15e12f15c59942b7db98ffe4c66a6678b"
     ],
     "project": null,
-    "built_in": true
+    "built_in": true,
+    "engine": "colima:default"
    },
    {
     "id": "a4764349426e2b15a76d807cb1094ce70314126c39f069802e1eaafb53d518b5",
@@ -2758,7 +2820,8 @@
     "internal": false,
     "containers": [],
     "project": null,
-    "built_in": true
+    "built_in": true,
+    "engine": "colima:default"
    },
    {
     "id": "9f078d527dcb9f710224177398c9e0f303bebb202b267f6813f774201a819a4c",
@@ -2769,7 +2832,8 @@
     "internal": false,
     "containers": [],
     "project": null,
-    "built_in": true
+    "built_in": true,
+    "engine": "colima:default"
    },
    {
     "id": "41581c8057a09ac6e2947c1eabd044595f0451ad6c07ad9962b9fba02fe99c58",
@@ -2786,7 +2850,8 @@
      "256d4b5d0c3a5c3f44c20214973389d0c0d2ca4f52d799136ffc033cb1f01487"
     ],
     "project": "bf1ea56a4202fef9",
-    "built_in": false
+    "built_in": false,
+    "engine": "colima:default"
    },
    {
     "id": "b5c1d7633476472b5f71cfa571ceac72cce7108688d73bbc7ba6eb376e073547",
@@ -2802,7 +2867,8 @@
      "614c5bcdf4554afe0d3812d66f9db8c8955a65f7bd6cf6762a643ce18c2c4572"
     ],
     "project": "fa4e93e67d893b04",
-    "built_in": false
+    "built_in": false,
+    "engine": "colima:default"
    },
    {
     "id": "14167c9650faf299d655ab20f462499227ff4d14d7e86515645ff551c4cfa736",
@@ -2816,7 +2882,8 @@
      "297eb2a162b6d4c3fb3437d7520215c787e7b56887947bc6419e4a560320337c"
     ],
     "project": "fa98a539f6437c5e",
-    "built_in": false
+    "built_in": false,
+    "engine": "colima:default"
    },
    {
     "id": "37833997a5f91f43593bc1dff4460ebf7fe1204e583664e01a2a2546a8adcdfa",
@@ -2829,7 +2896,8 @@
      "1b1133c3f2be2cad9a8afe83b29dfb1f36fc0cce7b0c96a946cf65990a250b70"
     ],
     "project": "c02932bdb012bb52",
-    "built_in": false
+    "built_in": false,
+    "engine": "colima:default"
    },
    {
     "id": "b7eb22580eebef0f4d7982cca27d74faa63d2d8a38a423440cf5f004e893f47b",
@@ -2843,7 +2911,8 @@
      "d1ffda6db597d62f1b3bccb64f6fb810c6f5a094d056b3c1b6db4270325d3a04"
     ],
     "project": "fbb434612145138a",
-    "built_in": false
+    "built_in": false,
+    "engine": "colima:default"
    },
    {
     "id": "2a7ffdd396e641b83bd726c30b3a46a3d42845cac1d3084e927f133d39a05578",
@@ -2856,7 +2925,8 @@
      "d75ad5f765176b8c9b838f7b01e45741782a4ca07b16d530e708bb0d313c0a13"
     ],
     "project": "626d90f3320e644e",
-    "built_in": false
+    "built_in": false,
+    "engine": "colima:default"
    }
   ],
   "colima:work": [
@@ -2876,7 +2946,8 @@
      "27d1d7c546479f18253569007e3b7b701340cca258e781308282f6e7b34fe7eb"
     ],
     "project": null,
-    "built_in": true
+    "built_in": true,
+    "engine": "colima:work"
    },
    {
     "id": "d8fc42071900b4e127606ecbf779fcbac33938e84ac214f5194eca1a52111e4d",
@@ -2887,7 +2958,8 @@
     "internal": false,
     "containers": [],
     "project": null,
-    "built_in": true
+    "built_in": true,
+    "engine": "colima:work"
    },
    {
     "id": "f2c3ff10a80e646f3f2e0c5be71616fcb885e8d17c30cdcb269139f07878cd09",
@@ -2898,7 +2970,8 @@
     "internal": false,
     "containers": [],
     "project": null,
-    "built_in": true
+    "built_in": true,
+    "engine": "colima:work"
    }
   ],
   "ssh:hetzner-1": [
@@ -2919,7 +2992,8 @@
      "ea4a9fcb13d422f69b334d79eb82a6fb411bda7aee3068d3fe4eea762f3db6e7"
     ],
     "project": null,
-    "built_in": true
+    "built_in": true,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "4850693d8ddce153db0c15f6acb9bd01f90f756348078b610eb6126bf2358030",
@@ -2930,7 +3004,8 @@
     "internal": false,
     "containers": [],
     "project": null,
-    "built_in": true
+    "built_in": true,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "44f209edf64006f201170bc092b45ed6a157c37251742783ddb23b378bea954e",
@@ -2941,7 +3016,8 @@
     "internal": false,
     "containers": [],
     "project": null,
-    "built_in": true
+    "built_in": true,
+    "engine": "ssh:hetzner-1"
    },
    {
     "id": "b2b4ef6d78d16ca9ae12a3d08e6f6f8bc032d6a958e455601602f38295e455ba",
@@ -2955,7 +3031,8 @@
      "ed4e0e13e33e76b369485526300b59167d8dd563c488f319af78fc0dcca8912a"
     ],
     "project": "3fe76cd652bf62b9",
-    "built_in": false
+    "built_in": false,
+    "engine": "ssh:hetzner-1"
    }
   ]
  },
@@ -2981,7 +3058,12 @@
     "size": 3100000000,
     "reclaimable": 3100000000
    },
-   "disk_total": 60000000000
+   "disk_total": 60000000000,
+   "container_sizes": [
+    ["4dea802030e24a85780e8a27ded0ad09fe32690fb8b3a6eedf860a7a3aeebde5", 38000000],
+    ["c1497b230deeff52eb997687e4e5aa2f0618bc0836e2d287401dc668a4f9342f", 12000000],
+    ["175c77fe7c78a006b2ed731a1e37d3c6b13c00c0c3add710bf8619fb40b0ddd6", 24000000]
+   ]
   },
   "colima:work": {
    "images": {

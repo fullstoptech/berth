@@ -16,7 +16,7 @@ pub mod colima;
 pub mod compose;
 pub mod engine;
 
-pub use colima::MockColima;
+pub use colima::{MockColima, MockColimaCall};
 pub use compose::MockCompose;
 pub use engine::MockEngine;
 
@@ -169,6 +169,34 @@ mod tests {
             .filter(|c| c.compose_project.is_none())
             .collect();
         assert_eq!(loose.len(), 8, "{loose:?}");
+    }
+
+    #[tokio::test]
+    async fn mock_engine_tag_image_adds_a_name_that_resolves_to_the_same_image() {
+        let client = MockEngine::bundled(&engine_id("colima:default"));
+        let before = client.images().await.expect("images");
+        let source = before
+            .iter()
+            .find(|i| i.repo_tags.iter().any(|t| t == "postgres:17-alpine"))
+            .expect("postgres image")
+            .clone();
+        client
+            .tag_image(&source.id, "berthfx/pg", "mine")
+            .await
+            .expect("tag");
+        let after = client.images().await.expect("images");
+        assert_eq!(after.len(), before.len(), "a tag adds no image");
+        let tagged = after.iter().find(|i| i.id == source.id).expect("image");
+        assert!(tagged.repo_tags.contains(&"berthfx/pg:mine".to_string()));
+        assert!(tagged.repo_tags.contains(&"postgres:17-alpine".to_string()));
+        let by_new_name = client.image("berthfx/pg:mine").await.expect("by name");
+        assert_eq!(by_new_name.image.id, source.id);
+        // Tagging an image that is not there says so.
+        let missing = client.tag_image("sha256:nope", "x", "y").await;
+        assert!(
+            matches!(missing, Err(crate::EngineError::NotFound(_))),
+            "{missing:?}"
+        );
     }
 
     #[tokio::test]

@@ -298,17 +298,29 @@ fn is_toggle(action: &str) -> bool {
 /// that enables them (D34: disabled stays visible, with a reason).
 /// A Compose-managed container is never recreated outside Compose (D17).
 #[must_use]
-pub fn header_menu(c: &Container) -> Vec<MenuEntry> {
+pub fn header_menu(c: &Container, backing: crate::services::backing::Backing) -> Vec<MenuEntry> {
     let later = |id: &str, label: &str, task: &str| {
         MenuEntry::new(id, label).disabled(format!("Built in {task}"))
     };
+    // A mock engine cannot create or recreate: the entries that would end
+    // in its raw error stay visible and say why.
+    let creates = |entry: MenuEntry, action: &str| match backing.unsupported_action(action) {
+        Some(reason) => entry.disabled(reason),
+        None => entry,
+    };
     vec![
-        MenuEntry::new("edit", "Edit…").kbd("E"),
-        MenuEntry::new("duplicate", "Duplicate"),
+        creates(MenuEntry::new("edit", "Edit…").kbd("E"), "container.edit"),
+        creates(
+            MenuEntry::new("duplicate", "Duplicate"),
+            "container.duplicate",
+        ),
         if c.labels.contains_key("com.docker.compose.project") {
             MenuEntry::new("recreate", "Recreate with latest image").disabled("Managed by Compose")
         } else {
-            MenuEntry::new("recreate", "Recreate with latest image")
+            creates(
+                MenuEntry::new("recreate", "Recreate with latest image"),
+                "container.recreate_latest",
+            )
         },
         MenuEntry::new("rename", "Rename…"),
         later("save-image", "Save as image…", "P8-T4"),

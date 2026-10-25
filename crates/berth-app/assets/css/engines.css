@@ -1,0 +1,368 @@
+/* Engines screen and dashboard (P4-T6, frames "Engines / dashboard / 1440"
+   and "Engines / starting / 1440"). Colours only from tokens.css. */
+
+.engines-screen {
+  display: flex;
+  min-height: 100%;
+  height: 100%;
+  min-width: 0;
+  background: var(--color-bg);
+  font-size: var(--text-body-size);
+}
+
+/* ---- the list ---- */
+.engines-list-col {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: calc(396px * var(--text-scale, 1));
+  box-sizing: border-box;
+  border-right: 1px solid var(--color-line);
+  overflow-y: auto;
+}
+.engines-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: var(--space-16) var(--gutter) var(--space-12);
+}
+.engines-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-h1-weight);
+  color: var(--color-ink);
+}
+.engines-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin: 0;
+  padding: 0 var(--gutter) var(--space-16);
+  list-style: none;
+}
+.engine-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  box-sizing: border-box;
+  padding: var(--space-8) var(--space-12) var(--space-8) var(--space-16);
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+.engine-row:hover {
+  background: var(--color-surface-hover);
+}
+.engine-row-selected,
+.engine-row-selected:hover {
+  border-left-color: var(--color-accent);
+  background: var(--color-selection);
+}
+.engine-row-dot {
+  flex: none;
+  display: inline-flex;
+  align-self: center;
+}
+.engine-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.engine-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.engine-row-line {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.engine-row-problem {
+  color: var(--color-danger);
+}
+.engine-row-action {
+  flex: none;
+}
+
+/* ---- the run meter: "Starting Colima 40%" ---- */
+.run-meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.run-meter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+.run-meter-title {
+  color: var(--color-ink);
+}
+.run-meter-percent {
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.run-meter-bar {
+  display: block;
+  height: var(--space-4);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-line);
+}
+.run-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  transition: width var(--motion-short) var(--ease-standard);
+}
+.run-meter-text {
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.run-meter-compact {
+  margin-top: var(--space-2);
+}
+.run-meter-compact .run-meter-title,
+.run-meter-compact .run-meter-percent {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+
+/* ---- the dashboard ---- */
+.engines-detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+.dash {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  box-sizing: border-box;
+  padding: var(--space-16) var(--gutter) var(--space-24);
+}
+.dash-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  min-height: var(--size-control-md);
+}
+.dash-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-h1-weight);
+  color: var(--color-ink);
+}
+.dash-sub {
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.dash-spacer {
+  flex: 1;
+}
+.dash-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.eng-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-8);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  height: var(--size-control-sm);
+  box-sizing: border-box;
+}
+.eng-badge.tone-success {
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+}
+.eng-badge.tone-warning {
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+}
+.eng-badge.tone-danger {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+.eng-badge.tone-stopped {
+  background: var(--color-stopped-subtle);
+  color: var(--color-ink-muted);
+}
+.dash-notice,
+.dash-note {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.dash-banner {
+  display: flex;
+  flex-direction: column;
+}
+.dash-split {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-12);
+}
+.dash-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.dash-tiles {
+  display: flex;
+  gap: var(--space-12);
+}
+.dash-tiles .mt-tile {
+  flex: 1;
+  gap: var(--space-2);
+  max-width: calc(232px * var(--text-scale, 1));
+}
+/* The dashboard's tiles are shorter than the Stats tab's, and their line is
+   neutral (frame "Engines / dashboard / 1440"). */
+.dash-tiles .mt-spark {
+  height: var(--space-24);
+}
+.dash-tiles .mt-spark path {
+  stroke: var(--color-ink-muted);
+}
+.dash-info {
+  flex: none;
+  width: calc(320px * var(--text-scale, 1));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.dash-section-title {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  font-weight: 500;
+}
+.dash-info-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.dash-info-row {
+  display: grid;
+  grid-template-columns: calc(122px * var(--text-scale, 1)) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-8);
+  min-height: calc(26px * var(--text-scale, 1));
+  border-bottom: 1px solid var(--color-line);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.dash-info-row dt {
+  color: var(--color-ink-muted);
+}
+.dash-info-row dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.dash-disk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin-top: var(--space-4);
+}
+.dash-disk-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.dash-disk-summary {
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.dash-recent .projects-recent {
+  padding: var(--space-8) 0 0;
+}
+.dash-recent .recent-row {
+  height: calc(24px * var(--text-scale, 1));
+  padding-left: var(--space-12);
+}
+
+/* ---- the run panel ---- */
+.run-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.run-panel .run-meter {
+  max-width: calc(560px * var(--text-scale, 1));
+}
+.run-command {
+  margin: var(--space-4) 0 0;
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  font-weight: 500;
+}
+.run-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  max-height: calc(360px * var(--text-scale, 1));
+  overflow-y: auto;
+  padding: var(--space-8) var(--space-12) var(--space-8) var(--space-32);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+}
+.run-line {
+  display: grid;
+  grid-template-columns: calc(48px * var(--text-scale, 1)) minmax(0, 1fr);
+  column-gap: calc(60px * var(--text-scale, 1));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.run-line-at {
+  color: var(--color-ink-muted);
+  text-align: right;
+}
+.run-note {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}

@@ -468,6 +468,9 @@ async fn run_checks(client: &BollardEngine) -> Result<(), String> {
             gateway: None,
             internal: false,
             attach: Vec::new(),
+            labels: [("dev.berth.fixture".to_string(), "1".to_string())]
+                .into_iter()
+                .collect(),
         })
         .await
         .map_err(|e| format!("create_network: {e}"))?;

@@ -17,12 +17,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use berth_core::{ContainerId, EngineId, Mount};
+use berth_core::{ContainerId, EngineId, FileTarget, Mount};
 use dioxus::prelude::*;
 use tokio_util::sync::CancellationToken;
 
 use super::file_browser::{FileBrowser, Listing, FILE_BROWSER_CSS};
 use super::{ConfirmDialog, InlineMessage, InlineTone};
+use crate::services::backing::Capability;
 use crate::services::confirm;
 use crate::services::files::{self, EngineFiles, FileSource, FilesBackend, FilesError};
 use crate::services::Services;
@@ -54,7 +55,7 @@ struct Backend {
     over: Option<FilesBackend>,
     services: Option<Services>,
     engine: EngineId,
-    container: ContainerId,
+    target: FileTarget,
 }
 
 impl Backend {
@@ -69,7 +70,10 @@ impl Backend {
         let client = services.client(&self.engine).ok_or_else(|| {
             FilesError::Engine(format!("Engine {} is not connected", self.engine.0))
         })?;
-        Ok(Arc::new(EngineFiles::new(client, self.container.clone())))
+        Ok(Arc::new(EngineFiles::for_target(
+            client,
+            self.target.clone(),
+        )))
     }
 }
 
@@ -91,21 +95,37 @@ pub fn FilesPanel(container: ContainerId) -> Element {
         .iter()
         .find(|c| c.id == container)
         .map(|c| (c.engine.clone(), start_dir(&c.mounts), c.name.clone()));
-    let (engine, start, name) = found.clone().unwrap_or_else(|| {
-        (
-            EngineId(String::new()),
-            "/".to_string(),
-            container.0.clone(),
-        )
-    });
+    let Some((engine, start, _)) = found else {
+        let name = container.0.clone();
+        return rsx! {
+            style { "{FILE_BROWSER_CSS}" }
+            InlineMessage { message: format!("{name} was removed."), tone: InlineTone::Warning }
+        };
+    };
+    rsx! {
+        TargetFiles { engine, target: FileTarget::Container(container), start }
+    }
+}
 
+/// The files of any target (a container, or a volume through the helper),
+/// starting in `start`. The Files tab and the volume browser mount this.
+#[component]
+pub fn TargetFiles(engine: EngineId, target: FileTarget, start: String) -> Element {
+    let state = use_context::<AppState>();
+    // A mock engine lists nothing and moves nothing: say so, once, where
+    // the folder would be, rather than showing its raw error.
+    if let Some(reason) = state.backing.peek().unsupported(Capability::Files) {
+        return rsx! {
+            style { "{FILE_BROWSER_CSS}" }
+            InlineMessage { message: reason, tone: InlineTone::Warning }
+        };
+    }
     let backend = use_hook({
-        let container = container.clone();
         move || Backend {
             over: try_consume_context::<FilesBackend>(),
             services: try_consume_context::<Services>(),
             engine,
-            container,
+            target,
         }
     });
     let panel_cancel = use_hook(|| {
@@ -307,13 +327,6 @@ pub fn FilesPanel(container: ContainerId) -> Element {
             });
         }
     };
-
-    if found.is_none() {
-        return rsx! {
-            style { "{FILE_BROWSER_CSS}" }
-            InlineMessage { message: format!("{name} was removed."), tone: InlineTone::Warning }
-        };
-    }
 
     let upload_blocker = if busy.read().is_some() {
         Some("Wait for the current transfer to finish".to_string())

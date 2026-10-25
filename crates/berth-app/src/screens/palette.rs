@@ -150,6 +150,7 @@ pub fn PaletteScreen() -> Element {
                 volumes: &volumes,
                 networks: &networks,
                 pending: &pending,
+                backing: *state.backing.peek(),
             },
             &selection,
             &scope,

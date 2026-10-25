@@ -26,6 +26,8 @@ pub struct TabItem {
     pub label: String,
     pub count: Option<usize>,
     pub closable: bool,
+    /// Quiet text after the label ("1 pulling"); not a count.
+    pub note: Option<String>,
 }
 
 impl TabItem {
@@ -35,6 +37,7 @@ impl TabItem {
             label: label.into(),
             count: None,
             closable: false,
+            note: None,
         }
     }
     pub fn with_count(id: impl Into<String>, label: impl Into<String>, count: usize) -> Self {
@@ -43,6 +46,7 @@ impl TabItem {
             label: label.into(),
             count: Some(count),
             closable: false,
+            note: None,
         }
     }
     pub fn closable(id: impl Into<String>, label: impl Into<String>) -> Self {
@@ -51,7 +55,15 @@ impl TabItem {
             label: label.into(),
             count: None,
             closable: true,
+            note: None,
         }
+    }
+
+    /// The tab with quiet text after its label.
+    #[must_use]
+    pub fn with_note(mut self, note: impl Into<String>) -> Self {
+        self.note = Some(note.into());
+        self
     }
 }
 
@@ -89,6 +101,9 @@ pub fn Tabs(
                                     }
                                 },
                                 span { "{item.label}" }
+                                if let Some(note) = &item.note {
+                                    span { class: "tab-note", "{note}" }
+                                }
                                 if let Some(count) = item.count {
                                     Badge { kind: BadgeKind::Count, text: count.to_string() }
                                 }
