@@ -88,6 +88,7 @@ fn boot_services(state: AppState) -> Boot {
 #[component]
 pub fn App() -> Element {
     assets::use_assets();
+    crate::bridge::use_web_assets();
     platform::use_traffic_lights();
     let mut state = use_app_state();
     use_context_provider(|| state);
@@ -106,7 +107,7 @@ pub fn App() -> Element {
         if let Ok(frame) = std::env::var("BERTH_SCENE") {
             if let Some(scene) = scenes::find(&frame) {
                 (scene.setup)(&mut state);
-            } else {
+            } else if frame != crate::bridge::dev::FRAME {
                 tracing::warn!(%frame, "unknown BERTH_SCENE frame");
             }
         }
@@ -166,7 +167,11 @@ pub fn App() -> Element {
 
     rsx! {
         style { "{assets::FONTS_CSS}" }
-        Shell {}
+        if crate::bridge::dev::active() {
+            crate::bridge::dev::DevEcho {}
+        } else {
+            Shell {}
+        }
     }
 }
 

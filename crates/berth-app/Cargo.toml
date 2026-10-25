@@ -29,6 +29,7 @@ dioxus-ssr.workspace = true
 futures.workspace = true
 nucleo-matcher.workspace = true
 rustls.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
