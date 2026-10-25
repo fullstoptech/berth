@@ -104,6 +104,41 @@ pub fn VirtualTable(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text_scale::row_height_px as css_row_height_px;
+    use berth_store::Density;
+
+    const TABLES_CSS: &str = include_str!("../../assets/css/tables.css");
+
+    /// The text of the `{ ... }` block of `selector` in `css`.
+    fn rule<'a>(css: &'a str, selector: &str) -> &'a str {
+        let start = css
+            .find(&format!("\n{selector} {{"))
+            .unwrap_or_else(|| panic!("no `{selector}` rule"))
+            + selector.len()
+            + 3;
+        &css[start..start + css[start..].find('}').expect("rule closes")]
+    }
+
+    #[test]
+    fn virtual_table_row_height_constant_is_the_stylesheet_row_height() {
+        // The range maths assumes every row is `row_height_px` tall.
+        assert_eq!(
+            DEFAULT_ROW_HEIGHT_PX,
+            css_row_height_px(Density::Comfortable, 1.0)
+        );
+        // The row's inline `height` is the box the table scrolls by, so the 1 px
+        // border must sit inside it: with content-box sizing a bordered row is
+        // 1 px taller than assumed and the scroll offsets drift 1 px per row.
+        for selector in [".vt-row", ".table-header-cell"] {
+            let body = rule(TABLES_CSS, selector);
+            let borders = body.contains("border-bottom") || body.contains("border-top");
+            assert!(
+                !borders || body.contains("box-sizing: border-box;"),
+                "`{selector}` has a border but no border-box sizing: {body}"
+            );
+            assert!(body.contains("height: var(--size-row);"), "{body}");
+        }
+    }
 
     #[test]
     fn virtual_table_visible_range_at_top_includes_overscan_below() {
