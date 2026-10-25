@@ -643,3 +643,39 @@ fn search_field_focus_changes_the_border_and_draws_no_accent_ring() {
         }
     }
 }
+
+#[test]
+fn search_clear_button_focus_ring_is_ink_not_accent() {
+    let rules = css_rules(include_str!("../../assets/css/ui.css"));
+    let ink: Vec<&String> = rules
+        .iter()
+        .filter(|(selector, _)| {
+            selector
+                .split(',')
+                .any(|s| s.trim() == ".search-field .search-clear:focus-visible")
+        })
+        .map(|(_, body)| body)
+        .collect();
+    assert_eq!(ink.len(), 1, "one ink rule for the clear button");
+    assert!(
+        ink[0].contains("outline-color: var(--color-ink)"),
+        "{}",
+        ink[0]
+    );
+    for banned in [
+        "--color-focus",
+        "--color-accent",
+        "--color-info",
+        "box-shadow",
+    ] {
+        assert!(!ink[0].contains(banned), "{banned}: {}", ink[0]);
+    }
+    // It comes after the shared ring, so it wins; only keyboard focus draws it.
+    let css = include_str!("../../assets/css/ui.css");
+    assert!(
+        css.find(".search-field .search-clear:focus-visible")
+            > css.find(".search-clear:focus-visible {"),
+        "the ink rule must follow the shared ring"
+    );
+    assert!(!ink[0].contains("outline: none"));
+}

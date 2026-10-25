@@ -161,6 +161,9 @@
 .search-count-none { color: var(--color-danger); }
 .search-clear { display: inline-flex; align-items: center; padding: 0; border-radius: var(--radius-sm); color: var(--color-ink-muted); }
 .search-clear:hover:not(:disabled) { color: var(--color-ink); }
+/* The clear button inside a search field follows the field: keyboard focus
+   draws the ring in ink, not the accent. */
+.search-field .search-clear:focus-visible { outline-color: var(--color-ink); }
 .select-control { position: relative; padding-right: var(--space-24); }
 .select-input { appearance: none; cursor: pointer; height: 100%; }
 .select-chevron { position: absolute; right: var(--space-6); display: inline-flex; color: var(--color-ink-muted); pointer-events: none; }
