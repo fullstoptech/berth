@@ -23,6 +23,7 @@ berth-store.workspace = true
 berth-sys.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
+bytesize.workspace = true
 chrono.workspace = true
 dioxus.workspace = true
 dioxus-ssr.workspace = true
@@ -39,7 +40,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 bytes.workspace = true
-bytesize.workspace = true
 tempfile.workspace = true
 
 [lints]

@@ -1603,3 +1603,118 @@ fn containers_group_by_values_round_trip() {
     assert_eq!(GroupBy::parse("garbage"), GroupBy::Project);
     assert_eq!(GroupBy::Engine.label(), "Group by: Engine");
 }
+
+// ---------- live stats feed the rows (P3-T4, D26) ----------
+
+mod stats_wiring {
+    use std::cell::RefCell;
+
+    use bytesize::ByteSize;
+
+    use super::*;
+    use crate::services::stats::{StatsKey, StatsService};
+
+    thread_local! {
+        static SERVICE: RefCell<Option<StatsService>> = const { RefCell::new(None) };
+    }
+
+    fn provide_service(state: &mut AppState, _view: &mut ContainersView) {
+        mock_state(state);
+        let service = StatsService::new(
+            crate::services::engines::client_map(),
+            tokio_util::sync::CancellationToken::new(),
+        );
+        SERVICE.with(|slot| *slot.borrow_mut() = Some(service.clone()));
+        provide_context(service);
+    }
+
+    fn service() -> StatsService {
+        SERVICE
+            .with(|slot| slot.borrow().clone())
+            .expect("service provided")
+    }
+
+    fn api_key() -> StatsKey {
+        let world = world();
+        let api = container(&world, "shop-api-api-1");
+        StatsKey::new(&api.engine, &api.id)
+    }
+
+    fn reading(cpu: f32) -> berth_core::LiveStats {
+        berth_core::LiveStats {
+            cpu_pct: cpu,
+            mem_used: ByteSize::mb(99),
+            mem_limit: ByteSize::mb(512),
+            net_rx: ByteSize::b(1),
+            net_tx: ByteSize::b(1),
+            at: chrono::Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn stats_rows_register_only_the_running_containers_they_render() {
+        let mut dom = VirtualDom::new_with_props(
+            ScreenRoot,
+            ScreenRootProps {
+                setup: SetupFn(provide_service),
+            },
+        );
+        let _ = dom.rebuild_to_vec();
+        let opened = service().reconcile().opened;
+        let world = world();
+        let api = container(&world, "shop-api-api-1");
+        let db = container(&world, "shop-api-db-1");
+        assert!(
+            opened.contains(&StatsKey::new(&api.engine, &api.id)),
+            "{opened:?}"
+        );
+        assert!(
+            !opened.iter().any(|k| k.id == db.id),
+            "an exited container has no stats stream"
+        );
+        assert!(opened.len() <= crate::services::stats::MAX_SUBSCRIPTIONS);
+        assert!(opened.iter().all(|k| {
+            world
+                .containers
+                .iter()
+                .find(|c| c.id == k.id)
+                .is_some_and(|c| {
+                    matches!(c.state, ContainerState::Running | ContainerState::Paused)
+                })
+        }));
+        // The screen going away releases every row: nothing stays open.
+        drop(dom);
+        let closed = service().reconcile().closed;
+        assert_eq!(closed.len(), opened.len());
+        assert_eq!(service().subscription_count(), 0);
+    }
+
+    #[test]
+    fn stats_a_fresh_sample_replaces_the_listed_value_in_the_row() {
+        let before = render_screen(provide_service);
+        let again = render_screen(|state, view| {
+            provide_service(state, view);
+            service().seed(&api_key(), [(chrono::Utc::now(), reading(77.7))]);
+        });
+        assert!(!before.contains("77.7%"));
+        assert!(again.contains("77.7%"), "{again}");
+        assert!(again.contains("99 MB"), "{again}");
+    }
+
+    #[test]
+    fn stats_a_stale_sample_is_not_shown() {
+        let html = render_screen(|state, view| {
+            provide_service(state, view);
+            let old = chrono::Utc::now() - chrono::Duration::seconds(60);
+            service().seed(&api_key(), [(old, reading(77.7))]);
+        });
+        assert!(!html.contains("77.7%"), "{html}");
+    }
+
+    #[test]
+    fn stats_without_a_service_the_row_keeps_the_listed_value() {
+        // The frame scenes run no service: the mock's own values stay.
+        let html = render_screen(|state, _view| mock_state(state));
+        assert!(html.contains("3.2%"), "{html}");
+    }
+}

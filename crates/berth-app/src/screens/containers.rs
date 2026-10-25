@@ -24,6 +24,7 @@ use crate::services::actions::{
 };
 use crate::services::confirm;
 use crate::services::group_ops::{is_active, run as run_group_action, GroupIds};
+use crate::services::stats::{use_row_stats, StatsKey, StatsService};
 use crate::state::{AppState, EngineScope, PendingKey, PendingState, Section, Selection};
 use crate::ui::bulk_bar::{applicable, bulk_counts};
 use crate::ui::container_row::{
@@ -1126,15 +1127,46 @@ fn state_view_from<'a>(
     }
 }
 
+/// The listed container with the service's newest fresh sample in place of
+/// its own `stats` (the list never carries live ones). Without a service,
+/// or without a fresh sample, the listed value stands: a scene's frame
+/// values, or "—".
+fn with_live_stats<'a>(
+    listed: &'a Container,
+    stats: Option<&StatsService>,
+    key: Option<&StatsKey>,
+) -> std::borrow::Cow<'a, Container> {
+    let live = stats
+        .zip(key)
+        .and_then(|(service, key)| service.latest(key, chrono::Utc::now()));
+    match live {
+        Some(live) => std::borrow::Cow::Owned(Container {
+            stats: Some(live),
+            ..listed.clone()
+        }),
+        None => std::borrow::Cow::Borrowed(listed),
+    }
+}
+
 #[component]
 fn ContainerRowHost(id: ContainerId, show_uptime: bool, show_engine: bool) -> Element {
     let mut state = use_context::<AppState>();
     let view = use_context::<ContainersView>();
     let actions = try_consume_context::<ActionsService>();
+    let stats = try_consume_context::<StatsService>();
     let containers = state.containers.read();
-    let Some(container) = containers.iter().find(|c| c.id == id) else {
+    let listed = containers.iter().find(|c| c.id == id);
+    // D26: this row holds a stats stream open while it is rendered (inside
+    // the table's visible range) and the container runs. The hook runs
+    // before the early return so hook order never changes.
+    let key = listed
+        .filter(|c| matches!(c.state, ContainerState::Running | ContainerState::Paused))
+        .map(|c| StatsKey::new(&c.engine, &c.id));
+    use_row_stats(stats.as_ref(), key.clone());
+    let Some(listed) = listed else {
         return rsx! {};
     };
+    let container = &*with_live_stats(listed, stats.as_ref(), key.as_ref());
     let engines = state.engines.read();
     let projects = state.projects.read();
     let pending = state.pending.read();

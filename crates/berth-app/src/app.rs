@@ -4,6 +4,7 @@ use crate::assets;
 use crate::platform;
 use crate::scenes;
 use crate::services::actions::ActionsService;
+use crate::services::stats::{use_window_visibility, StatsService};
 use crate::services::{action_runners, activity, engines, Services};
 use crate::state::{theme_script, use_app_state, AppState, Overlay};
 use crate::ui::{inspector_visible, BottomPanel, Inspector, Sidebar, StatusBar, TitleBar};
@@ -11,6 +12,7 @@ use crate::ui::{inspector_visible, BottomPanel, Inspector, Sidebar, StatusBar, T
 struct Boot {
     services: Services,
     actions: ActionsService,
+    stats: StatsService,
     // Dropped with the App root on quit (cancels tasks, saves snapshots).
     _engines: Option<engines::EnginesHandle>,
 }
@@ -71,6 +73,8 @@ fn boot_services(state: AppState) -> Boot {
         colima,
         cancel.clone(),
     );
+    // Live stats (D26): streams open only for what is on screen.
+    let stats = StatsService::start(clients.clone(), cancel.clone());
     let handle = if scene {
         None
     } else {
@@ -79,6 +83,7 @@ fn boot_services(state: AppState) -> Boot {
     Boot {
         services,
         actions,
+        stats,
         _engines: handle,
     }
 }
@@ -101,6 +106,9 @@ pub fn App() -> Element {
     use_context_provider(|| services);
     let actions = boot.actions.clone();
     use_context_provider(|| actions);
+    let stats = boot.stats.clone();
+    use_window_visibility(stats.clone());
+    use_context_provider(|| stats);
 
     // BERTH_SCENE puts the UI into a frame's state for screenshots (D58).
     use_hook(move || {
@@ -269,6 +277,9 @@ pub fn Shell() -> Element {
                         main { class: "main",
                             if *state.dev_gallery.read() {
                                 crate::ui::PrimitivesGallery {}
+                            }
+                            if let Some(dev) = try_consume_context::<crate::scenes::DevStatsPanel>() {
+                                crate::ui::metric_tile::StatsPanelScene { id: dev.0 }
                             }
                             if *state.section.read() == crate::state::Section::Activity {
                                 crate::screens::activity::ActivityScreen {}
