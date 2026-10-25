@@ -24,4 +24,12 @@ pub enum RulesError {
     Read(std::path::PathBuf, String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error("cannot read the docker run command: {0}")]
+    RunParse(String),
+    #[error("service {0} is not in the compose file")]
+    NoService(String),
+    #[error("service {0} already exists")]
+    ServiceExists(String),
+    #[error("service {service} does not publish port {port}")]
+    NoPort { service: String, port: u16 },
 }

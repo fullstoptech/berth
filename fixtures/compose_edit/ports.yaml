@@ -1,0 +1,64 @@
+# One service per way of writing a published port.
+services:
+  quoted:
+    image: a
+    ports:
+      - "80:80"
+  unquoted:
+    image: a
+    ports:
+      - 81:81
+  single:
+    image: a
+    ports:
+      - '82:82'
+  ip:
+    image: a
+    ports:
+      - "127.0.0.1:83:83"
+  proto:
+    image: a
+    ports:
+      - "84:84/tcp"
+  var:
+    image: a
+    ports:
+      - "${HOST_PORT:-85}:85"
+  flow:
+    image: a
+    ports: ["7000:7000", "86:86", '7001:7001']
+  indented_dash:
+    image: a
+    ports:
+    - "87:87"
+  comment:
+    image: a
+    ports:
+      - "88:88"   # keep me
+  ipv6:
+    image: a
+    ports:
+      - "[::1]:89:89"
+  both:
+    image: a
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+  long:
+    image: a
+    ports:
+      - target: 90
+        published: 90
+        protocol: tcp
+      - target: 91
+        published: "91"
+      - published: 92
+        target: 92
+      - target: 93
+        mode: host
+  container_only:
+    image: a
+    ports:
+      - "3000"
+  no_ports:
+    image: a

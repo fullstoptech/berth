@@ -1,0 +1,15 @@
+# docker-compose.yml: the older file name, written with four-space indentation
+services:
+    web:
+        image: node:22
+        ports:
+            - "3000:3000"
+        volumes:
+            - ./:/app   # bind mount
+    db:
+        image: postgres:17
+        # the password comes from .env
+        environment:
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+volumes:
+    pgdata:
