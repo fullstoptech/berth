@@ -29,10 +29,7 @@ use crate::client::{Bs, EngineClient, ExecHandle};
 use crate::mappers;
 use crate::EngineError;
 
-/// Bollard's per-request timeout installed by `connect_with_unix` (seconds).
-/// PLAN §6.5 asks for a 2 s connect timeout; bollard has no separate connect
-/// timeout for unix sockets, so the request timeout carries the 2 s budget.
-const CONNECT_TIMEOUT_SECS: u64 = 2;
+use crate::timeouts::{CallKind, LIST_INSPECT};
 
 pub struct BollardEngine {
     docker: bollard::Docker,
@@ -54,9 +51,7 @@ fn map_err(engine_name: &str, err: bollard::errors::Error) -> EngineError {
             reason: format!("socket {path} not found"),
         },
         B::DockerStreamError { error } => EngineError::Docker(error),
-        B::RequestTimeoutError => {
-            EngineError::Timeout(std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS))
-        }
+        B::RequestTimeoutError => EngineError::Timeout(LIST_INSPECT),
         other => EngineError::Unreachable {
             engine: engine_name.to_string(),
             reason: other.to_string(),
@@ -85,7 +80,7 @@ impl BollardEngine {
         };
         let docker = bollard::Docker::connect_with_unix(
             socket,
-            CONNECT_TIMEOUT_SECS,
+            LIST_INSPECT.as_secs(),
             bollard::API_DEFAULT_VERSION,
         )
         .map_err(|e| map_err(&engine.name, e))?;
@@ -99,6 +94,23 @@ impl BollardEngine {
 
     fn err(&self, e: bollard::errors::Error) -> EngineError {
         map_err(&self.engine_name, e)
+    }
+
+    /// The error of a call made through [`Self::docker_for`]: a timeout
+    /// names that call's budget, not the default one.
+    fn err_for(&self, kind: CallKind, e: bollard::errors::Error) -> EngineError {
+        match (e, kind.timeout()) {
+            (bollard::errors::Error::RequestTimeoutError, Some(limit)) => {
+                EngineError::Timeout(limit)
+            }
+            (e, _) => self.err(e),
+        }
+    }
+
+    /// The client with the request timeout of `kind` (D29). The default
+    /// client carries [`LIST_INSPECT`].
+    fn docker_for(&self, kind: CallKind) -> bollard::Docker {
+        self.docker.clone().with_timeout(kind.for_bollard())
     }
 
     async fn raw_containers(&self) -> Result<Vec<berth_core::Container>, EngineError> {
@@ -495,30 +507,27 @@ impl EngineClient for BollardEngine {
 
     async fn disk_usage(&self) -> Result<berth_core::DiskUsage, EngineError> {
         let df = self
-            .docker
+            .docker_for(CallKind::DiskUsage)
             .df(None::<DataUsageOptions>)
             .await
-            .map_err(|e| self.err(e))?;
+            .map_err(|e| self.err_for(CallKind::DiskUsage, e))?;
         Ok(mappers::disk_usage(&df))
     }
 
     async fn volume_sizes(
         &self,
     ) -> Result<std::collections::BTreeMap<String, bytesize::ByteSize>, EngineError> {
-        // `system df` walks every volume: seconds on a busy engine (4 s
-        // measured), so it gets its own budget instead of the 2 s default.
+        // `system df` walks every volume, so it has its own budget (D29).
         let df = self
-            .docker
-            .clone()
-            .with_timeout(std::time::Duration::from_secs(60))
+            .docker_for(CallKind::DiskUsage)
             .df(None::<DataUsageOptions>)
             .await
-            .map_err(|e| self.err(e))?;
+            .map_err(|e| self.err_for(CallKind::DiskUsage, e))?;
         Ok(mappers::volume_sizes(&df))
     }
 
     fn events(&self, cancel: Cancel) -> Bs<berth_core::EngineEvent> {
-        let docker = self.docker.clone();
+        let docker = self.docker_for(CallKind::Events);
         let engine = self.id.clone();
         let name = self.engine_name.clone();
         let stream = docker.events(None::<bollard::query_parameters::EventsOptions>);
@@ -536,7 +545,7 @@ impl EngineClient for BollardEngine {
         q: berth_core::LogQuery,
         cancel: Cancel,
     ) -> Bs<berth_core::LogLine> {
-        let docker = self.docker.clone();
+        let docker = self.docker_for(CallKind::Logs);
         let name = self.engine_name.clone();
         let tail = q.tail.map_or_else(|| "all".to_string(), |t| t.to_string());
         let mut builder = LogsOptionsBuilder::new()
@@ -553,7 +562,7 @@ impl EngineClient for BollardEngine {
     }
 
     fn stats(&self, id: &berth_core::ContainerId, cancel: Cancel) -> Bs<berth_core::LiveStats> {
-        let docker = self.docker.clone();
+        let docker = self.docker_for(CallKind::Stats);
         let name = self.engine_name.clone();
         let options = StatsOptionsBuilder::new()
             .stream(true)
@@ -698,7 +707,7 @@ impl EngineClient for BollardEngine {
             self.act(id, berth_core::ContainerAction::Unpause).await?;
         }
         if was_running || was_paused {
-            // Bollard's per-request timeout is the 2 s connect budget, so a
+            // The list/inspect request timeout (5 s) is shorter than the stop, so a
             // container whose PID 1 ignores SIGTERM outlives the stop
             // request. The engine keeps stopping it server-side; poll for
             // the exit, then kill as the last resort.
@@ -822,7 +831,7 @@ impl EngineClient for BollardEngine {
                 }
             };
             let started = self
-                .docker
+                .docker_for(CallKind::Attach)
                 .start_exec(
                     &created.id,
                     Some(StartExecOptions {
@@ -982,7 +991,7 @@ impl EngineClient for BollardEngine {
                 .build();
             let mut stream = Box::pin(
                 engine
-                    .docker
+                    .docker_for(CallKind::Export)
                     .download_from_container(&container, Some(options)),
             );
             loop {
@@ -1022,7 +1031,7 @@ impl EngineClient for BollardEngine {
             .path(&in_path)
             .build();
         let result = self
-            .docker
+            .docker_for(CallKind::Upload)
             .upload_to_container(&container, Some(options), bollard::body_full(tar))
             .await
             .map_err(|e| self.err(e));
@@ -1046,7 +1055,9 @@ impl EngineClient for BollardEngine {
         if let Some(platform) = platform {
             builder = builder.platform(platform);
         }
-        let stream = self.docker.create_image(Some(builder.build()), None, None);
+        let stream =
+            self.docker_for(CallKind::Pull)
+                .create_image(Some(builder.build()), None, None);
         cancellable(
             stream,
             cancel,
@@ -1251,7 +1262,11 @@ impl EngineClient for BollardEngine {
                         (Ok(()), None)
                     } else {
                         build_cache_pruned = true;
-                        match self.docker.prune_build(None::<PruneBuildOptions>).await {
+                        match self
+                            .docker_for(CallKind::Build)
+                            .prune_build(None::<PruneBuildOptions>)
+                            .await
+                        {
                             Ok(resp) => (
                                 Ok(()),
                                 resp.space_reclaimed.map(|n| u64::try_from(n).unwrap_or(0)),

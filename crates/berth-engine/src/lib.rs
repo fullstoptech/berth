@@ -10,6 +10,7 @@ pub mod mappers;
 pub mod mock;
 pub mod projects;
 pub mod remove;
+pub mod timeouts;
 
 pub use bollard_engine::BollardEngine;
 pub use client::{unsupported_stream, Bs, EngineClient, ExecHandle, RegistryAuth};
