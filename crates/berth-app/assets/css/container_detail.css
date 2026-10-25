@@ -313,9 +313,6 @@
 .env-value:hover { background: var(--color-surface-hover); }
 
 /* Tabs another task builds, and the removed state */
-.cd-placeholder { padding: var(--space-32) var(--space-16); text-align: center; color: var(--color-ink-muted); }
-.cd-placeholder-title { margin: 0; color: var(--color-ink); font-weight: var(--text-label-weight); }
-.cd-placeholder-text { margin: var(--space-4) 0 0; font-size: var(--text-label-size); }
 .cd-removed { gap: var(--space-8); align-items: flex-start; padding: var(--space-12); }
 .cd-removed-name { margin: 0; font-size: var(--text-h2-size); line-height: var(--text-h2-line); font-weight: var(--text-h2-weight); }
 .cd-removed-text { margin: 0; color: var(--color-ink-muted); }

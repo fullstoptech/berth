@@ -487,12 +487,13 @@ fn inspector_keeps_one_12px_left_edge_and_sets_delete_apart() {
 }
 
 #[test]
-fn inspector_tabs_another_task_builds_say_which_task() {
+fn inspector_limits_tab_mounts_the_limits_panel() {
     let api = container("shop-api-api-1");
     let mut panel = Panel::of(&api);
     panel.tab = DetailTab::Limits;
     let html = render(panel);
-    assert!(html.contains("Built in P3-T7"), "{html}");
+    assert!(!html.contains("Built in"), "{html}");
+    assert!(html.contains("Apply limits"), "{html}");
 }
 
 #[test]

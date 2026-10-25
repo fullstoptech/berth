@@ -364,13 +364,8 @@ fn tab_body(
     if tab == DetailTab::Files {
         return rsx! { crate::ui::FilesPanel { container: c.id.clone() } };
     }
-    if let Some(task) = tab.built_in() {
-        return rsx! {
-            div { class: "cd-placeholder",
-                p { class: "cd-placeholder-title", "{tab.label()}" }
-                p { class: "cd-placeholder-text", "Built in {task}" }
-            }
-        };
+    if tab == DetailTab::Limits {
+        return rsx! { crate::screens::container_limits::LimitsPanel { container: c.clone() } };
     }
     let loaded = match entry {
         None => return rsx! { p { class: "cd-note", "Loading details…" } },

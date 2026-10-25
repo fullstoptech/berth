@@ -92,23 +92,6 @@ impl DetailTab {
     pub fn from_id(id: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|tab| tab.id() == id)
     }
-
-    /// The task that builds this tab's body, for the tabs this task only
-    /// gives a place to (their component drops into the slot).
-    #[must_use]
-    pub fn built_in(self) -> Option<&'static str> {
-        match self {
-            Self::Limits => Some("P3-T7"),
-            Self::Overview
-            | Self::Inspect
-            | Self::Env
-            | Self::Mounts
-            | Self::Stats
-            | Self::Files
-            | Self::Terminal
-            | Self::Logs => None,
-        }
-    }
 }
 
 /// How many tabs the 360 px strip holds at a text scale. Each label's width
