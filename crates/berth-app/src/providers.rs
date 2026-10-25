@@ -27,6 +27,7 @@ pub fn provide_screen_views(state: AppState) -> ScreenViews {
     find_images();
     engine_dashboard();
     folder_view();
+    plans();
     ScreenViews {
         dock,
         details,
@@ -64,4 +65,8 @@ fn engine_dashboard() {
 
 fn folder_view() {
     crate::sheets::open_folder::provide_folder_view();
+}
+
+fn plans() {
+    crate::services::plans::provide_plan_store();
 }

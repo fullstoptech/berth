@@ -162,6 +162,7 @@ fn start_load(
 pub fn OpenFolderSheet() -> Element {
     let mut state = use_context::<AppState>();
     let services = try_consume_context::<Services>();
+    let link = try_consume_context::<Option<crate::services::engines::EngineLink>>().flatten();
     let view = try_consume_context::<FolderView>();
     let dev = try_consume_context::<DevOpenFolder>();
 
@@ -404,6 +405,7 @@ pub fn OpenFolderSheet() -> Element {
     let target_now = target();
     let (label, blocker) = primary_label(target_now.as_deref(), &known_now);
     let open_store = store.clone();
+    let open_link = link.clone();
     let open_engine_state = state;
     let do_open = move || {
         let Some(path) = target.peek().clone() else {
@@ -445,7 +447,12 @@ pub fn OpenFolderSheet() -> Element {
                 state.section.set(Section::Projects);
                 state.selection.set(Selection::Project(id));
             }
-            OpenOutcome::Pinned => state.overlays.write().push(Overlay::Detected(path)),
+            OpenOutcome::Pinned => {
+                if let Some(link) = &open_link {
+                    link.pins_changed();
+                }
+                state.overlays.write().push(Overlay::Detected(path));
+            }
         }
     };
 

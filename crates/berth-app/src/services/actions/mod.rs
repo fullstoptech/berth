@@ -33,6 +33,7 @@ use crate::state::{AppState, PendingKey, PendingState, Selection};
 
 mod container;
 mod engine;
+mod folder;
 mod network;
 mod project;
 mod reasons;

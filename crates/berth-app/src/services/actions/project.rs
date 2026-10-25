@@ -9,9 +9,9 @@ use crate::services::compose;
 use crate::state::{AppState, PendingKey};
 
 /// A Compose command run through the `ComposeRunner`.
-struct ComposeWork {
-    target: berth_core::ComposeTarget,
-    command: berth_core::ComposeCommand,
+pub(super) struct ComposeWork {
+    pub(super) target: berth_core::ComposeTarget,
+    pub(super) command: berth_core::ComposeCommand,
 }
 
 #[async_trait::async_trait]

@@ -90,6 +90,47 @@ pub fn target_for(
     })
 }
 
+/// The project name Compose gives a folder: its name in lower case with every character other than a
+/// letter, digit, `-` or `_` removed, and no leading `-` or `_`. A name that ends up empty is `default`.
+#[must_use]
+pub fn compose_project_name(folder: &std::path::Path) -> String {
+    let raw = folder
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let kept: String = raw
+        .chars()
+        .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-' || *c == '_')
+        .collect();
+    let name = kept.trim_start_matches(['-', '_']);
+    if name.is_empty() {
+        "default".to_string()
+    } else {
+        name.to_string()
+    }
+}
+
+/// The target for a folder that may have no `Project` yet (Generate: the folder was just opened and
+/// its compose file is about to be written). `files` are paths relative to `folder` or absolute.
+/// `project_name` is the name of a project that already exists; `None` takes the name Compose derives
+/// from the folder, so the project the containers form is the one the folder's pin shows.
+#[must_use]
+pub fn target_for_folder(
+    folder: &std::path::Path,
+    engine: &berth_core::EngineId,
+    docker_host: &str,
+    files: &[std::path::PathBuf],
+    project_name: Option<&str>,
+) -> berth_core::ComposeTarget {
+    berth_core::ComposeTarget {
+        engine: engine.clone(),
+        docker_host: docker_host.to_string(),
+        project_name: project_name.map_or_else(|| compose_project_name(folder), str::to_string),
+        folder: folder.to_path_buf(),
+        files: files.iter().map(|f| folder.join(f)).collect(),
+    }
+}
+
 /// How many trailing stderr lines make the failure message.
 const TAIL_LINES: usize = 4;
 
@@ -515,5 +556,48 @@ mod tests {
         .expect_err("stream error");
         assert!(failure.message.contains("docker went away"), "{failure:?}");
         assert_eq!(failure.lines, ["pulling"]);
+    }
+    #[test]
+    fn generate_compose_project_name_follows_what_compose_derives_from_the_folder() {
+        use std::path::Path;
+        assert_eq!(compose_project_name(Path::new("/x/New App.v2")), "newappv2");
+        assert_eq!(
+            compose_project_name(Path::new("/x/berthfx-gen-1")),
+            "berthfx-gen-1"
+        );
+        assert_eq!(compose_project_name(Path::new("/x/_-Shop_API")), "shop_api");
+        assert_eq!(compose_project_name(Path::new("/x/???")), "default");
+    }
+
+    #[test]
+    fn generate_target_for_folder_names_the_files_under_the_folder() {
+        let engine = berth_core::EngineId("colima:default".to_string());
+        let t = target_for_folder(
+            std::path::Path::new("/x/New-App"),
+            &engine,
+            "unix:///sock",
+            &[std::path::PathBuf::from("compose.yaml")],
+            None,
+        );
+        assert_eq!(t.project_name, "new-app");
+        assert_eq!(t.folder, std::path::Path::new("/x/New-App"));
+        assert_eq!(
+            t.files,
+            [std::path::PathBuf::from("/x/New-App/compose.yaml")]
+        );
+        assert_eq!(t.docker_host, "unix:///sock");
+        // A project that exists keeps its own name.
+        let named = target_for_folder(
+            std::path::Path::new("/x/New-App"),
+            &engine,
+            "unix:///sock",
+            &[std::path::PathBuf::from("/x/New-App/compose.yaml")],
+            Some("shop"),
+        );
+        assert_eq!(named.project_name, "shop");
+        assert_eq!(
+            named.files,
+            [std::path::PathBuf::from("/x/New-App/compose.yaml")]
+        );
     }
 }

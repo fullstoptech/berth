@@ -152,6 +152,14 @@ pub fn App() -> Element {
                 tracing::warn!(%frame, "unknown BERTH_SCENE frame");
             }
         }
+        // BERTH_OPEN_GENERATE=<folder> opens the Generate sheet for a folder on a live engine
+        // (the folder browser and drop overlay that normally open it come later in Phase 5).
+        if let Some(folder) = std::env::var_os("BERTH_OPEN_GENERATE") {
+            state
+                .overlays
+                .write()
+                .push(crate::state::Overlay::Generate(folder.into()));
+        }
         // BERTH_THEME forces the theme for development shots.
         if let Ok(forced) = std::env::var("BERTH_THEME") {
             let theme = match forced.as_str() {

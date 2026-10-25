@@ -1,0 +1,90 @@
+/* Generate sheet (P5-T3). Tokens only. */
+
+.overlay-scrim:has(> .gen-sheet) {
+  padding-top: var(--space-48);
+  background: color-mix(in srgb, var(--neutral-dark-50) 40%, transparent);
+}
+.gen-sheet {
+  box-sizing: border-box;
+  width: min(calc(640px * var(--text-scale, 1)), calc(100vw - var(--space-32)));
+  max-height: calc(100vh - var(--space-48) - var(--space-24));
+  overflow-y: auto;
+  padding: var(--space-24);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sheet);
+  color: var(--color-ink);
+}
+.gen-title {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-body-weight);
+}
+.gen-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.gen-lede,
+.gen-muted {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.gen-card {
+  padding: var(--space-12) var(--space-16);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.gen-card-title {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  font-weight: var(--text-label-weight);
+  color: var(--color-ink-muted);
+}
+.gen-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+}
+.gen-fact {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: var(--space-8);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.gen-fact dt {
+  color: var(--color-ink-muted);
+}
+.gen-fact dd {
+  margin: 0;
+  min-width: 0;
+}
+.gen-field {
+  margin-bottom: var(--space-8);
+}
+.gen-extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-16);
+  margin-bottom: var(--space-12);
+}
+.gen-ports {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-8) var(--space-16);
+  margin-bottom: var(--space-8);
+}
+.gen-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  padding-top: var(--space-12);
+  border-top: 1px solid var(--color-line);
+}

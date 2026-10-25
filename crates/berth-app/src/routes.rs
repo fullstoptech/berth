@@ -114,6 +114,12 @@ pub fn overlay(overlay: &Overlay) -> Element {
             crate::sheets::clean_up::CleanUpSheet { key: "{engine.0}", engine: engine.clone() }
         },
         Overlay::CreateVolume => rsx! { crate::sheets::create_volume::CreateVolumeSheet {} },
+        Overlay::Generate(folder) => rsx! {
+            crate::sheets::generate::GenerateSheet { key: "{folder.display()}", folder: folder.clone() }
+        },
+        Overlay::ReviewChanges(id) => rsx! {
+            crate::sheets::review_changes::ReviewChangesSheet { key: "{id}", id: *id }
+        },
         Overlay::Run(id) => rsx! { crate::sheets::run::RunSheet { key: "{id}", id: id.clone() } },
         Overlay::EditResources(engine) => rsx! {
             crate::sheets::edit_resources::EditResourcesSheet {

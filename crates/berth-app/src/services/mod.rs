@@ -19,6 +19,7 @@ pub mod group_ops;
 pub mod images;
 pub mod logs;
 pub mod networks;
+pub mod plans;
 pub mod ports;
 pub mod project_files;
 pub mod prune;

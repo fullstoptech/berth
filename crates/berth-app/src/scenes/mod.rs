@@ -60,6 +60,7 @@ scene_modules! {
     dev,
     engines,
     find_images,
+    generate,
     images,
     logs,
     networks,
@@ -67,13 +68,18 @@ scene_modules! {
     palette,
     project_detail,
     projects,
+    review_changes,
     terminal,
     volumes,
 }
 
 pub(crate) use dev::{DevFilesPanel, DevStatsPanel};
 #[cfg(test)]
+pub(crate) use generate::next_detection;
+#[cfg(test)]
 pub(crate) use projects::loose_projects;
+#[cfg(test)]
+pub(crate) use review_changes::{new_app_plan as new_app_pending, NEW_APP_PASSWORD};
 
 /// The bundled mock world as the live app holds it under `BERTH_MOCK=1`:
 /// every engine, container, project and resource list, scoped to the
