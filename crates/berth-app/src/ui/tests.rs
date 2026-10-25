@@ -190,7 +190,35 @@ fn status_dot_ring_for_starting_and_restarting() {
     ] {
         let html = render(rsx! { StatusDot { status } });
         assert!(html.contains("status-dot-ring"), "{status:?}: {html}");
+        // The frames draw two arcs, not two vertical bars.
+        assert_eq!(html.matches("<path").count(), 2, "{status:?}: {html}");
+        assert!(html.contains("status-dot-arcs"), "{status:?}: {html}");
     }
+}
+
+#[test]
+fn status_dot_other_states_draw_no_arcs() {
+    for status in all_statuses() {
+        if matches!(
+            status,
+            berth_core::StatusKind::Starting | berth_core::StatusKind::Restarting
+        ) {
+            continue;
+        }
+        let html = render(rsx! { StatusDot { status } });
+        assert!(!html.contains("<svg"), "{status:?}: {html}");
+    }
+}
+
+#[test]
+fn shared_dot_draws_the_same_arcs_for_a_restarting_service() {
+    use crate::ui::{project_row::dot_for_status, Dot};
+    let spec = dot_for_status(berth_core::StatusKind::Restarting);
+    let html = render(rsx! { Dot { spec } });
+    assert_eq!(html.matches("<path").count(), 2, "{html}");
+    let spec = dot_for_status(berth_core::StatusKind::Running);
+    let html = render(rsx! { Dot { spec } });
+    assert!(!html.contains("<svg"), "{html}");
 }
 
 #[test]

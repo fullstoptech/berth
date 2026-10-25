@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 use super::icon::{Icon, IconSize};
+use super::status_dot::RingArcs;
 use super::tone_class;
 
 /// Shape of a status dot: never colour alone (components-spec), so a
@@ -49,7 +50,11 @@ pub fn project_dot(status: &berth_core::ProjectStatus) -> DotSpec {
 #[component]
 pub fn Dot(spec: DotSpec) -> Element {
     rsx! {
-        span { class: spec.class(), role: "img", "aria-label": spec.label }
+        span { class: spec.class(), role: "img", "aria-label": spec.label,
+            if spec.shape == DotShape::Ring {
+                RingArcs {}
+            }
+        }
     }
 }
 
