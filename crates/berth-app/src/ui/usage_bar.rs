@@ -183,6 +183,7 @@ mod tests {
             build_cache: group(3_100),
             containers: group(1_400),
             disk_total: Some(ByteSize::gb(60)),
+            container_sizes: Vec::new(),
         }
     }
 

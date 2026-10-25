@@ -3058,7 +3058,12 @@
     "size": 3100000000,
     "reclaimable": 3100000000
    },
-   "disk_total": 60000000000
+   "disk_total": 60000000000,
+   "container_sizes": [
+    ["4dea802030e24a85780e8a27ded0ad09fe32690fb8b3a6eedf860a7a3aeebde5", 38000000],
+    ["c1497b230deeff52eb997687e4e5aa2f0618bc0836e2d287401dc668a4f9342f", 12000000],
+    ["175c77fe7c78a006b2ed731a1e37d3c6b13c00c0c3add710bf8619fb40b0ddd6", 24000000]
+   ]
   },
   "colima:work": {
    "images": {

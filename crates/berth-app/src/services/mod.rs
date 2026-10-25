@@ -18,6 +18,7 @@ pub mod group_ops;
 pub mod images;
 pub mod logs;
 pub mod networks;
+pub mod prune;
 pub mod search;
 pub mod stats;
 pub mod volume_backup;

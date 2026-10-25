@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::ids::{EngineId, OwnerId};
+use crate::ids::{ContainerId, EngineId, OwnerId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EngineKind {
@@ -144,6 +144,9 @@ pub struct DiskUsage {
     pub volumes: UsageGroup,
     pub build_cache: UsageGroup,
     pub disk_total: Option<ByteSize>,
+    /// `SizeRw` per container from the same `system df` response.
+    #[serde(default)]
+    pub container_sizes: Vec<(ContainerId, ByteSize)>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColimaProfile {

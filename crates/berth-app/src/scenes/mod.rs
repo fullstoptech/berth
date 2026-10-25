@@ -55,6 +55,7 @@ macro_rules! scene_modules {
 
 scene_modules! {
     activity,
+    clean_up,
     containers,
     dev,
     engines,

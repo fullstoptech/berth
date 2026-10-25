@@ -339,6 +339,7 @@ pub fn Shell() -> Element {
             }
             StatusBar {}
             OverlayStack {}
+            crate::ui::ToastStack {}
         }
     }
 }

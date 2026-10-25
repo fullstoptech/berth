@@ -8,7 +8,7 @@ use super::*;
 /// engines with the unreachable one last seen four minutes ago, the colima
 /// version, `default`'s disk usage and five minutes of load ending at the
 /// frame's 23.7 % and 1.9 GB, the engine's thirteen recent lines.
-fn load_engines_world(state: &mut AppState) {
+pub(super) fn load_engines_world(state: &mut AppState) {
     use crate::services::engine_dashboard::{DashboardStore, EngineSeries, UsageEntry};
     super::projects::load_projects_world(state, berth_store::Theme::Light);
     state.section.set(Section::Engines);

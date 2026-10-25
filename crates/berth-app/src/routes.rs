@@ -94,6 +94,9 @@ pub fn overlay(overlay: &Overlay) -> Element {
         Overlay::Confirm(model) => rsx! {
             crate::ui::ConfirmOverlay { key: "{model.title}", model: model.clone() }
         },
+        Overlay::CleanUp(engine) => rsx! {
+            crate::sheets::clean_up::CleanUpSheet { key: "{engine.0}", engine: engine.clone() }
+        },
         Overlay::CreateVolume => rsx! { crate::sheets::create_volume::CreateVolumeSheet {} },
         Overlay::Run(id) => rsx! { crate::sheets::run::RunSheet { key: "{id}", id: id.clone() } },
         Overlay::EditResources(engine) => rsx! {
