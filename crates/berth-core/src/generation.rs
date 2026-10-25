@@ -95,7 +95,7 @@ impl GenerationPlan {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FoundKind {
     Compose,
-    Dockerfile,
+    Dockerfile { from: Option<String> },
     Env { keys: u32 },
     EnvExample,
     DockerIgnore,
