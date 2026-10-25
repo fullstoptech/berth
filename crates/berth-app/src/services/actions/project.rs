@@ -19,21 +19,48 @@ impl Work for ComposeWork {
     async fn execute(
         &self,
         inner: &Inner,
-        _job: &Job,
+        job: &Job,
         cancel: CancellationToken,
     ) -> Result<edit::Done, String> {
-        compose::run(
+        let ran = compose::run(
             inner.compose.as_ref(),
             &self.target,
             self.command.clone(),
             cancel,
         )
-        .await
-        .map(|()| edit::Done::default())
+        .await;
+        if let Some(project) = &job.project {
+            let mut failures = match inner.compose_failures.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            match &ran {
+                Ok(()) => {
+                    failures.remove(project);
+                }
+                Err(failure) => {
+                    failures.insert(project.clone(), failure.lines.clone());
+                }
+            }
+        }
+        ran.map(|()| edit::Done::default())
+            .map_err(|failure| failure.message)
     }
 }
 
 impl ActionsService {
+    /// What the project's last failed Compose command printed: up to `compose::FAILURE_LINES`
+    /// stderr lines and error events, oldest first (AD33). Empty when the last command succeeded or
+    /// none has run. The Problems detail shows these lines.
+    #[must_use]
+    pub fn compose_failure_lines(&self, project: &berth_core::ProjectId) -> Vec<String> {
+        let failures = match self.inner.compose_failures.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        failures.get(project).cloned().unwrap_or_default()
+    }
+
     /// One project action through Compose.
     pub fn project(
         &self,

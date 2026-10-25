@@ -93,43 +93,98 @@ pub fn target_for(
 /// How many trailing stderr lines make the failure message.
 const TAIL_LINES: usize = 4;
 
+/// How many lines a failure keeps for the Problems detail (AD33): the last stderr lines and error
+/// progress events of the run, oldest first.
+pub const FAILURE_LINES: usize = 20;
+
+/// A Compose command that did not end well.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComposeFailure {
+    /// What the row says: the tail of stderr, else the last error event, else a sentence naming the
+    /// exit code.
+    pub message: String,
+    /// Up to [`FAILURE_LINES`] lines of what the run printed: stderr lines and `Error` progress
+    /// events (`Container shop-db-1: Error response from daemon: ...`), in the order they came.
+    pub lines: Vec<String>,
+}
+
+impl ComposeFailure {
+    fn from_message(message: String, lines: Vec<String>) -> Self {
+        Self { message, lines }
+    }
+}
+
+/// The line an `Error` progress event adds to a failure.
+fn error_line(id: &str, status: &str, text: Option<&str>) -> String {
+    let detail = text
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .unwrap_or(status);
+    format!("{id}: {detail}")
+}
+
+/// Keep `line` as one of the last [`FAILURE_LINES`].
+fn keep(lines: &mut Vec<String>, line: String) {
+    lines.push(line);
+    if lines.len() > FAILURE_LINES {
+        lines.remove(0);
+    }
+}
+
 /// Run one Compose command to its end. `Ok` only when the command reports
-/// `Done { code: 0 }`; otherwise the message is the tail of stderr, else a
-/// plain sentence naming the exit code.
+/// `Done { code: 0 }`; otherwise a [`ComposeFailure`]: the message is the tail
+/// of stderr (else the last `Error` event, else a plain sentence naming the
+/// exit code) and the lines are what the run printed on the way.
 pub async fn run(
     runner: &dyn berth_engine::ComposeRunner,
     target: &berth_core::ComposeTarget,
     cmd: berth_core::ComposeCommand,
     cancel: CancellationToken,
-) -> Result<(), String> {
+) -> Result<(), ComposeFailure> {
     let mut stream = runner.run(target, cmd, cancel);
     let mut tail: Vec<String> = Vec::new();
+    let mut last_error: Option<String> = None;
+    let mut lines: Vec<String> = Vec::new();
     while let Some(item) = stream.next().await {
         match item {
             Ok(berth_core::ComposeEvent::Done { code: 0 }) => return Ok(()),
             Ok(berth_core::ComposeEvent::Done { code }) => {
-                return Err(if tail.is_empty() {
-                    format!("docker compose exited with code {code}")
-                } else {
+                let message = if !tail.is_empty() {
                     tail.join("\n")
-                });
+                } else if let Some(error) = last_error {
+                    error
+                } else {
+                    format!("docker compose exited with code {code}")
+                };
+                return Err(ComposeFailure::from_message(message, lines));
             }
             Ok(berth_core::ComposeEvent::Line {
                 stream: berth_core::Stream::Stderr,
                 text,
             }) => {
                 if !text.trim().is_empty() {
+                    keep(&mut lines, text.clone());
                     tail.push(text);
                     if tail.len() > TAIL_LINES {
                         tail.remove(0);
                     }
                 }
             }
+            Ok(berth_core::ComposeEvent::Progress { id, status, text })
+                if status.eq_ignore_ascii_case("error") =>
+            {
+                let line = error_line(&id, &status, text.as_deref());
+                keep(&mut lines, line.clone());
+                last_error = Some(line);
+            }
             Ok(_) => {}
-            Err(err) => return Err(err.to_string()),
+            Err(err) => return Err(ComposeFailure::from_message(err.to_string(), lines)),
         }
     }
-    Err("docker compose ended without a result".to_string())
+    Err(ComposeFailure::from_message(
+        "docker compose ended without a result".to_string(),
+        lines,
+    ))
 }
 
 /// The real runner (docker from `SearchPath`, D27) or, under `BERTH_MOCK=1`,
@@ -296,7 +351,13 @@ mod tests {
             CancellationToken::new(),
         )
         .await;
-        assert_eq!(result, Err("network shop_default not found".to_string()));
+        assert_eq!(
+            result,
+            Err(ComposeFailure {
+                message: "network shop_default not found".to_string(),
+                lines: vec!["network shop_default not found".to_string()],
+            })
+        );
     }
 
     #[tokio::test]
@@ -324,14 +385,17 @@ mod tests {
             status: "Working".to_string(),
             text: None,
         })]);
-        assert!(run(
-            &truncated,
-            &target(),
-            ProjectOp::Stop.command(),
-            CancellationToken::new()
-        )
-        .await
-        .is_err());
+        assert_eq!(
+            run(
+                &truncated,
+                &target(),
+                ProjectOp::Stop.command(),
+                CancellationToken::new()
+            )
+            .await
+            .map_err(|f| f.message),
+            Err("docker compose ended without a result".to_string())
+        );
         let no_tail = Scripted(vec![Ok(berth_core::ComposeEvent::Done { code: 125 })]);
         assert_eq!(
             run(
@@ -341,7 +405,115 @@ mod tests {
                 CancellationToken::new()
             )
             .await,
-            Err("docker compose exited with code 125".to_string())
+            Err(ComposeFailure {
+                message: "docker compose exited with code 125".to_string(),
+                lines: Vec::new(),
+            })
         );
+    }
+
+    fn stderr(text: &str) -> Result<berth_core::ComposeEvent, berth_engine::EngineError> {
+        Ok(berth_core::ComposeEvent::Line {
+            stream: berth_core::Stream::Stderr,
+            text: text.to_string(),
+        })
+    }
+
+    #[tokio::test]
+    async fn actions_compose_failure_keeps_the_last_twenty_stderr_lines_in_order() {
+        let mut events: Vec<_> = (1..=30).map(|n| stderr(&format!("line {n}"))).collect();
+        events.push(Ok(berth_core::ComposeEvent::Done { code: 1 }));
+        let failure = run(
+            &Scripted(events),
+            &target(),
+            ProjectOp::Start.command(),
+            CancellationToken::new(),
+        )
+        .await
+        .expect_err("exit 1");
+        assert_eq!(failure.lines.len(), FAILURE_LINES);
+        assert_eq!(failure.lines.first().map(String::as_str), Some("line 11"));
+        assert_eq!(failure.lines.last().map(String::as_str), Some("line 30"));
+        // The row message stays short: the last four.
+        assert_eq!(failure.message, "line 27\nline 28\nline 29\nline 30");
+    }
+
+    #[tokio::test]
+    async fn actions_compose_failure_adds_error_progress_events_to_its_lines() {
+        let progress = |id: &str, status: &str, text: Option<&str>| {
+            Ok(berth_core::ComposeEvent::Progress {
+                id: id.to_string(),
+                status: status.to_string(),
+                text: text.map(str::to_string),
+            })
+        };
+        let failure = run(
+            &Scripted(vec![
+                progress("Network shop_default", "Working", Some("Creating")),
+                progress(
+                    "Container shop-db-1",
+                    "Error",
+                    Some("Error response from daemon: Ports are not available"),
+                ),
+                stderr("Error response from daemon: Ports are not available"),
+                progress("Container shop-web-1", "error", None),
+                Ok(berth_core::ComposeEvent::Done { code: 1 }),
+            ]),
+            &target(),
+            ProjectOp::Start.command(),
+            CancellationToken::new(),
+        )
+        .await
+        .expect_err("exit 1");
+        assert_eq!(
+            failure.lines,
+            [
+                "Container shop-db-1: Error response from daemon: Ports are not available",
+                "Error response from daemon: Ports are not available",
+                "Container shop-web-1: error",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn actions_compose_failure_without_stderr_says_the_last_error_event() {
+        let failure = run(
+            &Scripted(vec![
+                Ok(berth_core::ComposeEvent::Progress {
+                    id: "Container shop-db-1".to_string(),
+                    status: "Error".to_string(),
+                    text: Some("no space left on device".to_string()),
+                }),
+                Ok(berth_core::ComposeEvent::Done { code: 1 }),
+            ]),
+            &target(),
+            ProjectOp::Start.command(),
+            CancellationToken::new(),
+        )
+        .await
+        .expect_err("exit 1");
+        assert_eq!(
+            failure.message,
+            "Container shop-db-1: no space left on device"
+        );
+    }
+
+    #[tokio::test]
+    async fn actions_compose_stream_error_keeps_what_ran_before_it() {
+        let failure = run(
+            &Scripted(vec![
+                stderr("pulling"),
+                Err(berth_engine::EngineError::Docker(
+                    "docker went away".to_string(),
+                )),
+            ]),
+            &target(),
+            ProjectOp::Start.command(),
+            CancellationToken::new(),
+        )
+        .await
+        .expect_err("stream error");
+        assert!(failure.message.contains("docker went away"), "{failure:?}");
+        assert_eq!(failure.lines, ["pulling"]);
     }
 }
