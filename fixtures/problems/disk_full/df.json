@@ -1,0 +1,7 @@
+{
+  "images": { "count": 41, "size": 21474836480, "reclaimable": 12884901888 },
+  "containers": { "count": 9, "size": 1073741824, "reclaimable": 536870912 },
+  "volumes": { "count": 12, "size": 32212254720, "reclaimable": 8589934592 },
+  "build_cache": { "count": 80, "size": 8589934592, "reclaimable": 8589934592 },
+  "disk_total": 64424509440
+}

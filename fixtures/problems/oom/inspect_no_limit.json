@@ -1,0 +1,7 @@
+{
+  "Id": "c0ffee00d4f90a35c68e7d1b2a4c6f8e0d2b4a6c8e0f1a3b5d7c9e1f3a5b7d9",
+  "Name": "/scratch-worker",
+  "State": { "Status": "exited", "Running": false, "OOMKilled": true, "ExitCode": 137, "Error": "" },
+  "HostConfig": { "Memory": 0 },
+  "Config": { "Image": "python:3.13-slim", "Env": [] }
+}

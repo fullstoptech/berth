@@ -1,0 +1,3 @@
+/docker-entrypoint.sh: Configuration complete; ready for start up
+2026/10/25 09:12:01 [notice] 1#1: nginx/1.29.1
+2026/10/25 09:12:01 [notice] 1#1: start worker processes

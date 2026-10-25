@@ -1,0 +1,4 @@
+ Container berthfx-broken-portclash-1  Creating
+ Container berthfx-broken-portclash-1  Created
+ Container berthfx-broken-portclash-1  Starting
+Error response from daemon: failed to set up container networking: driver failed programming external connectivity on endpoint berthfx-broken-portclash-1 (3f9a1c7d2e5b): Bind for 127.0.0.1:56080 failed: port is already allocated

@@ -1,0 +1,2 @@
+ Container shop-api-db-1  Error
+dependency failed to start: container shop-api-db-1 is unhealthy

@@ -1,0 +1,12 @@
+{
+  "Id": "a41c9e0d7b2f4a6c8e1d3b5f7092a4c6e8b0d2f4a6c8e0b1d3f5a7c9e1b3d5f7",
+  "Name": "/shop-api-legacy-1",
+  "Platform": "linux",
+  "State": { "Status": "exited", "Running": false, "OOMKilled": false, "ExitCode": 255, "Error": "" },
+  "HostConfig": { "Memory": 0 },
+  "Config": {
+    "Image": "registry.example.com/legacy/tool:2.3",
+    "Env": ["API_TOKEN=••••"],
+    "Labels": { "com.docker.compose.project": "shop-api", "com.docker.compose.service": "legacy" }
+  }
+}

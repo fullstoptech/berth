@@ -1,0 +1,7 @@
+#9 [web 3/5] RUN npm ci
+#9 4.211 npm error code ERESOLVE
+#9 ERROR: process "/bin/sh -c npm ci" did not complete successfully: exit code: 1
+------
+ > [web 3/5] RUN npm ci:
+------
+failed to solve: process "/bin/sh -c npm ci" did not complete successfully: exit code: 1

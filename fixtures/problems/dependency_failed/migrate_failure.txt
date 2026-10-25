@@ -1,0 +1,1 @@
+service "migrate" didn't complete successfully: exit 1

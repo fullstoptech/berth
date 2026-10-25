@@ -1,0 +1,11 @@
+services:
+  badmount:
+    image: alpine:3
+    labels: [dev.berth.fixture=1]
+    command: ["sleep", "30"]
+    volumes:
+      - type: bind
+        source: /nonexistent-berthfx-path
+        target: /data
+        bind:
+          create_host_path: false

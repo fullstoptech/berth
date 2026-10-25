@@ -1,5 +1,10 @@
-//! Problem rules, one module per `ProblemKind` (D35, D82). P5-T7 implements.
+//! Problem rules, one module per `ProblemKind` (D35, D82).
 //! Each rule is tested against `fixtures/problems/<kind>/`.
+//!
+//! `evaluate` is pure: it reads the facts it is given and the clock in `ProblemInput::now`, and
+//! returns problems with plain-language explanations and ready fixes. It never touches the
+//! engine, the disk or the network. Env values never reach a title, explanation, evidence line
+//! or fix label (they are masked in evidence).
 
 mod bind_missing;
 mod bind_permission;
@@ -15,6 +20,11 @@ mod network_not_found;
 mod oom;
 mod port_allocated;
 mod socket_missing;
+mod support;
+#[cfg(test)]
+mod testkit;
+#[cfg(test)]
+mod tests;
 mod unhealthy;
 
 #[derive(Debug, Clone)]
@@ -50,9 +60,50 @@ pub struct ProblemInput {
     pub taken_ports: Vec<u16>,
 }
 
-/// One function per `ProblemKind` (rules/port_allocated.rs ...), each tested against `fixtures/problems/<kind>/`.
-// P5-T7 implements
+/// Runs the 15 rules over one engine's facts (D27: containers and projects of other engines are
+/// ignored). One problem per `ProblemId`; a project-level problem is dropped when a container of
+/// that project already carries the same kind.
 #[must_use]
-pub fn evaluate(_input: &ProblemInput) -> Vec<berth_core::Problem> {
-    Vec::new()
+pub fn evaluate(input: &ProblemInput) -> Vec<berth_core::Problem> {
+    let ctx = support::Ctx::new(input);
+    let mut all: Vec<berth_core::Problem> = Vec::new();
+    all.extend(port_allocated::check(&ctx));
+    all.extend(image_not_found::check(&ctx));
+    all.extend(exec_format::check(&ctx));
+    all.extend(oom::check(&ctx));
+    all.extend(exited_no_logs::check(&ctx));
+    all.extend(unhealthy::check(&ctx));
+    all.extend(bind_missing::check(&ctx));
+    all.extend(bind_permission::check(&ctx));
+    all.extend(disk_full::check(&ctx));
+    all.extend(socket_missing::check(&ctx));
+    all.extend(network_not_found::check(&ctx));
+    all.extend(name_in_use::check(&ctx));
+    all.extend(env_missing::check(&ctx));
+    all.extend(dependency_failed::check(&ctx));
+    all.extend(build_failed::check(&ctx));
+    dedupe(&ctx, all)
+}
+
+fn dedupe(ctx: &support::Ctx<'_>, problems: Vec<berth_core::Problem>) -> Vec<berth_core::Problem> {
+    use berth_core::Subject;
+    let covered: Vec<(berth_core::ProjectId, berth_core::ProblemKind)> = problems
+        .iter()
+        .filter_map(|p| match &p.subject {
+            Subject::Container(id) => {
+                let cf = ctx.containers.iter().find(|c| &c.container.id == id)?;
+                Some((cf.container.project.clone()?, p.kind.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    problems
+        .into_iter()
+        .filter(|p| match &p.subject {
+            Subject::Project(id) => !covered.contains(&(id.clone(), p.kind.clone())),
+            _ => true,
+        })
+        .filter(|p| seen.insert(p.id.clone()))
+        .collect()
 }

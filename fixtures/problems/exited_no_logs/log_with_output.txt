@@ -1,0 +1,2 @@
+2026-10-25T09:12:03Z starting worker
+2026-10-25T09:12:03Z fatal: cannot open /data/queue.db: no such file or directory

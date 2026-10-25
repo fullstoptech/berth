@@ -1,0 +1,6 @@
+services:
+  web:
+    image: nginx:alpine
+  badimage:
+    image: berthfx/does-not-exist:1
+    labels: [dev.berth.fixture=1]

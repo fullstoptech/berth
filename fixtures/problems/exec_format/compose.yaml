@@ -1,0 +1,6 @@
+services:
+  legacy:
+    image: registry.example.com/legacy/tool:2.3
+    command: ["/usr/local/bin/tool", "serve"]
+  db:
+    image: postgres:17-alpine

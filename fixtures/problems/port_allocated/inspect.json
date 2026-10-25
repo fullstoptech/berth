@@ -1,0 +1,22 @@
+{
+  "Id": "5c1f0a52e7a94ddcb0f7a5d1c3c0b2c0a2c9d1f4a3b8e6d7c5b4a39281706f5e",
+  "Name": "/berthfx-broken-portclash-1",
+  "State": {
+    "Status": "created",
+    "Running": false,
+    "OOMKilled": false,
+    "ExitCode": 128,
+    "Error": "driver failed programming external connectivity on endpoint berthfx-broken-portclash-1 (3f9a1c7d2e5b): Bind for 127.0.0.1:56080 failed: port is already allocated",
+    "StartedAt": "0001-01-01T00:00:00Z",
+    "FinishedAt": "0001-01-01T00:00:00Z"
+  },
+  "HostConfig": {
+    "Memory": 0,
+    "PortBindings": { "80/tcp": [{ "HostIp": "127.0.0.1", "HostPort": "56080" }] }
+  },
+  "Config": {
+    "Image": "nginx:alpine",
+    "Env": ["NGINX_VERSION=••••", "PATH=••••"],
+    "Labels": { "com.docker.compose.project": "berthfx-broken", "com.docker.compose.service": "portclash", "dev.berth.fixture": "1" }
+  }
+}

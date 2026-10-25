@@ -1,0 +1,7 @@
+services:
+  oom:
+    image: alpine:3
+    deploy:
+      resources:
+        limits:
+          memory: 16M

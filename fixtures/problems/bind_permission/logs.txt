@@ -1,0 +1,3 @@
+2026-10-25T09:15:40Z listening on :8080
+Error: EACCES: permission denied, open '/srv/uploads/avatar.png'
+    at Object.openSync (node:fs:573:18)

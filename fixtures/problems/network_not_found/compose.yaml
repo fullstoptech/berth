@@ -1,0 +1,8 @@
+services:
+  web:
+    image: nginx:alpine
+    networks: [shared]
+networks:
+  shared:
+    external: true
+    name: berthfx_shared

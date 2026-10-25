@@ -1,0 +1,3 @@
+#9 [web 3/5] RUN npm ci
+#9 DONE 12.4s
+ Image shop-api-web  Built

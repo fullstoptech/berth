@@ -1,0 +1,1 @@
+exec /usr/local/bin/docker-entrypoint.sh: exec format error

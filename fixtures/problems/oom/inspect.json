@@ -1,0 +1,11 @@
+{
+  "Id": "7be21d4f90a35c68e7d1b2a4c6f8e0d2b4a6c8e0f1a3b5d7c9e1f3a5b7d9c1e3",
+  "Name": "/berthfx-broken-oom-1",
+  "State": { "Status": "exited", "Running": false, "OOMKilled": true, "ExitCode": 137, "Error": "", "FinishedAt": "2026-10-25T09:14:22.481Z" },
+  "HostConfig": { "Memory": 16777216, "MemorySwap": 33554432 },
+  "Config": {
+    "Image": "alpine:3",
+    "Env": ["PATH=••••"],
+    "Labels": { "com.docker.compose.project": "berthfx-broken", "com.docker.compose.service": "oom" }
+  }
+}

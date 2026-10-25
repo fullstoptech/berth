@@ -1,0 +1,3 @@
+ Container berthfx-broken-badmount-1  Creating
+ Container berthfx-broken-badmount-1  Created
+Error response from daemon: invalid mount config for type "bind": bind source path does not exist: /nonexistent-berthfx-path
