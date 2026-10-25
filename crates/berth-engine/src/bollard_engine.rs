@@ -19,7 +19,8 @@ use bollard::query_parameters::{
     LogsOptionsBuilder, PruneBuildOptions, RemoveContainerOptionsBuilder,
     RemoveImageOptionsBuilder, RemoveVolumeOptions, RenameContainerOptionsBuilder,
     RestartContainerOptionsBuilder, SearchImagesOptionsBuilder, StartContainerOptions,
-    StatsOptionsBuilder, StopContainerOptionsBuilder, UploadToContainerOptionsBuilder,
+    StatsOptionsBuilder, StopContainerOptionsBuilder, TagImageOptionsBuilder,
+    UploadToContainerOptionsBuilder,
 };
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
@@ -1085,6 +1086,14 @@ impl EngineClient for BollardEngine {
             .remove_image(id, Some(options), None)
             .await
             .map(|_| ())
+            .map_err(|e| self.err(e))
+    }
+
+    async fn tag_image(&self, id: &str, repo: &str, tag: &str) -> Result<(), EngineError> {
+        let options = TagImageOptionsBuilder::new().repo(repo).tag(tag).build();
+        self.docker
+            .tag_image(id, Some(options))
+            .await
             .map_err(|e| self.err(e))
     }
 

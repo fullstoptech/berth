@@ -12,6 +12,7 @@ pub mod engines;
 pub mod exec;
 pub mod files;
 pub mod group_ops;
+pub mod images;
 pub mod logs;
 pub mod networks;
 pub mod search;

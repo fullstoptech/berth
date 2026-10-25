@@ -662,6 +662,19 @@ impl EngineClient for MockEngine {
         Ok(())
     }
 
+    async fn tag_image(&self, id: &str, repo: &str, tag: &str) -> Result<(), EngineError> {
+        let detail = self.image(id).await?;
+        let name = format!("{repo}:{tag}");
+        let mut state = self.state.lock().map_err(|_| lock_err())?;
+        if let Some(image) = state.images.iter_mut().find(|i| i.id == detail.image.id) {
+            if !image.repo_tags.contains(&name) {
+                image.repo_tags.push(name);
+            }
+            image.dangling = false;
+        }
+        Ok(())
+    }
+
     async fn search_images(
         &self,
         term: &str,

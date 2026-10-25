@@ -1,0 +1,388 @@
+/* Images screen (P4-T1): "On this engine". Header and tabs follow the frame
+   "Images / find / 1440"; the table follows Containers. Colours and sizes
+   come only from tokens.css (D4). Rendered by the screen itself. */
+
+.images-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  font-size: var(--text-body-size);
+  /* The column-drop rules in images_tiers.css key on this screen's width. */
+  container: images / inline-size;
+}
+.main:has(> .images-screen) {
+  overflow: hidden;
+}
+
+/* Header: title and count, then the tab strip under a hairline */
+.im-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--gutter) var(--space-8);
+  flex: none;
+}
+.im-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-body-weight);
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.im-header .badge-count {
+  background: var(--color-surface-pressed);
+  height: var(--size-control-sm);
+  padding: 0 var(--space-8);
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  border-radius: var(--radius-md);
+}
+.im-tabs {
+  flex: none;
+  padding: 0 var(--gutter);
+  border-bottom: 1px solid var(--color-line);
+}
+.im-tabs .tabs-underline {
+  border-bottom: none;
+  gap: var(--space-4);
+}
+.im-tabs .tab {
+  padding: 0 var(--space-12);
+  font-size: var(--text-label-size);
+}
+.im-tab-pulling {
+  margin-left: var(--space-4);
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+}
+
+/* Controls: filter, dangling filter, Pull image. The 12 px under them is the
+   one header-to-table gap. */
+.im-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--gutter);
+  flex: none;
+}
+.im-filter {
+  flex: 0 1 240px;
+  min-width: calc(120px * var(--text-scale, 1));
+}
+.im-spacer {
+  flex: 1;
+}
+.im-find-soon {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* Table: one grid for the header and the rows. Tracks that hold text, numbers
+   or buttons grow with the text size. */
+.im-table {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  /* One scroll box holds the sticky header and the rows, so their grids
+     share a width whether or not the scrollbar shows. */
+  overflow-y: auto;
+  --im-cols: minmax(150px, 2.2fr) calc(104px * var(--text-scale, 1)) calc(72px * var(--text-scale, 1)) calc(64px * var(--text-scale, 1)) calc(104px * var(--text-scale, 1)) minmax(calc(96px * var(--text-scale, 1)), 1fr) calc(92px * var(--text-scale, 1));
+  --im-cols-no-created: minmax(150px, 2.2fr) calc(104px * var(--text-scale, 1)) calc(72px * var(--text-scale, 1)) calc(64px * var(--text-scale, 1)) minmax(calc(96px * var(--text-scale, 1)), 1fr) calc(92px * var(--text-scale, 1));
+  --im-cols-no-id: minmax(150px, 2.2fr) calc(72px * var(--text-scale, 1)) calc(64px * var(--text-scale, 1)) minmax(calc(96px * var(--text-scale, 1)), 1fr) calc(92px * var(--text-scale, 1));
+  --im-cols-compact: minmax(120px, 2fr) calc(72px * var(--text-scale, 1)) minmax(calc(80px * var(--text-scale, 1)), 1fr) calc(92px * var(--text-scale, 1));
+}
+/* The column-drop tiers (Created, then ID, then Arch) are in
+   images_tiers.css, generated from the lists above by screens/table_tiers.rs:
+   the widths at which each list stops fitting are exact px per text size. */
+.im-head,
+.im-row {
+  display: grid;
+  grid-template-columns: var(--im-cols);
+  column-gap: var(--space-12);
+  align-items: center;
+  padding: 0 var(--gutter);
+  box-sizing: border-box;
+}
+.im-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: var(--size-control-md);
+  min-height: var(--size-control-md);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg);
+  flex: none;
+}
+.im-head .table-header-cell {
+  padding: 0;
+  border-bottom: none;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+}
+.im-head .table-header-cell.align-right {
+  justify-content: flex-end;
+}
+.im-row {
+  position: relative;
+  flex: none;
+  height: var(--size-row-lg);
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink);
+  white-space: nowrap;
+  cursor: default;
+}
+.im-row:hover {
+  background: var(--color-surface-hover);
+}
+.im-row.im-selected {
+  background: var(--color-selection);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.im-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.im-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  overflow: hidden;
+}
+.im-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* The tag matters most: an ellipsis eats the start of a long name. */
+  direction: rtl;
+  text-align: left;
+}
+.im-name-text > span {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.im-name-none {
+  color: var(--color-ink-muted);
+}
+.im-extra {
+  flex: none;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+}
+.im-id,
+.im-created,
+.im-used {
+  color: var(--color-ink-muted);
+}
+.im-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.im-size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.im-arch {
+  display: flex;
+  align-items: center;
+  color: var(--color-ink-muted);
+}
+.im-used-none {
+  color: var(--color-ink-disabled);
+}
+.im-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
+  overflow: visible;
+}
+.im-empty,
+.im-loading,
+.im-no-match {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+  padding: var(--space-24) var(--gutter);
+}
+
+/* Pull image: the form and one card per pull, under the tabs */
+.im-pull {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  margin: 0 var(--gutter) var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-sizing: border-box;
+}
+.im-pull-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+.im-pull-field {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.im-pull-platform {
+  flex: 0 0 160px;
+}
+.im-pull-engine {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.im-pull-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.im-pull-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.im-pull-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--text-label-weight);
+}
+.im-pull-note {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.im-layers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  max-height: calc(260px * var(--text-scale, 1));
+  overflow-y: auto;
+}
+.im-layer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.im-pull-buttons {
+  display: flex;
+  gap: var(--space-8);
+}
+.im-layer-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-8);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.im-layer-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.im-layer-state {
+  color: var(--color-ink-muted);
+}
+
+/* Image detail in the inspector. The header, tabs and key-value rows reuse
+   container_detail.css; these are the parts only an image has. */
+.imd-tags,
+.imd-containers {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--space-12);
+}
+.imd-tag,
+.imd-container {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--size-row);
+  border-bottom: 1px solid var(--color-line);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.imd-tag-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.imd-container-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.imd-container-name:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+.imd-layer {
+  display: grid;
+  grid-template-columns: calc(64px * var(--text-scale, 1)) 1fr;
+  column-gap: var(--space-12);
+  padding: var(--space-4) var(--space-12);
+  border-bottom: 1px solid var(--color-line);
+}
+.imd-layer-size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-code-line);
+}
+.imd-layer-cmd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+}
+.imd-layer-when {
+  grid-column: 2;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+}
+.imd-tag-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin: 0 var(--space-12) var(--space-8);
+}
+.imd-tag-fields {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-8);
+}
+.imd-tag-actions {
+  display: flex;
+  gap: var(--space-8);
+}

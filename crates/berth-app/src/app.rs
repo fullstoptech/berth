@@ -107,6 +107,7 @@ pub fn App() -> Element {
     let dock = crate::ui::dock::use_dock_view(state);
     crate::ui::dock::use_window_width(dock);
     let details = crate::services::detail::provide_detail_store();
+    let images = crate::services::images::provide_image_store();
     platform::use_menu_events(state);
 
     // Services spawn once, before scene/theme forcing below (D23).
@@ -139,6 +140,7 @@ pub fn App() -> Element {
             if let Some(scene) = scenes::find(&frame) {
                 (scene.setup)(&mut state);
                 scenes::seed_details(&state, details);
+                scenes::seed_images(&state, images);
             } else if frame != crate::bridge::dev::FRAME {
                 tracing::warn!(%frame, "unknown BERTH_SCENE frame");
             }
@@ -276,6 +278,8 @@ fn OverlayStack() -> Element {
                     crate::ui::ConfirmOverlay { key: "{model.title}", model: model.clone() }
                 } else if matches!(overlay, Overlay::CreateVolume) {
                     crate::sheets::create_volume::CreateVolumeSheet {}
+                } else if let Overlay::Run(id) = overlay {
+                    crate::sheets::run::RunSheet { key: "{id}", id: id.clone() }
                 } else if let Overlay::EditRecreate(id) = overlay {
                     crate::sheets::edit_recreate::EditRecreateSheet { key: "{id.0}", id: id.clone() }
                 } else if matches!(overlay, Overlay::CreateNetwork) {
@@ -330,6 +334,9 @@ pub fn Shell() -> Element {
                     name: name.clone(),
                 }
             }
+        }
+        if let Selection::Image(id) = &*state.selection.read() {
+            crate::screens::image_detail::ImageDetailPanel { key: "{id}", id: id.clone() }
         }
     };
     let right = match layout.slot {
@@ -395,6 +402,9 @@ pub fn Shell() -> Element {
                             }
                             if *state.section.read() == crate::state::Section::Volumes {
                                 crate::screens::volumes::VolumesScreen {}
+                            }
+                            if *state.section.read() == crate::state::Section::Images {
+                                crate::screens::images::ImagesScreen {}
                             }
                         }
                         if let Some((frame, width)) = right {
