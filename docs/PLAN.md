@@ -1130,6 +1130,7 @@ pub mod problems {
         pub env_text: Option<String>,      // replaces env_keys: the EnvVarMissing fix hashes and diffs the old .env
         pub compose_error: Option<String>,
         pub failure_lines: Vec<String>,    // <= 20 error lines of the last failed compose command (D82): port clash, name in use, network, build, dependency, pull denied
+        pub missing_binds: Vec<(String, std::path::PathBuf)>, // AD35: (service, absolute source) of each long-syntax bind with `create_host_path: false` whose source is missing; the service stats them (D36: stat only, no walk); evaluate stays pure
     }
     pub struct ProblemInput {
         pub now: chrono::DateTime<chrono::Utc>,
