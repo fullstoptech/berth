@@ -75,9 +75,36 @@ impl ProjectFilter {
     }
 }
 
-/// The four segment counts, in `ProjectFilter::ALL` order.
+/// The Unassigned row holds the containers that belong to no project (D5).
+/// It is a holding row, not a project: it never counts anywhere.
+pub fn is_unassigned(project: &berth_core::Project) -> bool {
+    matches!(project.source, berth_core::ProjectSource::Loose)
+}
+
+/// How many real projects (everything but the Unassigned row) there are.
+pub fn real_count(projects: &[&berth_core::Project]) -> usize {
+    projects.iter().filter(|p| !is_unassigned(p)).count()
+}
+
+/// The four segment counts, in `ProjectFilter::ALL` order. Real projects
+/// only, so All equals the header badge.
 pub fn filter_counts(projects: &[&berth_core::Project]) -> [usize; 4] {
-    ProjectFilter::ALL.map(|f| projects.iter().filter(|p| f.matches(p.status)).count())
+    ProjectFilter::ALL.map(|f| {
+        projects
+            .iter()
+            .filter(|p| !is_unassigned(p) && f.matches(p.status))
+            .count()
+    })
+}
+
+/// Whether the status filter lists this row. The Unassigned row shows
+/// under All only: Running, Failing and Stopped are about projects.
+pub fn row_shown(project: &berth_core::Project, filter: ProjectFilter) -> bool {
+    if is_unassigned(project) {
+        filter == ProjectFilter::All
+    } else {
+        filter.matches(project.status)
+    }
 }
 
 /// Case-insensitive match on name, folder, branch and engine name.
@@ -99,6 +126,74 @@ pub fn matches_query(project: &berth_core::Project, engine_name: &str, query: &s
     [project.name.as_str(), &folder, branch, engine_name]
         .iter()
         .any(|field| field.to_lowercase().contains(&query))
+}
+
+/// The Unassigned row matches the query when it matches "Unassigned" or the
+/// name of one of its containers (D5). It has no folder, branch or engine
+/// name worth matching.
+pub fn unassigned_matches_query(
+    project: &berth_core::Project,
+    containers: &[berth_core::Container],
+    query: &str,
+) -> bool {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return true;
+    }
+    let ids: Vec<&berth_core::ContainerId> = project
+        .services
+        .iter()
+        .flat_map(|s| s.containers.iter())
+        .collect();
+    "unassigned".contains(&query)
+        || containers
+            .iter()
+            .filter(|c| c.engine == project.engine && ids.contains(&&c.id))
+            .any(|c| c.name.to_lowercase().contains(&query))
+}
+
+/// What the table lists for the filter text and the status filter.
+#[derive(Debug)]
+pub struct Listing<'a> {
+    /// Real projects that match the text, whatever the status filter.
+    pub matched: usize,
+    /// The rows to draw, in the order given.
+    pub visible: Vec<&'a berth_core::Project>,
+}
+
+/// Apply the filter text, then the status filter, to `ordered`.
+pub fn list_projects<'a>(
+    ordered: &[&'a berth_core::Project],
+    engines: &[berth_core::Engine],
+    containers: &[berth_core::Container],
+    query: &str,
+    filter: ProjectFilter,
+) -> Listing<'a> {
+    let engine_name = |p: &berth_core::Project| {
+        engines
+            .iter()
+            .find(|e| e.id == p.engine)
+            .map_or_else(|| p.engine.0.clone(), |e| e.name.clone())
+    };
+    let by_query: Vec<&berth_core::Project> = ordered
+        .iter()
+        .copied()
+        .filter(|p| {
+            if is_unassigned(p) {
+                unassigned_matches_query(p, containers, query)
+            } else {
+                matches_query(p, &engine_name(p), query)
+            }
+        })
+        .collect();
+    Listing {
+        // "N of M" counts projects: the Unassigned row is in neither number.
+        matched: real_count(&by_query),
+        visible: by_query
+            .into_iter()
+            .filter(|p| row_shown(p, filter))
+            .collect(),
+    }
 }
 
 /// Failing first, then partly running, running, stopped, not created;
@@ -465,25 +560,15 @@ pub fn ProjectsScreen() -> Element {
     let mut ordered: Vec<&berth_core::Project> = projects.iter().collect();
     ordered.sort_by_key(|p| sort_rank(p, &engines));
     let counts = filter_counts(&ordered);
-    let engine_name = |p: &berth_core::Project| {
-        engines
-            .iter()
-            .find(|e| e.id == p.engine)
-            .map_or_else(|| p.engine.0.clone(), |e| e.name.clone())
-    };
-    let query_text = query.read().clone();
-    let by_query: Vec<&berth_core::Project> = ordered
-        .iter()
-        .copied()
-        .filter(|p| matches_query(p, &engine_name(p), &query_text))
-        .collect();
-    let visible: Vec<&berth_core::Project> = by_query
-        .iter()
-        .copied()
-        .filter(|p| filter.read().matches(p.status))
-        .collect();
-
-    let matched = by_query.len();
+    let listing = list_projects(
+        &ordered,
+        &engines,
+        &containers,
+        &query.read(),
+        *filter.read(),
+    );
+    let visible = listing.visible;
+    let matched = listing.matched;
     let home = berth_sys::paths::home();
     let view = StateView {
         engines: &engines,
@@ -517,7 +602,7 @@ pub fn ProjectsScreen() -> Element {
         .filter(|e| projects.iter().any(|p| p.engine == e.id))
         .cloned()
         .collect();
-    let total = projects.len();
+    let total = real_count(&ordered);
     let row_count = rows.len();
     let rows_state = screen == ScreenState::Rows;
 

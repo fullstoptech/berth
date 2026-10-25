@@ -703,3 +703,140 @@ fn projects_scene_with_unassigned_shows_the_row_last_and_the_sidebar_hides_it() 
     assert!(!sidebar.contains("Unassigned"), "{sidebar}");
     assert!(sidebar.contains("docker-manger"), "{sidebar}");
 }
+
+// --- D5: the Unassigned row is a holding row, not a project ---
+
+/// The mock world's projects plus its default-engine Unassigned row, and
+/// the containers the row groups.
+fn world_with_unassigned() -> (
+    Vec<berth_core::Project>,
+    Vec<berth_core::Container>,
+    Vec<berth_core::Engine>,
+) {
+    let w = world();
+    let mut projects = w.projects.clone();
+    projects.extend(
+        crate::scenes::loose_projects(&w)
+            .into_iter()
+            .filter(|p| p.engine.0 == "colima:default"),
+    );
+    (projects, w.containers.clone(), w.engines.clone())
+}
+
+fn listed(
+    projects: &[berth_core::Project],
+    containers: &[berth_core::Container],
+    engines: &[berth_core::Engine],
+    query: &str,
+    filter: ProjectFilter,
+) -> (usize, Vec<String>) {
+    let mut ordered: Vec<&berth_core::Project> = projects.iter().collect();
+    ordered.sort_by_key(|p| sort_rank(p, engines));
+    let l = list_projects(&ordered, engines, containers, query, filter);
+    (
+        l.matched,
+        l.visible.iter().map(|p| p.name.clone()).collect(),
+    )
+}
+
+#[test]
+fn projects_scene_with_unassigned_counts_eight_projects_not_nine() {
+    let html = scene("Projects / with unassigned / 1440");
+    // The row is there, last, and the numbers still say 8.
+    assert!(html.contains("<span class=\"project-name-text\">Unassigned</span>"));
+    assert!(html.contains("badge badge-count\">8<"), "{html}");
+    assert!(!html.contains("badge badge-count\">9<"), "{html}");
+    for (label, count) in [("All", 8), ("Running", 3), ("Failing", 1), ("Stopped", 2)] {
+        assert!(
+            html.contains(&format!(
+                "<span>{label}</span><span class=\"segment-count\">{count}</span>"
+            )),
+            "segment {label} {count}: {html}"
+        );
+    }
+    // The sidebar's Projects badge (it sits before the screen) is 8 as well.
+    let sidebar = &html[..html.find("projects-screen").expect("screen")];
+    assert!(sidebar.contains("sidebar-count\">8<"), "{sidebar}");
+    assert!(!sidebar.contains("sidebar-count\">9<"), "{sidebar}");
+}
+
+#[test]
+fn projects_filter_counts_leave_the_unassigned_row_out_of_every_segment() {
+    let (projects, _, _) = world_with_unassigned();
+    assert_eq!(projects.len(), 9);
+    let all: Vec<&berth_core::Project> = projects.iter().collect();
+    assert_eq!(filter_counts(&all), [8, 3, 1, 2]);
+    assert_eq!(real_count(&all), 8);
+    // Even when its own status would match a segment.
+    let loose = projects.iter().find(|p| is_unassigned(p)).expect("loose");
+    assert!(ProjectFilter::ALL.iter().any(|f| f.matches(loose.status)));
+}
+
+#[test]
+fn projects_status_filters_hide_the_unassigned_row_and_all_shows_it_last() {
+    let (projects, containers, engines) = world_with_unassigned();
+    for filter in [
+        ProjectFilter::Running,
+        ProjectFilter::Failing,
+        ProjectFilter::Stopped,
+    ] {
+        let (_, names) = listed(&projects, &containers, &engines, "", filter);
+        assert!(!names.is_empty(), "{filter:?} lists real projects");
+        assert!(
+            !names.iter().any(|n| n == "Unassigned"),
+            "{filter:?}: {names:?}"
+        );
+    }
+    let (_, names) = listed(&projects, &containers, &engines, "", ProjectFilter::All);
+    assert_eq!(names.len(), 9, "{names:?}");
+    assert_eq!(names.last().map(String::as_str), Some("Unassigned"));
+}
+
+#[test]
+fn projects_filter_text_shows_unassigned_for_its_name_or_a_container_name() {
+    let (projects, containers, engines) = world_with_unassigned();
+    let loose = projects.iter().find(|p| is_unassigned(p)).expect("loose");
+    let member = containers
+        .iter()
+        .find(|c| loose.services.iter().any(|s| s.containers.contains(&c.id)))
+        .expect("a container in the bucket");
+    let member_name = member.name.clone();
+    let shows = |q: &str| {
+        listed(&projects, &containers, &engines, q, ProjectFilter::All)
+            .1
+            .iter()
+            .any(|n| n == "Unassigned")
+    };
+    assert!(shows(""));
+    assert!(shows("unassign"));
+    assert!(shows("  UNASSIGNED "));
+    assert!(shows(&member_name));
+    assert!(shows(&member_name.to_uppercase()));
+    // Not for what a named project matches on: its engine or a folder.
+    assert!(!shows("shop-api"));
+    assert!(!shows("zzz-no-such-thing"));
+    // A container of a named project does not bring the row in.
+    let other = containers
+        .iter()
+        .find(|c| c.name.starts_with("shop-api-db"))
+        .expect("shop-api container");
+    assert!(!shows(&other.name));
+}
+
+#[test]
+fn projects_filter_text_count_counts_projects_only() {
+    let (projects, containers, engines) = world_with_unassigned();
+    // "unassigned" matches only the row: zero of eight, one row listed.
+    let (matched, names) = listed(
+        &projects,
+        &containers,
+        &engines,
+        "unassigned",
+        ProjectFilter::All,
+    );
+    assert_eq!(matched, 0);
+    assert_eq!(names, ["Unassigned"]);
+    // The empty query matches the eight real projects, not nine.
+    let (matched, _) = listed(&projects, &containers, &engines, "", ProjectFilter::All);
+    assert_eq!(matched, 8);
+}

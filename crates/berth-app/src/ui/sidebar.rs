@@ -19,8 +19,9 @@ pub struct SidebarProject {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SidebarModel {
     pub projects: Vec<SidebarProject>,
-    /// The badge on the Projects item: every project the Projects screen
-    /// lists, across all engines, whatever the engine scope.
+    /// The badge on the Projects item: every real project the Projects
+    /// screen counts (not the Unassigned row, D5), across all engines,
+    /// whatever the engine scope.
     pub projects_total: usize,
     pub containers: usize,
     pub images: usize,
@@ -69,7 +70,10 @@ pub fn sidebar_model(
             services: (!p.services.is_empty()).then_some(p.services.len()),
         })
         .collect();
-    let projects_total = all_projects.len();
+    let projects_total = all_projects
+        .iter()
+        .filter(|p| !matches!(p.source, berth_core::ProjectSource::Loose))
+        .count();
     let in_scope = || engines.iter().filter(|e| scope_includes(scope, &e.id));
     // Rows in scope; an engine that has not answered (or is stopped) keeps
     // the count it last knew instead of showing 0.

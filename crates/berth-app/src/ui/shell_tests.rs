@@ -713,3 +713,20 @@ fn shell_palette_trigger_is_a_button_with_the_cmd_k_hint() {
     assert!(html.contains("data-symbol=\"cmd\""));
     assert!(html.contains(">K<"));
 }
+
+#[test]
+fn shell_sidebar_projects_badge_does_not_count_the_unassigned_row() {
+    let world = mock_world();
+    let mut projects = world.projects.clone();
+    projects.extend(scenes::loose_projects(&world));
+    assert!(projects.len() > world.projects.len());
+    let model = sidebar_model(
+        &world.engines,
+        &EngineScope::All,
+        &projects,
+        &world.containers,
+    );
+    assert_eq!(model.projects_total, 8);
+    // Neither does its list.
+    assert_eq!(model.projects.len(), 8);
+}
