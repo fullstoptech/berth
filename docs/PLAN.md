@@ -386,6 +386,7 @@ pub struct EngineInfo {
 #[derive(Default)] pub struct DiskUsage {
     pub images: UsageGroup, pub containers: UsageGroup, pub volumes: UsageGroup, pub build_cache: UsageGroup,
     pub disk_total: Option<ByteSize>,     // VM disk size for Colima
+    pub container_sizes: Vec<(ContainerId, ByteSize)>, // SizeRw per container from the same `system df` (2026-10-25 gap review): sizes PruneItems and the delete dialog's "Removes 12 MB"
 }
 pub struct ColimaProfile {
     pub name: String, pub running: bool, pub arch: Arch, pub cpus: u16,
@@ -1360,6 +1361,7 @@ pub enum Selection { None, Containers(Vec<berth_core::ContainerId>), Project(ber
 pub struct BottomPanel { pub open: bool, pub height_px: u32, pub tab: BottomTab, pub terminals: Vec<TerminalTab> }
 pub struct TerminalTab { pub id: uuid::Uuid, pub title: String, pub session: Option<berth_core::ExecSession>, pub exited: bool, pub unread: bool }
 pub struct ConfirmModel { pub title: String, pub effect: berth_core::EffectSummary, pub action: berth_core::EngineAction, pub checkbox: Option<(String, bool)>, pub targets: Vec<berth_core::Subject> }
+// For EngineAction::Prune, `targets` stays empty and `plan.items` is the target list (Subject has no build-cache case; one list is the single source of what gets removed). 2026-10-25.
 // targets (architect, 2026-10-25, D2): the subjects the dialog acts on, fixed when it opens; effect.count == targets.len(); a target gone by confirm time becomes a refused line in the result. run() never re-reads the selection.
 pub enum ToastTone { Neutral, Success, Danger }
 pub struct Toast { pub id: uuid::Uuid, pub text: String, pub tone: ToastTone, pub action: Option<(String, &'static str)> }  // (label, ActionDef id)
