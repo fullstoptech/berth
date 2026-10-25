@@ -654,3 +654,52 @@ fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
         }
     }
 }
+
+// --- The Unassigned row (loose containers; the owner keeps it) ---
+
+#[test]
+fn projects_sort_puts_the_unassigned_project_after_every_named_one() {
+    let w = world();
+    let mut projects = w.projects.clone();
+    projects.extend(crate::scenes::loose_projects(&w));
+    projects.reverse();
+    projects.sort_by_key(|p| sort_rank(p, &w.engines));
+    let names: Vec<&str> = projects.iter().map(|p| p.name.as_str()).collect();
+    // Last even though "landing" sits on an engine that is down.
+    assert_eq!(names.last(), Some(&"Unassigned"), "{names:?}");
+    assert_eq!(names.iter().filter(|n| **n == "Unassigned").count(), {
+        crate::scenes::loose_projects(&w).len()
+    });
+    let landing = names.iter().position(|n| *n == "landing").expect("landing");
+    let first_loose = names
+        .iter()
+        .position(|n| *n == "Unassigned")
+        .expect("unassigned");
+    assert!(landing < first_loose, "{names:?}");
+}
+
+#[test]
+fn projects_scene_with_unassigned_shows_the_row_last_and_the_sidebar_hides_it() {
+    let html = scene("Projects / with unassigned / 1440");
+    let table = &html[html.find("projects-table").expect("table")..];
+    let name = |n: &str| format!("<span class=\"project-name-text\">{n}</span>");
+    let landing = table.find(&name("landing")).expect("landing row");
+    let loose = table.find(&name("Unassigned")).expect("Unassigned row");
+    assert!(landing < loose, "{table}");
+    assert_eq!(table.matches(&name("Unassigned")).count(), 1);
+    // Its row: path is a dash, and the buttons are the group ones.
+    let row = &table[loose..];
+    let row = &row[..row.find("project-row-wrap").unwrap_or(row.len())];
+    assert!(
+        row.contains("project-cell-path\" role=\"cell\" title=\"\">—<"),
+        "{row}"
+    );
+    assert!(row.contains(">Stop all<"), "{row}");
+    assert!(row.contains(">Restart<"), "{row}");
+    assert!(!row.contains("Stop project"), "{row}");
+    assert!(!row.contains("disabled"), "{row}");
+    // The sidebar lists projects, not this bucket.
+    let sidebar = &html[..html.find("projects-screen").expect("screen")];
+    assert!(!sidebar.contains("Unassigned"), "{sidebar}");
+    assert!(sidebar.contains("docker-manger"), "{sidebar}");
+}

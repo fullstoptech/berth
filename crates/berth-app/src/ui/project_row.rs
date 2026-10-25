@@ -14,6 +14,7 @@ use super::menu::{Menu, MenuEntry};
 use super::sidebar_item::{Dot, DotShape, DotSpec};
 use super::ControlSize;
 use crate::services::actions::{dismiss, ActionsService, ProjectOp, StateView};
+use crate::services::group_ops::{self, GroupIds};
 use crate::state::{AppState, BottomTab, PendingKey, PendingState, Section, Selection};
 
 /// Which labelled button the row shows besides Restart.
@@ -74,11 +75,66 @@ pub struct RowPending {
     pub label: String,
 }
 
-/// The engine's message for the action that last failed on the row.
+/// The engine's message for the action that last failed on the row. The
+/// pending key it came from is `subject` + `action`: the project for a
+/// Compose project, one of its containers for the Unassigned row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowFailure {
+    pub subject: berth_core::Subject,
     pub action: &'static str,
     pub message: String,
+}
+
+/// What the Unassigned row's buttons do. Loose containers have no Compose
+/// project, so Restart, Stop all and Start all run one container action per
+/// qualifying member, through the same `group_ops` the Containers screen's
+/// group header uses.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LooseOps {
+    pub ids: GroupIds,
+    /// Why Start all cannot run (nothing is stopped, engine down).
+    pub start_reason: Option<String>,
+    /// Why Stop all and Restart cannot run (nothing is running, engine down).
+    pub stop_reason: Option<String>,
+}
+
+impl LooseOps {
+    /// The members and the container action a row button runs; `None` for a
+    /// Compose-only operation.
+    pub fn plan(
+        &self,
+        op: ProjectOp,
+    ) -> Option<(&[berth_core::ContainerId], berth_core::ContainerAction)> {
+        use berth_core::ContainerAction as A;
+        match op {
+            ProjectOp::Start => Some((&self.ids.start_ids, A::Start)),
+            ProjectOp::Stop => Some((&self.ids.stop_ids, A::Stop { timeout_s: None })),
+            ProjectOp::Restart => Some((&self.ids.stop_ids, A::Restart { timeout_s: None })),
+            _ => None,
+        }
+    }
+}
+
+/// The reason a group action cannot run on `ids`: none to run on, or every
+/// one refused (engine down, still busy). `None` when at least one qualifies.
+fn group_reason(
+    ids: &[berth_core::ContainerId],
+    action: &str,
+    none: &str,
+    view: &StateView<'_>,
+) -> Option<String> {
+    if ids.is_empty() {
+        return Some(none.to_string());
+    }
+    // `None` as soon as one member can run it; else the first reason.
+    let reasons: Option<Vec<String>> = ids
+        .iter()
+        .map(|id| {
+            let subject = berth_core::Subject::Container(id.clone());
+            crate::services::actions::disabled_reason(&subject, action, view)
+        })
+        .collect();
+    reasons.and_then(|reasons| reasons.into_iter().next())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +156,11 @@ pub struct ProjectRowModel {
     pub problem_count: usize,
     pub problem_summary: Option<String>,
     pub primary: PrimaryOp,
+    /// "Start project", "Stop project", or "Start all" / "Stop all" on the
+    /// Unassigned row.
+    pub primary_label: String,
+    /// `Some` on the Unassigned row (a `ProjectSource::Loose` project).
+    pub loose: Option<LooseOps>,
     pub primary_reason: Option<String>,
     pub restart_reason: Option<String>,
     pub rebuild_reason: Option<String>,
@@ -332,28 +393,93 @@ pub fn row_model(
         )
     });
 
+    let is_loose = matches!(project.source, berth_core::ProjectSource::Loose);
+    let loose = is_loose.then(|| {
+        let ids = GroupIds::of(owned.iter().copied());
+        let start_reason = group_reason(
+            &ids.start_ids,
+            "container.start",
+            "Nothing is stopped",
+            view,
+        );
+        let stop_reason = group_reason(&ids.stop_ids, "container.stop", "Nothing is running", view);
+        LooseOps {
+            ids,
+            start_reason,
+            stop_reason,
+        }
+    });
+
     let subject = Subject::Project(project.id.clone());
+    let owns = |key: &PendingKey| match &key.subject {
+        Subject::Container(id) => is_loose && container_ids.contains(&id),
+        other => *other == subject,
+    };
+    // A member's start, stop or restart reads as the row's own button
+    // running; other member actions leave the row alone.
+    let row_action = |action: &str| match action {
+        "container.start" => Some("project.start"),
+        "container.stop" => Some("project.stop"),
+        "container.restart" => Some("project.restart"),
+        _ => None,
+    };
     let pending = view.pending.iter().find_map(|(key, value)| match value {
-        PendingState::Running { label } if key.subject == subject => Some(RowPending {
-            action: key.action,
-            label: label.clone(),
-        }),
+        PendingState::Running { label } if owns(key) => {
+            let action = if is_loose {
+                row_action(key.action)?
+            } else {
+                key.action
+            };
+            Some(RowPending {
+                action,
+                label: label.clone(),
+            })
+        }
         _ => None,
     });
     let failure = view.pending.iter().find_map(|(key, value)| match value {
-        PendingState::Failed { message } if key.subject == subject => Some(RowFailure {
+        PendingState::Failed { message } if owns(key) => Some(RowFailure {
+            subject: key.subject.clone(),
             action: key.action,
             message: message.clone(),
         }),
         _ => None,
     });
 
-    let primary = if !reachable || matches!(project.status, P::Stopped | P::NotCreated) {
-        PrimaryOp::Start
-    } else {
-        PrimaryOp::Stop
+    let primary = match &loose {
+        Some(ops) if !ops.ids.stop_ids.is_empty() => PrimaryOp::Stop,
+        Some(_) => PrimaryOp::Start,
+        None if !reachable || matches!(project.status, P::Stopped | P::NotCreated) => {
+            PrimaryOp::Start
+        }
+        None => PrimaryOp::Stop,
     };
     let reason = |action: &str| crate::services::actions::disabled_reason(&subject, action, view);
+    let not_compose = || Some("Not a Compose project".to_string());
+    let (primary_label, primary_reason, restart_reason, rebuild_reason, pull_reason) = match &loose
+    {
+        Some(ops) => (
+            match primary {
+                PrimaryOp::Start => "Start all",
+                PrimaryOp::Stop => "Stop all",
+            }
+            .to_string(),
+            match primary {
+                PrimaryOp::Start => ops.start_reason.clone(),
+                PrimaryOp::Stop => ops.stop_reason.clone(),
+            },
+            ops.stop_reason.clone(),
+            not_compose(),
+            not_compose(),
+        ),
+        None => (
+            primary.label().to_string(),
+            reason(primary.op().action_id()),
+            reason("project.restart"),
+            reason("project.rebuild"),
+            reason("project.pull_images"),
+        ),
+    };
 
     ProjectRowModel {
         id: project.id.clone(),
@@ -378,10 +504,12 @@ pub fn row_model(
         problem_count: mine.len(),
         problem_summary,
         primary,
-        primary_reason: reason(primary.op().action_id()),
-        restart_reason: reason("project.restart"),
-        rebuild_reason: reason("project.rebuild"),
-        pull_reason: reason("project.pull_images"),
+        primary_label,
+        loose,
+        primary_reason,
+        restart_reason,
+        rebuild_reason,
+        pull_reason,
         pending,
         failure,
     }
@@ -408,6 +536,25 @@ pub fn run_project_op(
             },
             PendingState::Failed { message },
         );
+    }
+}
+
+/// What a row button's click calls: a Compose project action, or on the
+/// Unassigned row one container action per qualifying member.
+pub fn run_row_op(
+    state: &mut AppState,
+    service: Option<&ActionsService>,
+    id: &berth_core::ProjectId,
+    loose: Option<&LooseOps>,
+    op: ProjectOp,
+) {
+    match loose {
+        None => run_project_op(state, service, id, op),
+        Some(ops) => {
+            if let Some((ids, action)) = ops.plan(op) {
+                group_ops::run(state, service, ids, &action);
+            }
+        }
     }
 }
 
@@ -465,6 +612,43 @@ fn PortLinks(ports: Vec<u16>) -> Element {
     }
 }
 
+/// The ⋯ menu. A Compose project offers Rebuild, Pull and Delete; the
+/// Unassigned row offers the same three group actions as its buttons and
+/// leaves the Compose-only ones out.
+pub fn menu_entries(model: &ProjectRowModel) -> Vec<MenuEntry> {
+    let entry = |id: &str, label: &str, icon: &'static str, reason: &Option<String>| {
+        let entry = MenuEntry::new(id, label).icon(icon);
+        match reason {
+            Some(reason) => entry.disabled(reason.clone()),
+            None => entry,
+        }
+    };
+    let open = MenuEntry::new("open", "Open project").icon("folder");
+    if let Some(ops) = &model.loose {
+        return vec![
+            open,
+            entry("start-all", "Start all", "play", &ops.start_reason),
+            entry("stop-all", "Stop all", "square", &ops.stop_reason),
+            entry("restart", "Restart", "rotate-cw", &ops.stop_reason),
+        ];
+    }
+    vec![
+        open,
+        entry("rebuild", "Rebuild", "rotate-cw", &model.rebuild_reason),
+        entry(
+            "pull",
+            "Pull images",
+            "arrow-down-to-line",
+            &model.pull_reason,
+        ),
+        MenuEntry::new("delete", "Delete project\u{2026}")
+            .icon("trash-2")
+            .danger()
+            .separator_before()
+            .disabled("Delete confirmation is not built yet"),
+    ]
+}
+
 #[component]
 pub fn ProjectRow(model: ProjectRowModel) -> Element {
     let mut state = use_context::<AppState>();
@@ -487,32 +671,11 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
     }
 
     let failure_key = model.failure.as_ref().map(|f| PendingKey {
-        subject: berth_core::Subject::Project(id.clone()),
+        subject: f.subject.clone(),
         action: f.action,
     });
 
-    let menu_entries = vec![
-        MenuEntry::new("open", "Open project").icon("folder"),
-        {
-            let entry = MenuEntry::new("rebuild", "Rebuild").icon("rotate-cw");
-            match &model.rebuild_reason {
-                Some(reason) => entry.disabled(reason.clone()),
-                None => entry,
-            }
-        },
-        {
-            let entry = MenuEntry::new("pull", "Pull images").icon("arrow-down-to-line");
-            match &model.pull_reason {
-                Some(reason) => entry.disabled(reason.clone()),
-                None => entry,
-            }
-        },
-        MenuEntry::new("delete", "Delete project\u{2026}")
-            .icon("trash-2")
-            .danger()
-            .separator_before()
-            .disabled("Delete confirmation is not built yet"),
-    ];
+    let menu_entries = menu_entries(&model);
 
     let open_project = {
         let id = id.clone();
@@ -624,12 +787,19 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                             onclick: {
                                 let id = id.clone();
                                 let service = service.clone();
-                                move |_| run_project_op(&mut state, service.as_ref(), &id, ProjectOp::Restart)
+                                let loose = model.loose.clone();
+                                move |_| run_row_op(
+                                    &mut state,
+                                    service.as_ref(),
+                                    &id,
+                                    loose.as_ref(),
+                                    ProjectOp::Restart,
+                                )
                             },
                         }
                         Button {
                             label: primary_pending
-                                .map_or_else(|| model.primary.label().to_string(), |p| p.label.clone()),
+                                .map_or_else(|| model.primary_label.clone(), |p| p.label.clone()),
                             size: ControlSize::Sm,
                             variant: ButtonVariant::Secondary,
                             loading: primary_pending.is_some(),
@@ -639,7 +809,8 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                                 let id = id.clone();
                                 let service = service.clone();
                                 let op = model.primary.op();
-                                move |_| run_project_op(&mut state, service.as_ref(), &id, op)
+                                let loose = model.loose.clone();
+                                move |_| run_row_op(&mut state, service.as_ref(), &id, loose.as_ref(), op)
                             },
                         }
                     }
@@ -682,8 +853,25 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                                         let id = id.clone();
                                         let service = service.clone();
                                         let mut open_project = open_project.clone();
+                                        let loose = model.loose.clone();
                                         move |entry: String| {
                                             menu_open.set(false);
+                                            let group_op = match entry.as_str() {
+                                                "start-all" => Some(ProjectOp::Start),
+                                                "stop-all" => Some(ProjectOp::Stop),
+                                                "restart" => Some(ProjectOp::Restart),
+                                                _ => None,
+                                            };
+                                            if let Some(op) = group_op {
+                                                run_row_op(
+                                                    &mut state,
+                                                    service.as_ref(),
+                                                    &id,
+                                                    loose.as_ref(),
+                                                    op,
+                                                );
+                                                return;
+                                            }
                                             match entry.as_str() {
                                                 "open" => open_project(),
                                                 "rebuild" => run_project_op(

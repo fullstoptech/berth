@@ -7,6 +7,7 @@ pub mod colima;
 pub mod compose;
 pub mod confirm;
 pub mod engines;
+pub mod group_ops;
 pub mod search;
 
 /// The moment the bundled mock world is written for: its container start

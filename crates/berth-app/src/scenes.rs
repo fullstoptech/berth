@@ -59,6 +59,38 @@ fn projects_default(state: &mut AppState) {
     load_projects_world(state, berth_store::Theme::Light);
 }
 
+/// The mock world's "Unassigned" projects, grouped from its containers by
+/// `projects::group` as the live path does: one per engine that has
+/// containers outside any Compose project. The fixture's own project list
+/// leaves them out because the frames do.
+pub(crate) fn loose_projects(world: &berth_engine::MockWorld) -> Vec<berth_core::Project> {
+    world
+        .engines
+        .iter()
+        .flat_map(|engine| {
+            let containers = world.containers_for(&engine.id);
+            berth_engine::projects::group(&engine.id, &containers, &[], false)
+        })
+        .filter(|p| matches!(p.source, berth_core::ProjectSource::Loose))
+        .collect()
+}
+
+/// "Projects / default / 1440" plus the Unassigned row the live app shows
+/// (not in the frame: the owner keeps the row, so it gets its own scene).
+fn projects_with_unassigned(state: &mut AppState) {
+    load_projects_world(state, berth_store::Theme::Light);
+    let world = crate::services::mock_world_at(chrono::Utc::now());
+    let mut projects = state.projects.peek().clone();
+    // The default profile's bucket only: the other engines' buckets are
+    // the same row again, on an engine that is stopped or unreachable.
+    projects.extend(
+        loose_projects(&world)
+            .into_iter()
+            .filter(|p| p.engine.0 == "colima:default"),
+    );
+    state.projects.set(projects);
+}
+
 fn projects_default_dark(state: &mut AppState) {
     load_projects_world(state, berth_store::Theme::Dark);
 }
@@ -295,6 +327,10 @@ const SCENES: &[Scene] = &[
         setup: projects_default_dark,
     },
     Scene {
+        frame: "Projects / with unassigned / 1440",
+        setup: projects_with_unassigned,
+    },
+    Scene {
         frame: "Components / primitives",
         setup: components_primitives,
     },
@@ -385,7 +421,7 @@ mod tests {
         assert!(find("Projects / empty / 1440").is_some());
         assert!(find("Components / primitives").is_some());
         assert!(find("Containers / selected / 1440").is_some());
-        assert_eq!(scenes().len(), 14);
+        assert_eq!(scenes().len(), 15);
         assert!(find("No such frame").is_none());
     }
 

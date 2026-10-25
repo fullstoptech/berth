@@ -102,10 +102,15 @@ pub fn matches_query(project: &berth_core::Project, engine_name: &str, query: &s
 }
 
 /// Failing first, then partly running, running, stopped, not created;
-/// projects on an engine that is not running last. Stable, so the
+/// projects on an engine that is not running after those; the Unassigned
+/// project last of all, as on the Containers screen. Stable, so the
 /// engine's own order holds inside a group.
-pub fn sort_rank(project: &berth_core::Project, engines: &[berth_core::Engine]) -> (bool, u8) {
+pub fn sort_rank(
+    project: &berth_core::Project,
+    engines: &[berth_core::Engine],
+) -> (bool, bool, u8) {
     use berth_core::ProjectStatus as P;
+    let loose = matches!(project.source, berth_core::ProjectSource::Loose);
     let engine_down = engines
         .iter()
         .find(|e| e.id == project.engine)
@@ -117,7 +122,7 @@ pub fn sort_rank(project: &berth_core::Project, engines: &[berth_core::Engine]) 
         P::Stopped => 3,
         P::NotCreated => 4,
     };
-    (engine_down, rank)
+    (loose, engine_down, rank)
 }
 
 /// What the main area shows (brief 7.3 states).

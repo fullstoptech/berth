@@ -23,6 +23,7 @@ use crate::services::actions::{
     disabled_reason, dismiss, with_view, ActionsService, ContainerTarget, StateView,
 };
 use crate::services::confirm;
+use crate::services::group_ops::{is_active, run as run_group_action, GroupIds};
 use crate::state::{AppState, EngineScope, PendingKey, PendingState, Section, Selection};
 use crate::ui::bulk_bar::{applicable, bulk_counts};
 use crate::ui::container_row::{
@@ -418,20 +419,6 @@ pub struct ListInput<'a> {
     pub pending: &'a BTreeMap<PendingKey, PendingState>,
 }
 
-fn is_active(state: ContainerState) -> bool {
-    matches!(
-        state,
-        ContainerState::Running | ContainerState::Restarting | ContainerState::Paused
-    )
-}
-
-fn is_stopped(state: ContainerState) -> bool {
-    matches!(
-        state,
-        ContainerState::Exited | ContainerState::Created | ContainerState::Dead
-    )
-}
-
 fn status_of(c: &Container) -> StatusKind {
     berth_core::status_of(c.state, c.health, c.exit_code)
 }
@@ -574,23 +561,16 @@ fn group_info(
         (count(&|c| c.state == ContainerState::Dead), "dead"),
         (count(&|c| c.state == ContainerState::Removing), "removing"),
     ]);
-    let default_collapsed = !members.iter().any(|c| is_active(c.state));
+    let ids = GroupIds::of(members.iter().copied());
+    let default_collapsed = ids.stop_ids.is_empty();
     let expanded = !collapsed.get(&key).copied().unwrap_or(default_collapsed);
     GroupInfo {
         key,
         name,
         counts,
         expanded,
-        start_ids: members
-            .iter()
-            .filter(|c| is_stopped(c.state))
-            .map(|c| c.id.clone())
-            .collect(),
-        stop_ids: members
-            .iter()
-            .filter(|c| is_active(c.state))
-            .map(|c| c.id.clone())
-            .collect(),
+        start_ids: ids.start_ids,
+        stop_ids: ids.stop_ids,
     }
 }
 
@@ -1050,24 +1030,6 @@ fn run_container_action(
     };
     if let Err(reason) = service.container(state, &target, command) {
         tracing::debug!(%reason, "row action refused");
-    }
-}
-
-fn run_group_action(
-    state: &mut AppState,
-    actions: Option<&ActionsService>,
-    ids: &[ContainerId],
-    action: &ContainerAction,
-) {
-    let Some(service) = actions else { return };
-    let targets: Vec<ContainerTarget> = ids
-        .iter()
-        .filter_map(|id| target_of(state, id).map(|(t, _)| t))
-        .collect();
-    for result in service.containers(state, &targets, action) {
-        if let Err(reason) = result {
-            tracing::debug!(%reason, "group action refused");
-        }
     }
 }
 
