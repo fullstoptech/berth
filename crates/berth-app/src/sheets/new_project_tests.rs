@@ -135,3 +135,28 @@ fn new_project_starter_is_valid_compose_for_the_plan() {
         .collect();
     assert_eq!(added.first().copied(), Some("services:"));
 }
+
+#[test]
+fn new_project_editor_keeps_typing_but_lets_command_chords_and_escape_through() {
+    // Bare Space, J and K are list shortcuts; typed into the editor they must be text.
+    for key in [" ", "j", "k", "J", "Backspace", "Enter", "a"] {
+        assert!(editor_keeps_key(key, false), "{key:?} is typing");
+    }
+    assert!(
+        !editor_keeps_key("k", true),
+        "Cmd+K still opens the palette"
+    );
+    assert!(
+        !editor_keeps_key("Escape", false),
+        "Escape still closes the sheet"
+    );
+}
+
+#[test]
+fn new_project_the_shell_maps_a_bare_space_so_the_editor_must_keep_it() {
+    // What made a space typed into the editor do nothing: the root handler maps it and
+    // prevents the default.
+    let none = crate::keys::KeyContext::default();
+    assert!(crate::keys::map_key(" ", crate::keys::Modifiers::NONE, none).is_some());
+    assert!(editor_keeps_key(" ", false));
+}

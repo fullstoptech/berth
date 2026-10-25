@@ -145,6 +145,14 @@ if (berth.emit === tap) berth.emit = previous;
     )
 }
 
+/// Does the editor keep this key, so the shell's shortcuts never see it? Typing goes to the text
+/// (Space, J and K would otherwise toggle the inspector and move the list selection, and the shell
+/// would swallow them); ⌘ chords and Escape still reach Berth.
+#[must_use]
+pub fn editor_keeps_key(key: &str, meta: bool) -> bool {
+    !(meta || key == "Escape")
+}
+
 fn close(state: &mut AppState) {
     state
         .overlays
@@ -378,7 +386,15 @@ fn EditorStage(on_back: EventHandler<()>) -> Element {
 
     rsx! {
         p { class: "np-lede", "Write {COMPOSE_FILE}, then choose where it goes." }
-        div { class: "np-editor",
+        div {
+            class: "np-editor",
+            onkeydown: move |e| {
+                use dioxus::html::ModifiersInteraction;
+                let meta = e.data.modifiers().contains(dioxus::html::Modifiers::META);
+                if editor_keeps_key(&e.data.key().to_string(), meta) {
+                    e.stop_propagation();
+                }
+            },
             div { id: host_id(EDITOR_ID), class: "berth-editor" }
         }
         div { class: "np-folder",
