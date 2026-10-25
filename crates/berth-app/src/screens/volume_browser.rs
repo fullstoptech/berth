@@ -481,7 +481,13 @@ pub fn VolumeDetailPanel(name: String) -> Element {
         .as_ref()
         .map(|b| format!("{} is still running", b.text));
     let owner_reason = owner.is_none().then(|| GONE.to_string());
-    let transfer_reason = busy_reason.clone().or(owner_reason);
+    // A mock engine cannot read or write a volume's files (backup, restore).
+    let transfer_reason = state
+        .backing
+        .peek()
+        .unsupported_action("volume.backup")
+        .or_else(|| busy_reason.clone())
+        .or(owner_reason);
     let now = chrono::Utc::now();
     let unused = volume.used_by.is_empty();
     let rows = overview_rows(

@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use super::*;
 use crate::bridge::{parse_event, Event};
+use crate::services::backing::Backing;
 
 const NOT_FOUND: &str = "OCI runtime exec failed: exec failed: unable to start container process: \
 exec: \"bash\": executable file not found in $PATH: unknown";
@@ -273,10 +274,25 @@ fn exec_service_label_drops_the_project_prefix() {
 fn exec_terminal_is_offered_unless_the_container_cannot_take_an_exec() {
     use berth_core::ContainerState as S;
     for ok in [S::Running, S::Exited, S::Created, S::Restarting] {
-        assert_eq!(terminal_disabled_reason(ok), None, "{ok:?}");
+        assert_eq!(terminal_disabled_reason(ok, Backing::Live), None, "{ok:?}");
     }
     for refused in [S::Paused, S::Removing, S::Dead] {
-        assert!(terminal_disabled_reason(refused).is_some(), "{refused:?}");
+        assert!(
+            terminal_disabled_reason(refused, Backing::Live).is_some(),
+            "{refused:?}"
+        );
+    }
+}
+
+#[test]
+fn exec_terminal_under_mock_data_is_refused_for_every_container_state_with_the_reason() {
+    use berth_core::ContainerState as S;
+    for state in [S::Running, S::Exited, S::Created, S::Restarting, S::Paused] {
+        assert_eq!(
+            terminal_disabled_reason(state, Backing::Mock).as_deref(),
+            Some("Terminals need a real Docker engine. You're viewing mock data."),
+            "{state:?}"
+        );
     }
 }
 

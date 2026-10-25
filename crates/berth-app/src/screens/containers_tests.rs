@@ -1083,6 +1083,7 @@ fn view_for<'a>(
         volumes: &[],
         networks: &[],
         pending,
+        backing: crate::services::backing::Backing::default(),
     }
 }
 
@@ -1092,6 +1093,46 @@ fn container<'a>(world: &'a berth_engine::MockWorld, name: &str) -> &'a Containe
         .iter()
         .find(|c| c.name == name)
         .unwrap_or_else(|| panic!("{name} in the mock world"))
+}
+
+/// Under mock data the row's Terminal button is disabled and says why;
+/// under a real engine it is not. The other buttons are untouched.
+#[test]
+fn containers_row_terminal_button_is_disabled_with_a_reason_under_mock_data_only() {
+    let world = world();
+    let pending = BTreeMap::new();
+    let terminal_of = |backing: crate::services::backing::Backing| {
+        let view = StateView {
+            backing,
+            ..view_for(&world, &pending)
+        };
+        let data = row_data(
+            container(&world, "shop-api-api-1"),
+            &view,
+            "default",
+            chrono::Utc::now(),
+            false,
+        );
+        let button = |action: RowAction| {
+            data.buttons
+                .iter()
+                .find(|b| b.action == action)
+                .map(|b| (b.disabled, b.tooltip.clone()))
+                .expect("button")
+        };
+        (button(RowAction::Terminal), button(RowAction::Restart))
+    };
+    let (live_terminal, _) = terminal_of(crate::services::backing::Backing::Live);
+    assert!(!live_terminal.0, "{live_terminal:?}");
+    let (mock_terminal, mock_restart) = terminal_of(crate::services::backing::Backing::Mock);
+    assert_eq!(
+        mock_terminal,
+        (
+            true,
+            "Terminals need a real Docker engine. You're viewing mock data.".to_string()
+        )
+    );
+    assert!(!mock_restart.0, "Restart still works on the mock engine");
 }
 
 #[test]

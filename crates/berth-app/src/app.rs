@@ -24,7 +24,7 @@ struct Boot {
 /// `BERTH_DATA_DIR` wins through `berth_sys::paths::data_dir`;
 /// `BERTH_MOCK=1` selects the mock world; a `BERTH_SCENE` frame is
 /// authoritative, so no live service runs under it (shots stay exact).
-fn boot_services(state: AppState) -> Boot {
+fn boot_services(mut state: AppState) -> Boot {
     let data_dir = berth_sys::paths::data_dir();
     if let Err(err) = std::fs::create_dir_all(&data_dir) {
         tracing::warn!(%err, dir = %data_dir.display(), "data dir create failed");
@@ -70,6 +70,9 @@ fn boot_services(state: AppState) -> Boot {
     };
     let scene = std::env::var_os("BERTH_SCENE").is_some();
     let mock = std::env::var("BERTH_MOCK").is_ok_and(|v| v == "1");
+    state
+        .backing
+        .set(crate::services::backing::Backing::at_boot(mock, scene));
     // A scene runs no live service, so its actions never reach a real binary.
     let (compose, colima) = action_runners(mock || scene);
     let actions = ActionsService::start(

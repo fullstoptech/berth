@@ -32,6 +32,7 @@ fn model_of(w: &World, name: &str, problems: &[berth_core::Problem]) -> ProjectR
         volumes: &[],
         networks: &[],
         pending: &w.pending,
+        backing: crate::services::backing::Backing::default(),
     };
     row_model(
         project,
@@ -295,6 +296,7 @@ fn projects_row_path_shows_home_as_tilde_for_any_home() {
         volumes: &[],
         networks: &[],
         pending: &std::collections::BTreeMap::new(),
+        backing: crate::services::backing::Backing::default(),
     };
     let m = row_model(project, &view, &[], home);
     assert_eq!(m.path_short, "~/Dev/…/shop-api");
@@ -331,6 +333,7 @@ fn unassigned_model(w: &World) -> ProjectRowModel {
         volumes: &[],
         networks: &[],
         pending: &w.pending,
+        backing: crate::services::backing::Backing::default(),
     };
     row_model(
         unassigned(w),
@@ -656,6 +659,7 @@ async fn projects_row_unassigned_stop_all_stops_each_running_member_and_nothing_
                 volumes: &[],
                 networks: &[],
                 pending: &view_pending,
+                backing: crate::services::backing::Backing::default(),
             },
             &[],
             std::path::Path::new("/Users/berth"),
@@ -728,6 +732,7 @@ async fn projects_row_unassigned_button_with_nothing_to_act_on_starts_nothing() 
             volumes: &[],
             networks: &[],
             pending: &std::collections::BTreeMap::new(),
+            backing: crate::services::backing::Backing::default(),
         },
         &[],
         std::path::Path::new("/Users/berth"),

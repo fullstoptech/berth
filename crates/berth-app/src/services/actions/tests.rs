@@ -946,6 +946,43 @@ fn container_subject(rig: &Rig, name: &str) -> Subject {
     Subject::Container(rig.container(name).id)
 }
 
+/// One place decides it: `disabled_reason` answers for every action the
+/// mock engine cannot do, under mock data only, ahead of any other reason.
+#[tokio::test]
+async fn actions_mock_data_disables_terminal_create_and_files_actions_and_a_live_engine_does_not() {
+    use crate::services::backing::Backing;
+    let rig = Rig::new(Mode::Normal);
+    let api = container_subject(&rig, "shop-api-api-1");
+    let set = |backing| {
+        let mut slot = rig.state.backing;
+        rig.dom.in_runtime(|| slot.set(backing));
+    };
+    let actions = [
+        "container.terminal",
+        "container.edit",
+        "container.duplicate",
+        "container.recreate_latest",
+    ];
+    set(Backing::Live);
+    for action in actions {
+        assert_eq!(reason(&rig, &api, action), None, "{action} live");
+    }
+    set(Backing::Mock);
+    for action in actions {
+        let why = reason(&rig, &api, action).unwrap_or_default();
+        assert!(
+            why.ends_with("need a real Docker engine. You're viewing mock data."),
+            "{action}: {why}"
+        );
+    }
+    assert_eq!(
+        reason(&rig, &api, "container.terminal").as_deref(),
+        Some("Terminals need a real Docker engine. You're viewing mock data.")
+    );
+    // What the mock engine can do stays enabled.
+    assert_eq!(reason(&rig, &api, "container.restart"), None);
+}
+
 #[tokio::test]
 async fn actions_disabled_reasons_for_containers_follow_their_state() {
     let rig = Rig::new(Mode::Normal);

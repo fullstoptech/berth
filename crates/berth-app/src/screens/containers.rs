@@ -887,7 +887,7 @@ fn row_buttons(c: &Container, view: &StateView<'_>) -> Vec<RowButton> {
                 },
                 "container.terminal",
             ),
-            crate::services::exec::terminal_disabled_reason(c.state),
+            crate::services::exec::terminal_disabled_reason(c.state, view.backing),
             false,
         ),
         button(
@@ -1144,7 +1144,6 @@ fn state_view_from<'a>(
 ) -> StateView<'a> {
     // Images, volumes and networks never change a container's reasons, so
     // they are peeked (no subscription) and left empty.
-    let _ = state;
     StateView {
         engines,
         containers,
@@ -1153,6 +1152,7 @@ fn state_view_from<'a>(
         volumes: &[],
         networks: &[],
         pending,
+        backing: *state.backing.peek(),
     }
 }
 

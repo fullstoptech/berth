@@ -504,6 +504,7 @@ fn images_delete_reason_uses_the_words_of_the_actions_service() {
         volumes: &[],
         networks: &[],
         pending: &pending,
+        backing: crate::services::backing::Backing::default(),
     };
     let from_service = crate::services::actions::disabled_reason(
         &berth_core::Subject::Image(used.id.clone()),

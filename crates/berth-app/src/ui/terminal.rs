@@ -1002,7 +1002,7 @@ pub fn TerminalPanel(container: berth_core::ContainerId) -> Element {
             }
         };
     };
-    let reason = terminal_disabled_reason(found.state);
+    let reason = terminal_disabled_reason(found.state, *state.backing.peek());
     let stopped = matches!(
         found.state,
         berth_core::ContainerState::Created | berth_core::ContainerState::Exited

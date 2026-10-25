@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use dioxus::prelude::*;
 
+use crate::services::backing::Backing;
 use crate::services::exec::{
     close_tab, docker_engine, open_container_terminal, open_docker_tab, open_project_terminals,
     project_terminals_reason, select_tab, use_terminal_view, ExecCore, Kind, Spec, TerminalView,
@@ -192,10 +193,19 @@ fn terminal_open_all_services_opens_one_tab_per_running_service() {
         .in_runtime(|| open_project_terminals(&mut state, &mut view, &core, &notebooks.id));
     assert_eq!(none, Err("Nothing is running in this project".to_string()));
     assert_eq!(
-        project_terminals_reason(&rig.world.containers, &notebooks).as_deref(),
+        project_terminals_reason(&rig.world.containers, &notebooks, Backing::Live).as_deref(),
         Some("Nothing is running in this project")
     );
-    assert_eq!(project_terminals_reason(&rig.world.containers, &shop), None);
+    assert_eq!(
+        project_terminals_reason(&rig.world.containers, &shop, Backing::Live),
+        None
+    );
+    // "Open terminals for all services" under mock data: refused with the
+    // reason, even for a project with services running.
+    assert_eq!(
+        project_terminals_reason(&rig.world.containers, &shop, Backing::Mock).as_deref(),
+        Some("Terminals need a real Docker engine. You're viewing mock data.")
+    );
     assert_eq!(rig.titles().len(), 3);
 }
 

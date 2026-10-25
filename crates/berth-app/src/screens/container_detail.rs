@@ -212,6 +212,7 @@ pub fn ContainerDetailPanel(
             volumes: &[],
             networks: &[],
             pending: &pending,
+            backing: *state.backing.peek(),
         };
         let mut shown = problem_views(&c, &problems, &containers, &view, now);
         if c.state == berth_core::ContainerState::Restarting && !offers_stop(&problems, &c) {
@@ -258,7 +259,7 @@ pub fn ContainerDetailPanel(
                 id_short: short_id(&c.id.0),
                 id_full: c.id.0.clone(),
                 buttons,
-                menu: header_menu(&c),
+                menu: header_menu(&c, *state.backing.peek()),
                 menu_open: *menu_open.read(),
                 dock,
                 ondock: move |side: berth_store::InspectorDock| {

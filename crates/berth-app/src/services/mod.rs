@@ -3,6 +3,7 @@
 
 pub mod actions;
 pub mod activity;
+pub mod backing;
 pub mod colima;
 pub mod compose;
 pub mod confirm;

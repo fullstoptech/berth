@@ -47,6 +47,7 @@ fn index(world: &World, selection: &Selection, scope: &EngineScope) -> Index {
             volumes: &world.volumes,
             networks: &world.networks,
             pending: &world.pending,
+            backing: crate::services::backing::Backing::default(),
         },
         selection,
         scope,

@@ -24,6 +24,9 @@ pub struct StateView<'a> {
     pub volumes: &'a [berth_core::Volume],
     pub networks: &'a [berth_core::Network],
     pub pending: &'a std::collections::BTreeMap<PendingKey, PendingState>,
+    /// What backs the engines: a mock cannot open terminals, create
+    /// containers or read files, and says so.
+    pub backing: crate::services::backing::Backing,
 }
 
 /// Run `f` over a [`StateView`] peeked from the signals (UI thread).
@@ -43,6 +46,7 @@ pub fn with_view<R>(state: &AppState, f: impl FnOnce(&StateView<'_>) -> R) -> R 
         volumes: &volumes,
         networks: &networks,
         pending: &pending,
+        backing: *state.backing.peek(),
     })
 }
 
@@ -59,6 +63,9 @@ pub(super) fn plural(n: usize, one: &str, many: &str) -> String {
 /// their tooltip (D34, brief §7.2). Pure: reads only `state`.
 #[must_use]
 pub fn disabled_reason(subject: &Subject, action: &str, state: &StateView<'_>) -> Option<String> {
+    if let Some(reason) = state.backing.unsupported_action(action) {
+        return Some(reason);
+    }
     if let Some(label) = state.pending.iter().find_map(|(key, value)| match value {
         PendingState::Running { label } if key.subject == *subject => Some(label.as_str()),
         _ => None,

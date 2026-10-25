@@ -600,6 +600,7 @@ pub fn ProjectsScreen() -> Element {
         volumes: &volumes,
         networks: &networks,
         pending: &pending,
+        backing: *state.backing.peek(),
     };
     let mut sorted_problems: Vec<berth_core::Problem> = problems.clone();
     sorted_problems.sort_by(|a, b| {

@@ -513,7 +513,11 @@ pub fn row_model(
         restart_reason,
         rebuild_reason,
         pull_reason,
-        terminals_reason: crate::services::exec::project_terminals_reason(view.containers, project),
+        terminals_reason: crate::services::exec::project_terminals_reason(
+            view.containers,
+            project,
+            view.backing,
+        ),
         pending,
         failure,
     }
