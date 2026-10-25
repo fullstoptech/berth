@@ -21,7 +21,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-12);
-  padding: var(--space-16) var(--gutter) var(--space-8);
+  padding: var(--space-12) var(--gutter) var(--space-8);
   flex: none;
 }
 .im-title {
@@ -53,7 +53,7 @@
   padding: 0 var(--space-12);
   font-size: var(--text-label-size);
 }
-.im-tab-pulling {
+.im-tabs .tab-note {
   margin-left: var(--space-4);
   color: var(--color-ink-muted);
   font-size: var(--text-caption-size);
@@ -74,13 +74,6 @@
 }
 .im-spacer {
   flex: 1;
-}
-.im-find-soon {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
 }
 
 /* Table: one grid for the header and the rows. Tracks that hold text, numbers

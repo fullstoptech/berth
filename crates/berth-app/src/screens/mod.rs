@@ -10,6 +10,7 @@ pub mod containers;
 pub(crate) mod css_tracks;
 pub mod engine_dashboard;
 pub mod engines;
+pub mod find_images;
 pub mod image_detail;
 pub mod images;
 pub mod logs;

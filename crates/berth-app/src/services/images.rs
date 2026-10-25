@@ -21,6 +21,10 @@ use berth_core::{
 
 use crate::services::actions::spawn_io;
 use crate::services::{activity, Services};
+use crate::state::{AppState, PendingKey, PendingState};
+
+/// The action id of a pull: the activity entry's and the pending key's.
+pub const PULL_ACTION: &str = "image.pull";
 
 // ---------------------------------------------------------------------
 // Pull progress (pure)
@@ -103,6 +107,9 @@ pub struct PullState {
     /// The last line that belongs to no layer ("Pulling from library/alpine").
     pub note: String,
     pub phase: PullPhase,
+    pub started: std::time::Instant,
+    /// Whole seconds left at the speed so far, once there is a speed.
+    pub eta_secs: Option<u64>,
 }
 
 /// What a pull is addressed by.
@@ -118,6 +125,8 @@ impl PullState {
             layers: Vec::new(),
             note: String::new(),
             phase: PullPhase::Running,
+            started: std::time::Instant::now(),
+            eta_secs: None,
         }
     }
 
@@ -191,6 +200,35 @@ impl PullState {
             // progress line said.
             layer.current = layer.total;
         }
+        self.update_eta();
+    }
+
+    /// The time left from the share done and the time spent, once at least
+    /// 1 % is done and two seconds have passed (before that it is a guess).
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
+    fn update_eta(&mut self) {
+        let elapsed = self.started.elapsed().as_secs_f64();
+        let (done, total) = self.bytes();
+        if total == 0 || done == 0 || elapsed < 2.0 {
+            return;
+        }
+        let left = elapsed * total.saturating_sub(done) as f64 / done as f64;
+        self.eta_secs = Some(left.round() as u64);
+    }
+
+    /// "12 s left", "3 min left"; `None` while there is no estimate.
+    #[must_use]
+    pub fn eta_label(&self) -> Option<String> {
+        let secs = self.eta_secs?;
+        Some(if secs < 90 {
+            format!("{secs} s left")
+        } else {
+            format!("{} min left", secs.div_ceil(60))
+        })
     }
 
     /// Bytes downloaded and bytes to download, over layers whose size is
@@ -649,6 +687,21 @@ impl ImageStore {
             };
             let _ = tx.send(end);
         });
+        // The tab's "1 pulling" reads the pending map (D23): one entry per
+        // reference while its pull runs, whoever started it.
+        let app = try_consume_context::<AppState>();
+        let pending_key = PendingKey {
+            subject: Subject::Image(reference.clone()),
+            action: PULL_ACTION,
+        };
+        if let Some(mut app) = app {
+            app.pending.write().insert(
+                pending_key.clone(),
+                PendingState::Running {
+                    label: format!("Pulling {reference}"),
+                },
+            );
+        }
         let store = *self;
         let store_services = services.clone();
         let engine = engine.clone();
@@ -674,12 +727,15 @@ impl ImageStore {
                 if finished {
                     let mut cancels = store.cancels;
                     cancels.write().remove(&key);
+                    if let Some(mut app) = app {
+                        app.pending.write().remove(&pending_key);
+                    }
                     if let Some(outcome) = outcome {
                         activity::record(
                             &store_services.store,
                             &activity::entry_for_action(
                                 engine.clone(),
-                                "image.pull",
+                                PULL_ACTION,
                                 Subject::Image(reference.clone()),
                                 reference.clone(),
                                 None,
@@ -819,7 +875,7 @@ enum PullMessage {
 }
 
 /// Run `work` on the I/O runtime and `then` with its result on the UI side.
-fn io<T: Send + 'static>(
+pub(crate) fn io<T: Send + 'static>(
     work: impl std::future::Future<Output = T> + Send + 'static,
     then: impl FnOnce(T) + 'static,
 ) {

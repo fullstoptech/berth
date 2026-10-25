@@ -58,6 +58,7 @@ scene_modules! {
     containers,
     dev,
     engines,
+    find_images,
     images,
     logs,
     networks,

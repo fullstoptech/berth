@@ -24,6 +24,7 @@ pub fn provide_screen_views(state: AppState) -> ScreenViews {
     let dock = dock(state);
     let details = details();
     let images = images();
+    find_images();
     engine_dashboard();
     ScreenViews {
         dock,
@@ -50,6 +51,10 @@ fn details() -> DetailStore {
 
 fn images() -> ImageStore {
     crate::services::images::provide_image_store()
+}
+
+fn find_images() {
+    crate::services::find_images::provide_find_store();
 }
 
 fn engine_dashboard() {

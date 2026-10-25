@@ -51,6 +51,7 @@ macro_rules! tier_tables {
 
 tier_tables! {
     containers,
+    find_images,
     images,
     networks,
     projects,
