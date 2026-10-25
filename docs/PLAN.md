@@ -212,7 +212,8 @@ Versions checked with `cargo search` / `cargo info` on 2026-10-24. `[workspace.d
 | `anyhow` | 1.0 | | berth-app main, plugin binaries |
 | `tracing`, `tracing-subscriber`, `tracing-appender` | 0.1.44 / 0.3.23 / 0.2.5 | `env-filter`, `json` | all |
 | `uuid` | 1.29 | `v7`, `serde` | core, assistant, app |
-| `chrono` | 0.4.45 | `serde` | core |
+| `getrandom` | 0.3 | | rules (`generate_password`; already in Cargo.lock; gap review 2026-10-25) |
+| `chrono` | 0.4.45 | `serde` | core, rules (gap review 2026-10-25) |
 | `url` | 2.5 | `serde` | core |
 | `bytesize` | 2.7 | `serde` | core |
 | `sha2`, `hex` | 0.11 / 0.4 | | core, rules |
@@ -648,7 +649,7 @@ pub struct GenerationPlan {
 }
 impl GenerationPlan { pub fn effect(&self) -> EffectSummary; }  // "Adds 3 files. Writes nothing outside this folder."
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum FoundKind { Compose, Dockerfile, Env { keys: u32 }, EnvExample, DockerIgnore }
+pub enum FoundKind { Compose, Dockerfile { from: Option<String> }, Env { keys: u32 }, EnvExample, DockerIgnore } // Dockerfile.from: the "Found" list shows `FROM node:22-alpine` (gap review 2026-10-25)
 pub struct FoundFile { pub kind: FoundKind, pub path: std::path::PathBuf }
 pub enum StackGuess {
     Node { pm: String, framework: Option<String>, version: Option<String> },
@@ -731,6 +732,10 @@ pub enum SysError {
     #[error("{program} timed out after {secs} s")] Timeout { program: String, secs: u64 },
     #[error("cancelled")] Cancelled,
     #[error(transparent)] Io(#[from] std::io::Error),
+    #[error("cannot read the docker run command: {0}")] RunParse(String),
+    #[error("service {0} is not in the compose file")] NoService(String),
+    #[error("service {0} already exists")] ServiceExists(String),
+    #[error("service {service} does not publish port {port}")] NoPort { service: String, port: u16 },
 }
 
 #[derive(Debug, Clone)]
@@ -1077,17 +1082,17 @@ pub mod detect {
     #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)] pub struct FolderMarkers { pub compose: bool, pub dockerfile: bool }
 }
 pub mod recipes {
-    pub struct RecipeOptions { pub ports: std::collections::BTreeMap<String, u16>, pub node_version: Option<String>, pub services: Vec<berth_core::ServiceKind> }
+    #[derive(Debug, Clone, PartialEq, Eq)] pub struct RecipeOptions { pub ports: std::collections::BTreeMap<String, u16>, pub node_version: Option<String>, pub services: Vec<berth_core::ServiceKind> }
     pub fn options_for(d: &berth_core::Detection, taken_ports: &[u16]) -> RecipeOptions;
     /// Dockerfile (when missing), .dockerignore (when missing), compose.yaml, .env additions. Never overwrites a file the folder has.
-    pub fn plan(d: &berth_core::Detection, o: &RecipeOptions) -> berth_core::GenerationPlan;
-    pub fn compose_for_dockerfile(d: &berth_core::Detection, o: &RecipeOptions) -> berth_core::GenerationPlan;
+    pub fn plan(d: &berth_core::Detection, o: &RecipeOptions) -> Result<berth_core::GenerationPlan, RulesError>;   // reads/hashes .env for Modify diffs
+    pub fn compose_for_dockerfile(d: &berth_core::Detection, o: &RecipeOptions) -> Result<berth_core::GenerationPlan, RulesError>;
 }
 pub mod templates {
     pub fn built_in() -> Vec<berth_core::Template>;                                  // D84
     pub fn render(t: &berth_core::Template, inputs: &std::collections::BTreeMap<String, String>) -> (String, Vec<(String, String)>);
     pub fn generate_password() -> String;                                            // 24 chars, [A-Za-z0-9]
-    pub fn add_service_plan(root: &std::path::Path, compose_text: &str, env_text: Option<&str>, t: &berth_core::Template,
+    pub fn add_service_plan(root: &std::path::Path, compose_rel: &std::path::Path, compose_text: &str, env_text: Option<&str>, t: &berth_core::Template,   // compose_rel: the file may be docker-compose.yml
                             inputs: &std::collections::BTreeMap<String, String>) -> Result<berth_core::GenerationPlan, RulesError>;
 }
 pub mod compose_edit {   // D32: text edits that keep comments
@@ -1096,13 +1101,15 @@ pub mod compose_edit {   // D32: text edits that keep comments
     pub fn add_env_lines(env_text: Option<&str>, lines: &[(String, String)]) -> String;
     pub fn service_names(text: &str) -> Result<Vec<String>, RulesError>;
     pub fn referenced_vars(text: &str) -> Vec<String>;                               // ${VAR} and $VAR
+    pub fn add_named_volume(text: &str, name: &str) -> Result<String, RulesError>;   // top-level volumes: entry for a VolumeName input
+    pub fn set_service_key(text: &str, service: &str, key: &str, value: &str) -> Result<String, RulesError>; // OOM mem_limit, platform: linux/arm64 fixes
 }
 pub mod diff {
     pub fn file_diff(rel_path: &std::path::Path, old: Option<&str>, new: Option<&str>) -> berth_core::FileDiff;  // similar, 3 lines context
     pub fn sha256(text: &str) -> String;
 }
 pub mod write {
-    pub struct WriteReport { pub written: Vec<std::path::PathBuf> }
+    #[derive(Debug)] pub struct WriteReport { pub written: Vec<std::path::PathBuf> }
     /// D31: same-folder temp file + rename; refuses outside root and on hash mismatch; writes nothing if any check fails.
     pub fn apply(plan: &berth_core::GenerationPlan) -> Result<WriteReport, RulesError>;
 }
@@ -1114,9 +1121,14 @@ pub mod run_to_compose {
 }
 pub mod problems {
     pub struct ContainerFacts { pub container: berth_core::Container, pub detail: Option<berth_core::ContainerDetail>, pub error_lines: Vec<String>, pub last_lines: Vec<String> }
-    pub struct ProjectFacts { pub project: berth_core::Project, pub compose_text: Option<String>, pub env_keys: Vec<String>, pub compose_error: Option<String> }
+    pub struct ProjectFacts {
+        pub project: berth_core::Project, pub compose_text: Option<String>,
+        pub env_text: Option<String>,      // replaces env_keys: the EnvVarMissing fix hashes and diffs the old .env
+        pub compose_error: Option<String>,
+        pub failure_lines: Vec<String>,    // <= 20 error lines of the last failed compose command (D82): port clash, name in use, network, build, dependency, pull denied
+    }
     pub struct ProblemInput {
-        pub now: DateTime<Utc>, pub engine: berth_core::Engine, pub host_arch: berth_core::Arch,
+        pub now: chrono::DateTime<chrono::Utc>, pub engine: berth_core::Engine,   // one engine per call; the service calls evaluate per engine (D27) pub host_arch: berth_core::Arch,
         pub containers: Vec<ContainerFacts>, pub projects: Vec<ProjectFacts>,
         pub disk: Option<berth_core::DiskUsage>, pub taken_ports: Vec<u16>,
     }
