@@ -46,7 +46,18 @@ pub enum Overlay {
     AddEngine,
     AddRegistry,
     BuildImage,
-    AddService(berth_core::ProjectId),
+    /// Opens from Templates or Find images without a project, or from a project (AD33).
+    AddService(AddServiceSeed),
+    /// Two checkboxes: delete the folder's containers, remove the project's volumes (AD33).
+    DeleteProject(berth_core::ProjectId),
+}
+/// What the Add service sheet starts from: the project it adds to (none when opened from Templates or Find
+/// images), a built-in or custom template id, or an image reference (AD33).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AddServiceSeed {
+    pub project: Option<berth_core::ProjectId>,
+    pub template: Option<String>,
+    pub image: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum EngineScope {
@@ -248,6 +259,30 @@ mod tests {
         assert!(system.contains("delete document.documentElement.dataset.theme"));
         assert!(system.contains("delete document.documentElement.dataset.density"));
         assert!(system.contains("removeProperty('--text-scale')"));
+    }
+
+    #[test]
+    fn add_service_overlays_with_different_seeds_are_different_overlays() {
+        let none = Overlay::AddService(AddServiceSeed::default());
+        let from_template = Overlay::AddService(AddServiceSeed {
+            template: Some("postgres".to_string()),
+            ..AddServiceSeed::default()
+        });
+        let in_project = Overlay::AddService(AddServiceSeed {
+            project: Some(berth_core::ProjectId("p1".to_string())),
+            template: Some("postgres".to_string()),
+            image: None,
+        });
+        assert_ne!(none, from_template);
+        assert_ne!(from_template, in_project);
+        assert_eq!(
+            Overlay::DeleteProject(berth_core::ProjectId("p1".to_string())),
+            Overlay::DeleteProject(berth_core::ProjectId("p1".to_string()))
+        );
+        assert_ne!(
+            Overlay::DeleteProject(berth_core::ProjectId("p1".to_string())),
+            Overlay::DeleteProject(berth_core::ProjectId("p2".to_string()))
+        );
     }
 
     #[test]

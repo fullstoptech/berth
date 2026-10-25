@@ -83,6 +83,7 @@ fn overlay_title(overlay: &Overlay) -> &'static str {
         Overlay::AddRegistry => "Add registry",
         Overlay::BuildImage => "Build image",
         Overlay::AddService(_) => "Add service",
+        Overlay::DeleteProject(_) => "Delete project",
     }
 }
 
