@@ -30,6 +30,16 @@ if [ "$REGISTRY" = 1 ]; then
 fi
 
 if [ "$BROKEN" = 1 ]; then
-  # The broken set is expected to fail in assorted ways; bring up what comes up.
-  compose fixtures/compose/berthfx-broken berthfx-broken up -d || true
+  # The broken set fails in assorted ways, and compose aborts a whole `up` when one
+  # service cannot be made (the image that does not exist). So bring each service up
+  # on its own and keep going; the failures are the point of the set.
+  broken=fixtures/compose/berthfx-broken
+  # Start from nothing: a re-run would otherwise restart the port clash's container, and
+  # Docker lets that second start through without the port, so the clash would vanish.
+  compose "$broken" berthfx-broken down -v --remove-orphans >/dev/null 2>&1 || true
+  for svc in $(compose "$broken" berthfx-broken config --services); do
+    if ! compose "$broken" berthfx-broken up -d --no-deps "$svc"; then
+      echo "fx-up.sh: berthfx-broken/$svc did not come up (expected for a broken fixture)" >&2
+    fi
+  done
 fi

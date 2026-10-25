@@ -8,6 +8,9 @@ use super::support::{caps, explain_fix, re, Ctx, Re};
 
 static MISSING: Re = LazyLock::new(|| re(r#"bind source path does not exist:?\s*['"]?([^\s'"]+)"#));
 
+/// Compose prefixes an error with the service it came from: `service:badmount:1 Error response ...`.
+static SERVICE: Re = LazyLock::new(|| re(r"\bservice:([A-Za-z0-9._-]+):\d+"));
+
 pub(super) fn check(ctx: &Ctx<'_>) -> Vec<Problem> {
     let mut out = Vec::new();
     for source in ctx.sources() {
@@ -21,6 +24,14 @@ pub(super) fn check(ctx: &Ctx<'_>) -> Vec<Problem> {
                 continue;
             }
             seen.push(path.clone());
+            let service = source
+                .container
+                .and_then(|cf| cf.container.service.clone())
+                .or_else(|| caps(&SERVICE, text).map(|s| s[1].to_string()));
+            let whose = service.map_or_else(
+                || "A volume of this service".to_string(),
+                |s| format!("A volume of the service {s}"),
+            );
             out.push(Problem {
                 evidence: ctx.evidence([text]),
                 fixes: vec![explain_fix(format!(
@@ -32,7 +43,7 @@ pub(super) fn check(ctx: &Ctx<'_>) -> Vec<Problem> {
                     source.subject.clone(),
                     format!("The folder {path} does not exist"),
                     format!(
-                        "A volume of this service shares the folder {path} from this Mac, but \
+                        "{whose} shares the folder {path} from this Mac, but \
                          that folder is not there, and the setting says not to create it. \
                          Create the folder, or change the path in the Compose file to one that \
                          exists. Nothing was started."

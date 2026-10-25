@@ -703,6 +703,26 @@ fn problems_bind_missing_from_compose_output_belongs_to_the_project() {
 }
 
 #[test]
+fn problems_bind_missing_from_compose_output_names_the_service() {
+    let mut i = input();
+    i.projects.push(broken_project(
+        "bind_missing",
+        &[
+            " Container berthfx-broken-badmount-1 Creating".to_string(),
+            " service:badmount:1 Error response from daemon: invalid mount config for type \"bind\": bind source path does not exist: /nonexistent-berthfx-path ".to_string(),
+        ],
+    ));
+
+    let p = only(evaluate(&i));
+
+    assert!(
+        p.explanation.contains("badmount"),
+        "the card does not say which service: {}",
+        p.explanation
+    );
+}
+
+#[test]
 fn problems_bind_missing_is_raised_once_when_both_sources_say_it() {
     let mut i = input();
     i.containers.push(with_inspect(

@@ -1,10 +1,10 @@
 //! Live problem rules against the broken fixture set (P5-T7 done-when). Run with:
 //!   scripts/fx-up.sh --broken && scripts/it.sh -p berth-rules problems_it
 //!
-//! Facts come from `docker inspect`, `docker logs` and one `docker compose create` of the
-//! `berthfx-broken` project (it only creates what is missing and reports what cannot be made:
+//! Facts come from `docker inspect`, `docker logs` and one `docker compose create` per service of the
+//! `berthfx-broken` project (it creates what is missing and reports what cannot be made:
 //! the image that does not exist, the folder that does not exist). Only containers of that
-//! project are read; nothing is started, stopped or removed. Inspect output holds env values,
+//! project are read; nothing is started or stopped. Inspect output holds env values,
 //! so nothing of it is printed.
 
 // Helpers sit outside the #[test] fn, so clippy.toml's test allowance does not reach them.
@@ -211,6 +211,40 @@ fn engine() -> Engine {
 }
 
 fn gather() -> ProblemInput {
+    let folder = broken_dir().canonicalize().expect("fixture folder");
+    let project_id = ProjectId(format!("it-{PROJECT}"));
+    let compose = folder.join("compose.yaml");
+    // Compose stops a whole `create` at the first service it cannot make (the pull of the
+    // image that does not exist), so the folder that does not exist would never be
+    // reported. Create each service on its own, as `scripts/fx-up.sh --broken` does, and never
+    // recreate: a container that never started (the port clash) holds the engine's error.
+    let compose_args = [
+        "compose",
+        "--project-directory",
+        &folder.to_string_lossy(),
+        "-f",
+        &compose.to_string_lossy(),
+        "-p",
+        PROJECT,
+    ];
+    let (_, services, _) = docker(&[&compose_args[..], &["config", "--services"]].concat());
+    let mut create_err = String::new();
+    for service in services.split_whitespace() {
+        let (_, _, err) =
+            docker(&[&compose_args[..], &["create", "--no-recreate", service]].concat());
+        create_err.push_str(&err);
+    }
+    let failure_lines: Vec<String> = create_err
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(ToString::to_string)
+        .rev()
+        .take(20)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
     let (ok, ids, err) = docker(&[
         "ps",
         "-aq",
@@ -227,30 +261,6 @@ fn gather() -> ProblemInput {
     let (ok, json, err) = docker(&args);
     assert!(ok, "docker inspect failed: {err}");
     let inspected: Vec<Value> = serde_json::from_str(&json).expect("inspect json");
-
-    let folder = broken_dir().canonicalize().expect("fixture folder");
-    let project_id = ProjectId(format!("it-{PROJECT}"));
-    let compose = folder.join("compose.yaml");
-    let (_, _, create_err) = docker(&[
-        "compose",
-        "--project-directory",
-        &folder.to_string_lossy(),
-        "-f",
-        &compose.to_string_lossy(),
-        "-p",
-        PROJECT,
-        "create",
-    ]);
-    let failure_lines: Vec<String> = create_err
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(ToString::to_string)
-        .rev()
-        .take(20)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
 
     ProblemInput {
         now: chrono::Utc::now(),
