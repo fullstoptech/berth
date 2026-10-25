@@ -82,10 +82,8 @@ fn assert_default_rows(html: &str) {
     }
     assert!(html.contains("Filter projects"), "{html}");
     assert!(html.contains("Open folder"), "{html}");
-    assert!(
-        html.contains("data-tooltip=\"Folder browser not built yet\""),
-        "{html}"
-    );
+    assert!(!html.contains("Folder browser not built yet"), "{html}");
+    assert!(!html.contains("btn-primary size-md\" disabled"), "{html}");
     // One row per project, failing first, unreachable engine last.
     let names = [
         "shop-api",
@@ -185,10 +183,7 @@ fn projects_scene_empty_shows_the_empty_state_and_count_zero() {
         html.contains("aria-label=\"Open a folder to see its containers here\""),
         "{html}"
     );
-    assert!(
-        html.contains("data-tooltip=\"Folder browser not built yet\""),
-        "{html}"
-    );
+    assert!(!html.contains("Folder browser not built yet"), "{html}");
     // No table, filter or segmented control without projects.
     assert!(!html.contains("project-row"), "{html}");
     assert!(!html.contains("Filter projects"), "{html}");

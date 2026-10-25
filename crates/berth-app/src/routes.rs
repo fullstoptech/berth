@@ -128,6 +128,7 @@ pub fn overlay(overlay: &Overlay) -> Element {
         Overlay::DeleteProject(id) => rsx! {
             crate::sheets::delete_project::DeleteProjectSheet { key: "{id.0}", id: id.clone() }
         },
+        Overlay::OpenFolder => rsx! { crate::sheets::open_folder::OpenFolderSheet {} },
         other => placeholder(other),
     }
 }

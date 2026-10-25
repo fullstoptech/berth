@@ -7,4 +7,5 @@ pub mod create_volume;
 pub mod delete_project;
 pub mod edit_recreate;
 pub mod edit_resources;
+pub mod open_folder;
 pub mod run;

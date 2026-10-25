@@ -14,6 +14,7 @@ pub mod engines;
 pub mod exec;
 pub mod files;
 pub mod find_images;
+pub mod folders;
 pub mod group_ops;
 pub mod images;
 pub mod logs;

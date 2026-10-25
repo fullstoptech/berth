@@ -63,6 +63,7 @@ scene_modules! {
     images,
     logs,
     networks,
+    open_folder,
     palette,
     project_detail,
     projects,

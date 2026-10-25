@@ -25,10 +25,23 @@ pub(crate) const PROJECTS_CSS: &str = concat!(
 /// flashes it (brief 7.3 "loading: skeleton rows after 300 ms").
 pub const SKELETON_DELAY_MS: u64 = 300;
 
-/// Copy that the brief fixes for the empty state (7.3) and the tooltip of
-/// the disabled primary button until P5-T4 builds the folder browser.
+/// Copy that the brief fixes for the empty state (7.3).
 pub const EMPTY_LABEL: &str = "Open a folder to see its containers here";
-pub const OPEN_FOLDER_UNAVAILABLE: &str = "Folder browser not built yet";
+
+/// The Open folder buttons: the folder browser sheet (⌘O does the same).
+fn open_folder_browser(state: &mut AppState) {
+    let open = state
+        .overlays
+        .peek()
+        .iter()
+        .any(|o| matches!(o, crate::state::Overlay::OpenFolder));
+    if !open {
+        state
+            .overlays
+            .write()
+            .push(crate::state::Overlay::OpenFolder);
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectFilter {
@@ -456,6 +469,7 @@ fn EngineStoppedBanner(engine: berth_core::Engine) -> Element {
 /// slot today, so it renders centred.
 #[component]
 fn EmptyBody(#[props(default)] first_run: Option<Element>) -> Element {
+    let state = try_use_context::<AppState>();
     let class = if first_run.is_some() {
         "projects-empty has-first-run"
     } else {
@@ -472,8 +486,11 @@ fn EmptyBody(#[props(default)] first_run: Option<Element>) -> Element {
                 Button {
                     label: "Open folder",
                     variant: ButtonVariant::Primary,
-                    disabled: true,
-                    disabled_reason: OPEN_FOLDER_UNAVAILABLE.to_string(),
+                    onclick: move |_| {
+                        if let Some(mut state) = state {
+                            open_folder_browser(&mut state);
+                        }
+                    },
                 }
                 div { class: "drop-zone", role: "note",
                     span { "Drop a folder here" }
@@ -509,6 +526,7 @@ fn EngineStoppedBody(engine: berth_core::Engine) -> Element {
 fn Header(total: usize, show_controls: bool, counts: [usize; 4], matched: usize) -> Element {
     // The filter lives in the screen's signals so it survives a rebuild of
     // the header; `rev` remounts the uncontrolled field to clear it (D59).
+    let mut state = use_context::<AppState>();
     let mut query = use_context::<Signal<String>>();
     let mut rev = use_context::<Signal<u32>>();
     let mut filter = use_context::<Signal<ProjectFilter>>();
@@ -552,8 +570,7 @@ fn Header(total: usize, show_controls: bool, counts: [usize; 4], matched: usize)
                         label: "Open folder",
                         variant: ButtonVariant::Primary,
                         kbd_letter: Some("O".to_string()),
-                        disabled: true,
-                        disabled_reason: OPEN_FOLDER_UNAVAILABLE.to_string(),
+                        onclick: move |_| open_folder_browser(&mut state),
                     }
                 }
             }

@@ -9,6 +9,7 @@ pub mod bottom_panel;
 pub mod bulk_bar;
 pub mod button;
 pub mod checkbox;
+pub mod column_browser;
 pub mod confirm_dialog;
 pub mod container_row;
 pub mod dock;
