@@ -21,10 +21,13 @@ thiserror.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
+berth-registry.workspace = true
 insta.workspace = true
 pretty_assertions.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+tokio.workspace = true
+url.workspace = true
 
 [lints]
 workspace = true
