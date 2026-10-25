@@ -48,31 +48,11 @@ pub fn container_action_id(action: &ContainerAction) -> &'static str {
     }
 }
 
-/// The label shown while an action runs (D34).
+/// The label shown while an action runs (D34); each area lists its own in
+/// `actions/<area>.rs`.
 #[must_use]
 pub fn pending_label(action_id: &str) -> &'static str {
-    match action_id {
-        "container.start" | "project.start" | "engine.start" => "Starting…",
-        "container.stop" | "project.stop" | "engine.stop" => "Stopping…",
-        "container.restart" | "project.restart" | "engine.restart" => "Restarting…",
-        "container.pause" => "Pausing…",
-        "container.resume" => "Resuming…",
-        "container.kill" => "Killing…",
-        "container.delete" | "project.delete" => "Deleting…",
-        "volume.create" => "Creating…",
-        "container.rename" => "Renaming…",
-        "network.create" => "Creating…",
-        "network.delete" | "image.delete" | "volume.delete" => "Deleting…",
-        "network.connect_container" => "Connecting…",
-        "network.disconnect" => "Disconnecting…",
-        "container.apply_limits" => "Applying…",
-        "container.recreate" => "Recreating…",
-        "container.duplicate" => "Duplicating…",
-        "project.rebuild" => "Rebuilding…",
-        "project.pull_images" => "Pulling…",
-        "engine.edit_resources" => "Applying…",
-        _ => "Working…",
-    }
+    crate::actions::pending_label(action_id)
 }
 
 // ---------------------------------------------------------------------

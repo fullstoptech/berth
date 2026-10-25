@@ -51,10 +51,6 @@ impl Modifiers {
         shift: true,
         alt: false,
     };
-
-    fn any(&self) -> bool {
-        self.meta || self.ctrl || self.shift || self.alt
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -80,17 +76,139 @@ pub struct KeyContext {
     pub selection: SelectionKind,
 }
 
-const SECTIONS: [&str; 9] = [
-    "section.projects",
-    "section.containers",
-    "section.logs",
-    "section.images",
-    "section.volumes",
-    "section.networks",
-    "section.templates",
-    "section.engines",
-    "section.activity",
-];
+/// Which modifier keys a chord needs. `shift` and `alt` of `None` mean
+/// either state is fine.
+#[derive(Debug, Clone, Copy)]
+pub struct ModMatch {
+    meta: bool,
+    ctrl: bool,
+    shift: Option<bool>,
+    alt: Option<bool>,
+}
+
+impl ModMatch {
+    fn matches(self, mods: Modifiers) -> bool {
+        self.meta == mods.meta
+            && self.ctrl == mods.ctrl
+            && self.shift.is_none_or(|shift| shift == mods.shift)
+            && self.alt.is_none_or(|alt| alt == mods.alt)
+    }
+}
+
+/// One key press an action answers to. Areas list their chords next to their
+/// `ActionDef`s (`actions/<area>.rs`); [`map_key`] finds the first chord that
+/// matches. Use the constructors, then [`Chord::when`] for a context.
+#[derive(Clone, Copy)]
+pub struct Chord {
+    /// The `KeyboardEvent.key` strings that match ("k" and "K").
+    pub keys: &'static [&'static str],
+    pub id: ActionId,
+    mods: ModMatch,
+    /// Fires while a text input has focus (⌘ chords do; bare keys never do).
+    typing: bool,
+    when: fn(&KeyContext) -> bool,
+}
+
+fn always(_: &KeyContext) -> bool {
+    true
+}
+
+impl Chord {
+    const fn new(
+        keys: &'static [&'static str],
+        id: ActionId,
+        mods: ModMatch,
+        typing: bool,
+    ) -> Self {
+        Self {
+            keys,
+            id,
+            mods,
+            typing,
+            when: always,
+        }
+    }
+
+    /// ⌘ plus the key, nothing else held.
+    pub const fn cmd(keys: &'static [&'static str], id: ActionId) -> Self {
+        let mods = ModMatch {
+            meta: true,
+            ctrl: false,
+            shift: Some(false),
+            alt: Some(false),
+        };
+        Self::new(keys, id, mods, true)
+    }
+
+    /// ⌘⇧ plus the key.
+    pub const fn cmd_shift(keys: &'static [&'static str], id: ActionId) -> Self {
+        let mods = ModMatch {
+            meta: true,
+            ctrl: false,
+            shift: Some(true),
+            alt: Some(false),
+        };
+        Self::new(keys, id, mods, true)
+    }
+
+    /// ⌃ plus the key, with or without Shift and Alt.
+    pub const fn ctrl(keys: &'static [&'static str], id: ActionId) -> Self {
+        let mods = ModMatch {
+            meta: false,
+            ctrl: true,
+            shift: None,
+            alt: None,
+        };
+        Self::new(keys, id, mods, true)
+    }
+
+    /// A bare key with no modifier. Never fires while typing.
+    pub const fn bare(keys: &'static [&'static str], id: ActionId) -> Self {
+        let mods = ModMatch {
+            meta: false,
+            ctrl: false,
+            shift: Some(false),
+            alt: Some(false),
+        };
+        Self::new(keys, id, mods, false)
+    }
+
+    /// A bare key that may carry Shift ("j" and "J"). Never fires while typing.
+    pub const fn bare_either_shift(keys: &'static [&'static str], id: ActionId) -> Self {
+        let mods = ModMatch {
+            meta: false,
+            ctrl: false,
+            shift: None,
+            alt: Some(false),
+        };
+        Self::new(keys, id, mods, false)
+    }
+
+    /// A function key with Shift held or not; it fires from a text input.
+    pub const fn function(keys: &'static [&'static str], shift: bool, id: ActionId) -> Self {
+        let mods = ModMatch {
+            meta: false,
+            ctrl: false,
+            shift: Some(shift),
+            alt: Some(false),
+        };
+        Self::new(keys, id, mods, true)
+    }
+
+    /// Only while `when` holds.
+    #[must_use]
+    pub const fn when(mut self, when: fn(&KeyContext) -> bool) -> Self {
+        self.when = when;
+        self
+    }
+
+    fn matches(&self, key: &str, mods: Modifiers, ctx: &KeyContext) -> bool {
+        self.keys.contains(&key)
+            && self.mods.matches(mods)
+            && (self.typing || !ctx.in_text_input)
+            && (self.when)(ctx)
+    }
+}
 
 /// Map one key press to an action, or `None` when Berth does not handle it
 /// (the caller must not `preventDefault` then).
@@ -114,88 +232,10 @@ pub fn map_key(key: &str, mods: Modifiers, ctx: KeyContext) -> Option<ActionId> 
         return None;
     }
 
-    // ⌃` toggles the bottom panel, even from a text input.
-    if mods.ctrl && !mods.meta && key == "`" {
-        return Some("global.toggle_bottom_panel");
-    }
-
-    if mods.meta && !mods.ctrl && !mods.alt {
-        if mods.shift {
-            return match key {
-                // ⌘⇧= types "+" on most layouts; same as ⌘+.
-                "+" | "=" => Some("view.text_bigger"),
-                "L" | "l" => Some("global.logs_section"),
-                "D" | "d" => Some("view.dock_inspector"),
-                "." if ctx.in_folder_browser => Some("folders.toggle_hidden"),
-                _ => None,
-            };
-        }
-        return match key {
-            "k" | "K" => Some("global.palette"),
-            "f" | "F" => Some("global.focus_filter"),
-            "o" | "O" => Some("global.open_folder"),
-            "n" | "N" => Some("global.new_project"),
-            "t" | "T" => Some("container.terminal"),
-            "l" | "L" => Some("container.logs"),
-            "e" | "E" => Some("container.edit"),
-            "r" | "R" => Some("container.restart"),
-            "," => Some("global.settings"),
-            "=" | "+" => Some("view.text_bigger"),
-            "-" | "_" => Some("view.text_smaller"),
-            "0" => Some("view.text_reset"),
-            "." => {
-                if ctx.in_assistant {
-                    Some("assistant.stop_turn") // D77
-                } else {
-                    match ctx.selection {
-                        SelectionKind::Container => Some("container.start_stop"),
-                        SelectionKind::Project => Some("project.start_stop"),
-                        SelectionKind::Engine => Some("engine.start_stop"),
-                        _ => None,
-                    }
-                }
-            }
-            digit if digit.len() == 1 => digit
-                .chars()
-                .next()
-                .and_then(|c| c.to_digit(10))
-                .and_then(|d| usize::try_from(d).ok())
-                .and_then(|d| d.checked_sub(1))
-                .and_then(|i| SECTIONS.get(i).copied()),
-            _ => None,
-        };
-    }
-
-    if key == "F8" && !mods.meta && !mods.ctrl && !mods.alt {
-        if !ctx.in_log_view {
-            return None;
-        }
-        return Some(if mods.shift {
-            "logs.prev_error"
-        } else {
-            "logs.next_error"
-        });
-    }
-
-    // Bare keys never fire while typing.
-    if ctx.in_text_input {
-        return None;
-    }
-
-    match key {
-        "Backspace" if !mods.any() => match ctx.selection {
-            SelectionKind::Container => Some("container.delete"),
-            SelectionKind::Project => Some("project.delete"),
-            SelectionKind::Image => Some("image.delete"),
-            SelectionKind::Volume => Some("volume.delete"),
-            SelectionKind::Network => Some("network.delete"),
-            SelectionKind::None | SelectionKind::Engine => None,
-        },
-        " " if !mods.any() => Some("global.toggle_inspector"),
-        "j" | "J" if !mods.meta && !mods.ctrl && !mods.alt => Some("global.select_next"),
-        "k" | "K" if !mods.meta && !mods.ctrl && !mods.alt => Some("global.select_prev"),
-        _ => None,
-    }
+    // Everything else is a chord an area registered next to its actions.
+    crate::actions::chords()
+        .find(|chord| chord.matches(key, mods, &ctx))
+        .map(|chord| chord.id)
 }
 
 /// The context the root handler derives from state. `in_text_input` stays
@@ -232,86 +272,13 @@ pub fn context_from_state(state: &AppState) -> KeyContext {
     }
 }
 
-/// Apply the navigation/chrome subset of actions straight to state.
-/// Effectful actions (restart, delete, terminal…) dispatch through the
-/// actions service from P2-T5 on; until then they are still handled keys
-/// (so the webview never reloads on ⌘R), they just change nothing yet.
+/// Run the handler the action's area registered (`actions/<area>.rs`).
+/// Actions without one are handled keys that change nothing (so the
+/// webview never reloads on ⌘R).
 pub fn dispatch(state: &mut AppState, action: ActionId) {
-    match action {
-        "global.palette" => state.overlays.write().push(Overlay::Palette),
-        "overlay.close" => {
-            state.overlays.write().pop();
-        }
-        "global.open_folder" => state.overlays.write().push(Overlay::OpenFolder),
-        "global.new_project" => state.overlays.write().push(Overlay::NewProject),
-        "global.settings" => state.section.set(Section::Settings),
-        "view.dock_inspector" => crate::ui::dock::flip_dock(state),
-        "view.text_bigger" => step_text_scale(state, crate::text_scale::Step::Bigger),
-        "view.text_smaller" => step_text_scale(state, crate::text_scale::Step::Smaller),
-        "view.text_reset" => step_text_scale(state, crate::text_scale::Step::Reset),
-        "global.logs_section" | "section.logs" => state.section.set(Section::Logs),
-        "section.projects" => state.section.set(Section::Projects),
-        "section.containers" => state.section.set(Section::Containers),
-        "section.images" => state.section.set(Section::Images),
-        "section.volumes" => state.section.set(Section::Volumes),
-        "section.networks" => state.section.set(Section::Networks),
-        "section.templates" => state.section.set(Section::Templates),
-        "section.engines" => state.section.set(Section::Engines),
-        "section.activity" => state.section.set(Section::Activity),
-        "global.toggle_bottom_panel" => {
-            let mut bottom = state.bottom.write();
-            bottom.open = !bottom.open;
-        }
-        "container.logs" => {
-            let mut bottom = state.bottom.write();
-            bottom.open = true;
-            bottom.tab = BottomTab::Logs;
-        }
-        // ⌘T and the row's Terminal button (P3-T6).
-        "container.terminal" => crate::services::exec::dispatch_open(state),
-        // F8 and Shift+F8 reach the active log view (P3-T2).
-        "logs.next_error" | "logs.prev_error" => crate::ui::log_view::dispatch(action),
-        // ⌘E opens the edit and recreate sheet of the selected container (P3-T7).
-        "container.edit" => crate::sheets::edit_recreate::open_for_selection(state),
-        // ⌫ on the selected containers asks first (D33, P2-T8).
-        "container.delete" | "bulk.delete" => open_delete_for_selection(state),
-        // ⌫ on the selected network asks first, unless it is built in (P4-T5).
-        "network.delete" => crate::screens::networks::delete_selected(state),
-        // ⌫ on the selected volume asks for its name first (P4-T4).
-        "volume.delete" => crate::screens::volumes::open_delete_for_selection(state),
-        // ⌫ on the selected image asks first (D25a, P4-T1).
-        "image.delete" => crate::screens::images::delete_selected(state),
-        // J/K and Space act on the visible list (P2-T7).
-        "global.select_next" | "global.select_prev" | "global.toggle_inspector" => {
-            crate::screens::containers::dispatch(state, action);
-        }
-        _ => {}
+    if let Some(handler) = crate::actions::handler(action) {
+        handler(state, action);
     }
-}
-
-/// Move the text size one step; the App root applies and saves it.
-fn step_text_scale(state: &mut AppState, step: crate::text_scale::Step) {
-    let current = state.settings.peek().text_scale;
-    let next = crate::text_scale::next_scale(current, step);
-    if (next - current).abs() > f32::EPSILON {
-        state.settings.write().text_scale = next;
-    }
-}
-
-/// Open the delete dialog for the selected containers that can be
-/// deleted. Only on the Containers screen and never over another overlay.
-fn open_delete_for_selection(state: &mut AppState) {
-    if *state.section.peek() != Section::Containers || !state.overlays.peek().is_empty() {
-        return;
-    }
-    let ids = match &*state.selection.peek() {
-        Selection::Containers(ids) => ids.clone(),
-        _ => return,
-    };
-    let deletable = crate::services::actions::with_view(state, |view| {
-        crate::ui::bulk_bar::applicable(&ids, crate::ui::BulkAction::Delete, view)
-    });
-    crate::services::confirm::open_delete(state, &deletable);
 }
 
 /// The one root `onkeydown` handler: map, `preventDefault` when handled,
