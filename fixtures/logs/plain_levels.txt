@@ -1,0 +1,19 @@
+2026-10-24T09:14:01.120Z INFO  server listening on :8080
+2026-10-24T09:14:02.004Z DEBUG cache warmed in 41ms
+2026-10-24T09:14:02.310Z TRACE tick 1
+2026-10-24T09:14:03.775Z WARN  slow request GET /orders took 2300ms
+2026-10-24T09:14:04.901Z ERROR failed to reach upstream: connection refused
+[warn] disk usage at 91%
+[error] worker 4 exited with code 1
+[INFO] scheduler started
+FATAL: out of memory, shutting down
+E1024 09:14:05.123456 1 controller.go:88] sync failed
+W1024 09:14:05.223456 1 controller.go:91] retrying in 5s
+I1024 09:14:05.323456 1 controller.go:95] synced
+ERROR:root:payment declined for order 1042
+WARNING:app:token about to expire
+INFO:werkzeug:127.0.0.1 - - "GET /health HTTP/1.1" 200 -
+SEVERE: could not bind port
+the cache is fully warmed up and information is plentiful
+retrying after an error in the upstream
+Listening on http://0.0.0.0:3000

@@ -1,0 +1,8 @@
+2026-10-24 09:21:00,001 INFO worker started
+Traceback (most recent call last):
+  File "/app/worker.py", line 42, in <module>
+    main()
+  File "/app/worker.py", line 31, in main
+    raise ValueError("bad payload")
+ValueError: bad payload
+2026-10-24 09:21:01,500 INFO worker restarting

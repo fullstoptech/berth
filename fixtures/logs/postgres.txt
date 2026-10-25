@@ -1,0 +1,7 @@
+2026-10-24 09:25:00.101 UTC [1] LOG:  database system is ready to accept connections
+2026-10-24 09:25:10.202 UTC [48] ERROR:  relation "orders_archive" does not exist at character 15
+2026-10-24 09:25:10.202 UTC [48] STATEMENT:  select * from orders_archive
+2026-10-24 09:25:11.303 UTC [49] WARNING:  there is no transaction in progress
+2026-10-24 09:25:12.404 UTC [50] FATAL:  password authentication failed for user "app"
+2026-10-24 09:25:13.505 UTC [1] NOTICE:  table "tmp_import" does not exist, skipping
+2026-10-24 09:25:14.606 UTC [51] DEBUG1:  checkpoint starting

@@ -1,0 +1,8 @@
+ts=2026-10-24T09:14:01Z level=info msg="server started" port=8080
+ts=2026-10-24T09:14:02Z level=debug msg="cache hit" key=user:42
+ts=2026-10-24T09:14:03Z level=warn msg="slow query" ms=1840
+ts=2026-10-24T09:14:04Z level=error msg="query failed" err="connection reset"
+time="2026-10-24T09:14:05Z" level=fatal msg="cannot continue"
+lvl=info component=db msg=ready
+severity=WARNING msg="queue is backing up" depth=900
+level=info msg="a failed login was ignored" user=anna

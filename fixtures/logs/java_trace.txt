@@ -1,0 +1,8 @@
+2026-10-24 09:22:00.100  INFO 1 --- [main] c.e.App : started
+Exception in thread "main" java.lang.IllegalStateException: pool exhausted
+	at com.example.db.Pool.acquire(Pool.java:88)
+	at com.example.orders.OrderService.load(OrderService.java:41)
+Caused by: java.net.SocketTimeoutException: connect timed out
+	at java.base/sun.nio.ch.Net.connect(Net.java:579)
+	... 12 more
+2026-10-24 09:22:01.000  INFO 1 --- [main] c.e.App : shutting down

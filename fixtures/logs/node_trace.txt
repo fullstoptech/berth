@@ -1,0 +1,6 @@
+2026-10-24T09:20:00.001Z server ready
+Error: connect ECONNREFUSED 10.0.0.5:5432
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1555:16)
+    at Pool.connect (/app/node_modules/pg-pool/index.js:45:11)
+    at async handler (/app/src/orders.js:18:5)
+2026-10-24T09:20:01.200Z retrying in 5s
