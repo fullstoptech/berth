@@ -10,6 +10,8 @@ pub mod containers;
 pub(crate) mod css_tracks;
 pub mod logs;
 pub mod logs_scene;
+pub mod network_detail;
+pub mod networks;
 pub mod palette;
 pub mod projects;
 pub mod recent_activity;

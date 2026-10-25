@@ -275,6 +275,8 @@ fn OverlayStack() -> Element {
                     crate::ui::ConfirmOverlay { key: "{model.title}", model: model.clone() }
                 } else if let Overlay::EditRecreate(id) = overlay {
                     crate::sheets::edit_recreate::EditRecreateSheet { key: "{id.0}", id: id.clone() }
+                } else if matches!(overlay, Overlay::CreateNetwork) {
+                    crate::sheets::create_network::CreateNetworkSheet {}
                 } else {
                     div {
                         class: "overlay-card",
@@ -314,6 +316,9 @@ pub fn Shell() -> Element {
                     hide_stream_tabs,
                 }
             }
+        }
+        if let Selection::Network(id) = &*state.selection.read() {
+            crate::screens::network_detail::NetworkDetailPanel { key: "{id}", id: id.clone() }
         }
     };
     let right = match layout.slot {
@@ -373,6 +378,9 @@ pub fn Shell() -> Element {
                             }
                             if *state.section.read() == crate::state::Section::Logs {
                                 crate::screens::logs::LogsScreen {}
+                            }
+                            if *state.section.read() == crate::state::Section::Networks {
+                                crate::screens::networks::NetworksScreen {}
                             }
                         }
                         if let Some((frame, width)) = right {

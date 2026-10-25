@@ -13,6 +13,7 @@ pub mod exec;
 pub mod files;
 pub mod group_ops;
 pub mod logs;
+pub mod networks;
 pub mod search;
 pub mod stats;
 

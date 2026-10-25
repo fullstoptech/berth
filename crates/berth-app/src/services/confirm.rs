@@ -10,7 +10,7 @@
 
 use berth_core::{
     ColimaOp, Container, ContainerAction, ContainerId, ContainerState, EffectKind, EffectLine,
-    EffectSummary, EngineAction, EngineId, Subject, Volume,
+    EffectSummary, EngineAction, EngineId, Network, Subject, Volume,
 };
 use dioxus::prelude::{ReadableExt, WritableExt};
 
@@ -263,6 +263,31 @@ pub fn engine_effect(stop: bool, running: usize) -> EffectSummary {
     )
 }
 
+/// What deleting a network does. Only an unused network can be deleted
+/// (`disabled_reason`), so nothing running is touched; a Compose project's
+/// network comes back with its next start.
+#[must_use]
+pub fn network_delete_effect(network: &Network, project: Option<&str>) -> EffectSummary {
+    let what = match &network.subnet {
+        Some(subnet) => format!("Network {} ({subnet}) is removed.", network.name),
+        None => format!("Network {} is removed.", network.name),
+    };
+    let mut lines = vec![
+        line(EffectKind::Goes, what),
+        line(
+            EffectKind::Stays,
+            "No container is connected, so nothing running is affected.",
+        ),
+    ];
+    if let Some(project) = project {
+        lines.push(line(
+            EffectKind::Changes,
+            format!("Project {project} creates it again the next time it starts."),
+        ));
+    }
+    summary("Delete", "network", "networks", 1, lines)
+}
+
 /// The confirm button's text, from the summary alone: "Delete container",
 /// "Delete 4 containers", "Stop and delete" when something runs.
 #[must_use]
@@ -405,6 +430,47 @@ pub fn recreate_latest_model(
         checkbox: None,
         targets: vec![Subject::Container(container.id.clone())],
     })
+}
+
+/// The delete dialog for one network. `None` when the network is gone or
+/// its engine cannot be told (the screen's Delete says why in that case).
+#[must_use]
+pub fn network_delete_model(state: &AppState, id: &str) -> Option<ConfirmModel> {
+    let networks = state.networks.peek();
+    // A built-in network has no delete dialog: it has no Delete.
+    let network = networks.iter().find(|n| n.id == id && !n.built_in)?;
+    let containers = state.containers.peek();
+    let engine = crate::services::networks::engine_of(
+        network,
+        &containers,
+        &state.engines.peek(),
+        &state.engine_scope.peek(),
+    )?;
+    let project =
+        crate::services::networks::project_of(network, &containers, &state.projects.peek());
+    Some(ConfirmModel {
+        title: format!("Delete network {}?", network.name),
+        effect: network_delete_effect(network, project.as_deref()),
+        action: EngineAction::RemoveNetwork {
+            engine,
+            id: network.id.clone(),
+        },
+        checkbox: None,
+        targets: vec![Subject::Network(network.id.clone())],
+    })
+}
+
+/// Open the delete dialog for a network. Returns false when there is none
+/// to delete.
+pub fn open_delete_network(state: &mut AppState, id: &str) -> bool {
+    let Some(model) = network_delete_model(state, id) else {
+        return false;
+    };
+    state
+        .overlays
+        .write()
+        .push(crate::state::Overlay::Confirm(model));
+    true
 }
 
 /// The stop or restart dialog for a Colima engine.
@@ -556,11 +622,50 @@ pub fn run(
                 }
             }
         }
+        EngineAction::RemoveNetwork { engine, .. } => {
+            for target in &model.targets {
+                match target {
+                    Subject::Network(id) => {
+                        launch_network_delete(state, actions, engine, id, &mut out)
+                    }
+                    _ => out.refused.push("This is not a network".to_string()),
+                }
+            }
+        }
         _ => out
             .refused
             .push("This action cannot run from here yet".to_string()),
     }
     out
+}
+
+fn launch_network_delete(
+    state: &mut AppState,
+    actions: &ActionsService,
+    engine: &EngineId,
+    id: &str,
+    out: &mut Launched,
+) {
+    let name = state
+        .networks
+        .peek()
+        .iter()
+        .find(|n| n.id == id)
+        .map(|n| n.name.clone());
+    let Some(name) = name else {
+        out.refused
+            .push("This network no longer exists".to_string());
+        return;
+    };
+    let key = PendingKey {
+        subject: Subject::Network(id.to_string()),
+        action: "network.delete",
+    };
+    let op = crate::services::networks::NetOp::Remove { id: id.to_string() };
+    match actions.network(state, engine, id, &name, op) {
+        Ok(()) => out.keys.push(key),
+        Err(reason) => out.refused.push(reason),
+    }
 }
 
 fn launch_recreate(

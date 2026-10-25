@@ -115,6 +115,12 @@ pub enum EngineAction {
         spec: ContainerSpec,
         pull: bool,
     },
+    /// Delete one network (P4-T5): its own variant, so the dialog and the
+    /// activity entry say "network", never "prune".
+    RemoveNetwork {
+        engine: EngineId,
+        id: String,
+    },
 }
 
 #[cfg(test)]

@@ -429,6 +429,13 @@ fn tab_body(
 fn OverviewTab(loaded: Loaded, problems: Vec<ProblemView>, onfix: EventHandler<String>) -> Element {
     let c = &loaded.detail.container;
     let rows = overview_rows(&loaded.detail, &berth_sys::paths::home());
+    // The Networks row has buttons (P4-T5): the rows before and after it are
+    // two lists that read as one, with `ContainerNetworks` between them.
+    let split = rows.iter().position(|r| r.label == "Networks");
+    let (before, after) = match split {
+        Some(at) => (rows[..at].to_vec(), rows[at + 1..].to_vec()),
+        None => (rows, Vec::new()),
+    };
     let exited = matches!(
         c.state,
         berth_core::ContainerState::Exited | berth_core::ContainerState::Dead
@@ -441,7 +448,11 @@ fn OverviewTab(loaded: Loaded, problems: Vec<ProblemView>, onfix: EventHandler<S
                 tone: InlineTone::Warning,
             }
         }
-        KeyValueList { rows }
+        KeyValueList { rows: before }
+        if split.is_some() {
+            crate::screens::network_detail::ContainerNetworks { id: c.id.clone() }
+            KeyValueList { rows: after }
+        }
         for problem in problems {
             ProblemItem { key: "{problem.title}", problem, onfix }
         }
