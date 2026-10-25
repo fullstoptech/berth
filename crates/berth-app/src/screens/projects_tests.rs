@@ -1035,3 +1035,41 @@ fn projects_button_gap_is_4_under_1200_px_wide_and_8_from_there_up() {
     let cell = css::block(PROJECTS_CSS, "\n.project-cell-actions {");
     assert!(cell.contains("gap: var(--projects-actions-gap);"), "{cell}");
 }
+
+/// Projects of one rank keep their places when an engine's slice is
+/// rewritten (every container event rewrites it, at the end of the list).
+#[test]
+fn projects_rows_of_one_rank_keep_their_places_when_an_engine_slice_moves() {
+    let w = world();
+    let running = w
+        .engines
+        .iter()
+        .find(|e| e.state == berth_core::EngineState::Running)
+        .expect("a running engine")
+        .clone();
+    let engine = |id: &str| berth_core::Engine {
+        id: berth_core::EngineId(id.to_string()),
+        ..running.clone()
+    };
+    let engines = [engine("one"), engine("two")];
+    let on = |engine: &str, name: &str| berth_core::Project {
+        engine: berth_core::EngineId(engine.to_string()),
+        name: name.to_string(),
+        id: berth_core::ProjectId(format!("{engine}/{name}")),
+        status: berth_core::ProjectStatus::AllRunning,
+        ..project(&w, "berth-site").clone()
+    };
+    let one = vec![on("one", "alpha"), on("one", "zulu")];
+    let two = vec![on("two", "bravo")];
+    let names = |projects: &[berth_core::Project]| -> Vec<String> {
+        ordered_projects(projects, &engines)
+            .iter()
+            .map(|p| p.name.clone())
+            .collect()
+    };
+    let before = names(&[one.clone(), two.clone()].concat());
+    assert_eq!(before, ["alpha", "zulu", "bravo"]);
+    // What replace_engine_slice does after an event on engine one: its
+    // rows go to the end of the list.
+    assert_eq!(names(&[two.clone(), one.clone()].concat()), before);
+}

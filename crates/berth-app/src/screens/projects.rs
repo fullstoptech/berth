@@ -223,6 +223,26 @@ pub fn sort_rank(
     (loose, engine_down, rank)
 }
 
+/// The projects in table order: [`sort_rank`], then the engine's place in
+/// the engine list, then the order the engine itself listed them in (name,
+/// then folder: `berth_engine::projects::group`). The engines' slices are
+/// rewritten at the end of the list on every container event, so the slice
+/// order is never part of the key.
+pub fn ordered_projects<'a>(
+    projects: &'a [berth_core::Project],
+    engines: &[berth_core::Engine],
+) -> Vec<&'a berth_core::Project> {
+    let place = |p: &berth_core::Project| {
+        engines
+            .iter()
+            .position(|e| e.id == p.engine)
+            .unwrap_or(usize::MAX)
+    };
+    let mut ordered: Vec<&berth_core::Project> = projects.iter().collect();
+    ordered.sort_by_key(|p| (sort_rank(p, engines), place(p)));
+    ordered
+}
+
 /// What the main area shows (brief 7.3 states).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScreenState {
@@ -560,8 +580,7 @@ pub fn ProjectsScreen() -> Element {
     let stale = *state.snapshot_stale.read();
 
     let screen = screen_state(&engines, &projects, stale);
-    let mut ordered: Vec<&berth_core::Project> = projects.iter().collect();
-    ordered.sort_by_key(|p| sort_rank(p, &engines));
+    let ordered = ordered_projects(&projects, &engines);
     let counts = filter_counts(&ordered);
     let listing = list_projects(
         &ordered,

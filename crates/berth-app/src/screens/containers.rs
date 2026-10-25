@@ -494,6 +494,17 @@ fn first_host_port(c: &Container) -> Option<u16> {
     c.ports.iter().filter_map(|p| p.host_port).min()
 }
 
+/// Name (case-folded, then as written), then engine, then id: a total
+/// order no state change can disturb.
+fn stable_order(a: &Container, b: &Container) -> Ordering {
+    a.name
+        .to_lowercase()
+        .cmp(&b.name.to_lowercase())
+        .then_with(|| a.name.cmp(&b.name))
+        .then_with(|| a.engine.0.cmp(&b.engine.0))
+        .then_with(|| a.id.0.cmp(&b.id.0))
+}
+
 fn compare(a: &Container, b: &Container, column: SortColumn, dir: SortDirection) -> Ordering {
     let ordered = |ord: Ordering| {
         if dir == SortDirection::Desc {
@@ -620,9 +631,17 @@ pub fn build_list(input: &ListInput<'_>) -> ListModel {
         })
         .collect();
     let matched = kept.len();
-    if let Some((column, dir)) = input.sort {
-        kept.sort_by(|a, b| compare(a.0, b.0, column, dir));
-    }
+    // The order never depends on the order the engine or the event
+    // applier left the list in: a refetched container would swap places
+    // with its neighbour under the pointer. No column picked means name,
+    // then id; a picked column breaks its ties the same way.
+    kept.sort_by(|a, b| {
+        let by_column = match input.sort {
+            Some((column, dir)) => compare(a.0, b.0, column, dir),
+            None => Ordering::Equal,
+        };
+        by_column.then_with(|| stable_order(a.0, b.0))
+    });
 
     // Group, keeping first-seen order stable per the group order below.
     let mut groups: Vec<(String, String, Vec<&Container>)> = Vec::new();

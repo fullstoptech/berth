@@ -1607,6 +1607,122 @@ mod tests {
         );
     }
 
+    /// The row ids the Containers table shows, top to bottom, in the
+    /// default view (no sort picked) for either grouping.
+    fn table_order(
+        dom: &VirtualDom,
+        state: &AppState,
+        group_by: crate::screens::containers::GroupBy,
+    ) -> Vec<String> {
+        use crate::screens::containers as screen;
+        dom.in_runtime(|| {
+            let containers = state.containers.peek();
+            let projects = state.projects.peek();
+            let engines = state.engines.peek();
+            let scope = crate::state::EngineScope::All;
+            let filters = screen::Filters::default();
+            // Every group open: a group that has nothing running folds
+            // itself away by default, which hides rows rather than moving
+            // them.
+            let mut collapsed = std::collections::BTreeMap::new();
+            collapsed.insert("unassigned".to_string(), false);
+            for project in projects.iter() {
+                collapsed.insert(format!("project:{}", project.id.0), false);
+            }
+            let pending = std::collections::BTreeMap::new();
+            let model = screen::build_list(&screen::ListInput {
+                containers: &containers,
+                projects: &projects,
+                engines: &engines,
+                scope: &scope,
+                filters: &filters,
+                group_by,
+                sort: None,
+                collapsed: &collapsed,
+                pending: &pending,
+            });
+            model
+                .selection_order()
+                .iter()
+                .filter_map(|id| containers.iter().find(|c| c.id == *id))
+                .map(|c| c.name.clone())
+                .collect()
+        })
+    }
+
+    /// Bug: an event refetches one container, the applier moved it to the
+    /// end of the list, and the table (which kept the list order) swapped
+    /// the row under the pointer. A row keeps its place through stop,
+    /// start, restart and a plain refetch.
+    #[test]
+    fn services_container_events_never_move_a_table_row() {
+        use crate::screens::containers::GroupBy;
+        let (dom, mut state) = harness();
+        let world = berth_engine::MockWorld::bundled();
+        let containers = world.containers_for(&default_engine_id());
+        let projects =
+            berth_engine::projects::group(&default_engine_id(), &containers, &world.pins, false);
+        let mut applier = Applier::new(world.pins.clone());
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::EnginesDiscovered(world.engines.clone()),
+        );
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::EngineData {
+                engine: default_engine_id(),
+                info: None,
+                containers: containers.clone(),
+                projects,
+                images: Vec::new(),
+                volumes: Vec::new(),
+                networks: Vec::new(),
+            },
+        );
+        let flat = table_order(&dom, &state, GroupBy::None);
+        let grouped = table_order(&dom, &state, GroupBy::Project);
+        assert!(flat.len() > 5, "rows: {}", flat.len());
+
+        let steps = [
+            berth_core::ContainerState::Exited,
+            berth_core::ContainerState::Running,
+            berth_core::ContainerState::Restarting,
+            berth_core::ContainerState::Running,
+        ];
+        for original in &containers {
+            for step in steps {
+                let mut changed = original.clone();
+                changed.state = step;
+                apply(
+                    &dom,
+                    &mut applier,
+                    &mut state,
+                    EngineUpdate::ContainerChanged {
+                        engine: default_engine_id(),
+                        id: original.id.clone(),
+                        container: Some(changed),
+                    },
+                );
+                assert_eq!(
+                    table_order(&dom, &state, GroupBy::None),
+                    flat,
+                    "{} -> {step:?} moved a flat row",
+                    original.name
+                );
+                assert_eq!(
+                    table_order(&dom, &state, GroupBy::Project),
+                    grouped,
+                    "{} -> {step:?} moved a grouped row",
+                    original.name
+                );
+            }
+        }
+    }
+
     #[test]
     fn services_disconnect_and_failure_mark_stale_and_unreachable() {
         let (dom, mut state) = harness();

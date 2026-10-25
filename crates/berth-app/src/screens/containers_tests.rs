@@ -731,7 +731,7 @@ fn containers_model_state_and_project_chips_filter() {
     );
     assert_eq!(
         names(&project, &world.containers),
-        ["berth-site-web-1", "berth-site-proxy-1"]
+        ["berth-site-proxy-1", "berth-site-web-1"]
     );
 }
 
@@ -1357,7 +1357,8 @@ fn containers_keys_j_and_k_walk_the_visible_rows_through_the_root_handler() {
     key("j");
     assert_eq!(selected_names(&dom, state), ["shop-api-api-1"]);
     key("j");
-    assert_eq!(selected_names(&dom, state), ["shop-api-worker-1"]);
+    // Rows inside a group run by name, not by the engine's listing.
+    assert_eq!(selected_names(&dom, state), ["shop-api-db-1"]);
     key("k");
     assert_eq!(selected_names(&dom, state), ["shop-api-api-1"]);
     // K at the top stays on the first row.
@@ -1381,7 +1382,7 @@ fn containers_keys_j_and_k_walk_the_visible_rows_through_the_root_handler() {
     let landed = selected_names(&dom, state);
     assert_eq!(
         landed,
-        ["pg-scratch"],
+        ["api-worker-7f9c4d8b6-xk2lp"],
         "collapsed groups are not stepped into"
     );
     // A filter changes what J can reach.
@@ -1389,21 +1390,21 @@ fn containers_keys_j_and_k_walk_the_visible_rows_through_the_root_handler() {
         let mut handle = state;
         let mut filters = view.filters;
         filters.write().text = "berth-site".to_string();
-        let web = state
+        let proxy = state
             .containers
             .peek()
             .iter()
-            .find(|c| c.name == "berth-site-web-1")
+            .find(|c| c.name == "berth-site-proxy-1")
             .map(|c| c.id.clone())
-            .expect("web");
-        select_only(&mut handle, &web);
+            .expect("proxy");
+        select_only(&mut handle, &proxy);
     });
     key("j");
-    assert_eq!(selected_names(&dom, state), ["berth-site-proxy-1"]);
+    assert_eq!(selected_names(&dom, state), ["berth-site-web-1"]);
     key("j");
     assert_eq!(
         selected_names(&dom, state),
-        ["berth-site-proxy-1"],
+        ["berth-site-web-1"],
         "the filtered list ends here"
     );
 }
