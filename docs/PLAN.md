@@ -530,7 +530,7 @@ pub struct Network {
     pub id: String, pub name: String, pub driver: String, pub subnet: Option<String>, pub gateway: Option<String>,
     pub internal: bool, pub containers: Vec<ContainerId>, pub project: Option<ProjectId>, pub built_in: bool,
 }
-pub struct NetworkSpec { pub name: String, pub driver: String, pub subnet: Option<String>, pub gateway: Option<String>, pub internal: bool, pub attach: Vec<ContainerId> }
+pub struct NetworkSpec { pub name: String, pub driver: String, pub subnet: Option<String>, pub gateway: Option<String>, pub internal: bool, pub attach: Vec<ContainerId>, pub labels: std::collections::BTreeMap<String, String> } // labels: D25b (2026-10-25)
 pub enum FileTarget { Container(ContainerId), Volume(String) }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FileKind { File, Dir, Link, Other }
@@ -619,7 +619,9 @@ pub enum EngineAction {
     PullImage { engine: EngineId, reference: String, platform: Option<String> },
     Prune { plan: PrunePlan },
     Recreate { engine: EngineId, id: ContainerId, spec: ContainerSpec, pull: bool }, // D18 (2026-10-25): edit-and-recreate and "Recreate with latest image"
+    Remove { engine: EngineId, target: ResourceRef, force: bool }, // D25a (2026-10-25): delete one image, volume or network; containers use ContainerAction::Remove; build cache stays under Prune
 }
+pub enum ResourceRef { Image(String), Volume(String), Network(String) } // D25a: action ids image.delete / volume.delete / network.delete, noun, past tense and PendingKey subject derive from it
 
 // ---------- generation.rs ----------
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
