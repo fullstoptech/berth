@@ -11,6 +11,8 @@
   min-width: 0;
   box-sizing: border-box;
   padding-bottom: var(--space-24);
+  /* The narrow-layout rules below key on this screen's own width. */
+  container: projects / inline-size;
 }
 
 /* Header: title, count, filter controls, primary action */
@@ -221,6 +223,30 @@
 
 .project-cell-span {
   grid-column: span 3;
+}
+
+/* Narrow main area (D78, as the Containers table): below 1200 px the table
+   drops Engine and Branch, the tracks are fixed so every row lines up, and
+   the last track keeps 224 px for the labelled buttons. At 1024 px the main
+   area is 804 px: 804 - 32 margin - 16 padding = 756 = 532 + 224. Services
+   text and the path truncate; the dots stay. The problem count moves to the
+   summary line under the row. */
+@container projects (max-width: 1199px) {
+  .projects-table {
+    --projects-cols: 116px 104px 112px 104px 48px 56px 1fr;
+  }
+  .projects-head > :nth-child(3),
+  .projects-head > :nth-child(4),
+  .project-cell-engine,
+  .project-cell-branch,
+  .project-problem-tag {
+    display: none;
+  }
+  .ports-unreachable {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 /* Problem summary under a failing row */

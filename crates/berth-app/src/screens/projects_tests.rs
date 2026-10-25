@@ -512,3 +512,73 @@ fn projects_attention_orders_errors_first_newest_first_and_names_the_subject() {
     assert_eq!(items[0].age, "2 min");
     assert_eq!(items[2].age, "1 min");
 }
+
+// --- Narrow main area (D78): the table drops Engine and Branch ---
+
+/// The body of the screen's narrow-width container block.
+fn narrow_block() -> &'static str {
+    let (_, after) = PROJECTS_CSS
+        .split_once("@container projects (max-width: 1199px) {")
+        .expect("a narrow-width block for the table");
+    after
+        .split_once("\n}\n")
+        .map(|(block, _)| block)
+        .expect("the block ends")
+}
+
+#[test]
+fn projects_table_hides_engine_and_branch_below_1200() {
+    let block = narrow_block();
+    // The header's third and fourth cells and the row's two cells.
+    assert!(
+        block.contains(
+            ".projects-head > :nth-child(3),\n  .projects-head > :nth-child(4),\n  .project-cell-engine,\n  .project-cell-branch,"
+        ),
+        "{block}"
+    );
+    assert!(block.contains("display: none;"), "{block}");
+    // The nth-child rule is only right while those two are the third and
+    // fourth header cells, and the row cells carry the classes hidden above.
+    let html = scene("Projects / default / 1440");
+    let head = html.split("class=\"projects-head\"").nth(1).expect("head");
+    let labels: Vec<&str> = head
+        .split("table-header-label\">")
+        .skip(1)
+        .take(4)
+        .filter_map(|s| s.split('<').next())
+        .collect();
+    assert_eq!(labels, ["Project", "Path", "Engine", "Branch"]);
+    assert!(html.contains("project-cell project-cell-engine"));
+    assert!(html.contains("project-cell project-cell-branch"));
+    // The screen is the container the block queries.
+    assert!(PROJECTS_CSS.contains("container: projects / inline-size;"));
+}
+
+#[test]
+fn projects_table_columns_at_1024_leave_room_for_the_buttons() {
+    // Main at 1024 is 1024 - 220 wide; the table has 16 px margins and rows
+    // pad 8 px each side. The last track must keep the labelled buttons
+    // (Restart 65 + Start project 95 + two 24 px icons + 3 gaps of 4 = 216).
+    let cols = narrow_block()
+        .lines()
+        .find(|l| l.trim_start().starts_with("--projects-cols:"))
+        .expect("a column list")
+        .trim()
+        .trim_start_matches("--projects-cols:")
+        .trim_end_matches(';')
+        .trim()
+        .to_string();
+    let tracks: Vec<&str> = cols.split(' ').collect();
+    assert_eq!(tracks.len(), 7, "{cols}");
+    assert_eq!(tracks[6], "1fr");
+    let fixed: f32 = tracks[..6]
+        .iter()
+        .map(|t| t.trim_end_matches("px").parse::<f32>().expect("px track"))
+        .sum();
+    let available = 1024.0 - 220.0 - 32.0 - 16.0;
+    let buttons = available - fixed;
+    assert!(
+        (216.0..=232.0).contains(&buttons),
+        "{buttons} px left for the buttons, fixed tracks {fixed}"
+    );
+}
