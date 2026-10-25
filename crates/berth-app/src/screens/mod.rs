@@ -8,6 +8,8 @@ pub mod container_limits;
 pub mod containers;
 #[cfg(test)]
 pub(crate) mod css_tracks;
+pub mod engine_dashboard;
+pub mod engines;
 pub mod image_detail;
 pub mod images;
 pub mod logs;

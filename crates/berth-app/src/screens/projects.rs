@@ -15,7 +15,7 @@ use crate::ui::{
     IconSize, SearchField, SegmentedControl, SegmentedItem, SkeletonRows, TableHeaderCell,
 };
 
-const PROJECTS_CSS: &str = concat!(
+pub(crate) const PROJECTS_CSS: &str = concat!(
     include_str!("../../assets/css/projects.css"),
     include_str!("../../assets/css/projects_tiers.css")
 );

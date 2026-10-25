@@ -476,6 +476,20 @@ pub fn apply_finished(state: &mut AppState, done: Finished) {
     if !succeeded {
         return;
     }
+    if let Subject::Engine(id) = &done.key.subject {
+        let after = match done.key.action {
+            "engine.start" | "engine.restart" | "engine.edit_resources" => {
+                Some(berth_core::EngineState::Running)
+            }
+            "engine.stop" => Some(berth_core::EngineState::Stopped),
+            _ => None,
+        };
+        if let Some(after) = after {
+            if let Some(found) = state.engines.write().iter_mut().find(|e| e.id == *id) {
+                found.state = after;
+            }
+        }
+    }
     if let (Some(new), Subject::Container(old)) = (done.replaced_by, &done.key.subject) {
         let follows = matches!(
             &*state.selection.peek(),
@@ -542,6 +556,7 @@ enum Work {
         command: berth_core::ComposeCommand,
     },
     Colima {
+        engine: Box<berth_core::Engine>,
         profile: String,
         op: berth_core::ColimaOp,
     },
@@ -582,6 +597,15 @@ struct Inner {
     tx: tokio::sync::mpsc::UnboundedSender<Finished>,
     cancel: CancellationToken,
     settle: Settle,
+    /// The output of the Colima commands now running (or just failed).
+    runs: colima::Runs,
+    /// Reconnects an engine once Colima has started it (set by the App root).
+    link: Arc<std::sync::OnceLock<crate::services::engines::EngineLink>>,
+    /// The state an engine had before a Colima command set it to Starting
+    /// or Stopping, for the case the command fails.
+    previous: Arc<
+        std::sync::Mutex<std::collections::BTreeMap<berth_core::EngineId, berth_core::EngineState>>,
+    >,
 }
 
 impl Inner {
@@ -608,8 +632,15 @@ impl Inner {
             Work::Compose { target, command } => {
                 plain(compose::run(self.compose.as_ref(), target, command.clone(), cancel).await)
             }
-            Work::Colima { profile, op } => {
-                plain(colima::run(self.colima.as_ref(), profile, op.clone(), cancel).await)
+            Work::Colima { profile, op, .. } => {
+                self.runs.begin(&job.engine, job.key.action);
+                let runs = self.runs.clone();
+                let engine = job.engine.clone();
+                let sink = move |line: &berth_sys::ProcessLine| runs.push(&engine, line);
+                plain(
+                    colima::run_with(self.colima.as_ref(), profile, op.clone(), cancel, &sink)
+                        .await,
+                )
             }
             Work::Edit { client, id, op } => {
                 edit::run_edit(client.as_ref(), id, &job.name, op.clone(), &cancel).await
@@ -672,6 +703,9 @@ impl ActionsService {
                 tx,
                 cancel,
                 settle: Settle::default(),
+                runs: colima::Runs::default(),
+                link: Arc::default(),
+                previous: Arc::default(),
             }),
         };
         (service, rx)
@@ -699,9 +733,13 @@ impl ActionsService {
         cancel: CancellationToken,
     ) -> Self {
         let (service, mut rx) = Self::new(clients, store, compose, colima, cancel);
+        let settling = service.clone();
         spawn(async move {
             while let Some(done) = rx.recv().await {
+                let key = done.key.clone();
+                let ok = done.result.is_ok();
                 apply_finished(&mut state, done);
+                settling.settle_engine(&mut state, &key, ok);
             }
         });
         service
@@ -730,6 +768,26 @@ impl ActionsService {
 
     /// Set the pending state now, then run the job in a task.
     fn launch(&self, state: &mut AppState, job: Job) {
+        if let Work::Colima { op, .. } = &job.work {
+            // The row says what is happening; a failure puts back what was.
+            let transient = if matches!(op, berth_core::ColimaOp::Stop) {
+                berth_core::EngineState::Stopping
+            } else {
+                berth_core::EngineState::Starting
+            };
+            if let Some(found) = state
+                .engines
+                .write()
+                .iter_mut()
+                .find(|e| e.id == job.engine)
+            {
+                let before = std::mem::replace(&mut found.state, transient);
+                match self.inner.previous.lock() {
+                    Ok(mut map) => map.insert(job.engine.clone(), before),
+                    Err(poisoned) => poisoned.into_inner().insert(job.engine.clone(), before),
+                };
+            }
+        }
         state.pending.write().insert(
             job.key.clone(),
             PendingState::Running {
@@ -739,6 +797,26 @@ impl ActionsService {
         let inner = Arc::clone(&self.inner);
         spawn_io(async move {
             let executed = inner.execute(&job).await;
+            if let Work::Colima {
+                engine,
+                op,
+                profile,
+                ..
+            } = &job.work
+            {
+                inner.runs.finish(
+                    &job.engine,
+                    &executed.as_ref().map(|_| ()).map_err(Clone::clone),
+                );
+                // Colima started the engine again: make sure Berth has a
+                // client and an events loop for it.
+                if executed.is_ok() && !matches!(op, berth_core::ColimaOp::Stop) {
+                    if let Some(link) = inner.link.get() {
+                        let status = inner.colima.status(profile).await.ok();
+                        link.connect((**engine).clone(), status);
+                    }
+                }
+            }
             let (result, replaced_by, message) = match executed {
                 Ok(done) => (Ok(()), done.replaced_by, done.message),
                 Err(reason) => (Err(reason), None, None),
@@ -983,6 +1061,40 @@ impl ActionsService {
         Ok(())
     }
 
+    /// After a Colima command: a success has set the final state already
+    /// ([`apply_finished`]); a failure puts the engine back as it was.
+    pub fn settle_engine(&self, state: &mut AppState, key: &PendingKey, ok: bool) {
+        let Subject::Engine(id) = &key.subject else {
+            return;
+        };
+        let before = match self.inner.previous.lock() {
+            Ok(mut map) => map.remove(id),
+            Err(poisoned) => poisoned.into_inner().remove(id),
+        };
+        if let (false, Some(before)) = (ok, before) {
+            if let Some(found) = state.engines.write().iter_mut().find(|e| e.id == *id) {
+                found.state = before;
+            }
+        }
+    }
+
+    /// Let this service reconnect engines Colima has started (once).
+    pub fn set_link(&self, link: crate::services::engines::EngineLink) {
+        let _ = self.inner.link.set(link);
+    }
+
+    /// The Colima run of an engine as the dashboard shows it: the output
+    /// so far while it runs, the output and the reason after it failed.
+    #[must_use]
+    pub fn engine_run(&self, engine: &berth_core::EngineId) -> Option<colima::RunView> {
+        self.inner.runs.view(engine)
+    }
+
+    /// Forget a failed run (the user dismissed it).
+    pub fn clear_engine_run(&self, engine: &berth_core::EngineId) {
+        self.inner.runs.clear(engine);
+    }
+
     /// One Colima operation on an engine (start, stop, restart, apply).
     pub fn engine(
         &self,
@@ -1006,6 +1118,7 @@ impl ActionsService {
                 name: engine.name.clone(),
                 project: None,
                 work: Work::Colima {
+                    engine: Box::new(engine.clone()),
                     profile: profile.to_string(),
                     op,
                 },

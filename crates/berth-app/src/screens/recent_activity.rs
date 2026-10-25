@@ -141,8 +141,20 @@ pub fn source(entry: &ActivityEntry, containers: &[berth_core::Container]) -> St
 
 /// The lines shown: the newest [`RECENT_MAX`] of the feed.
 pub fn recent(feed: &Feed) -> Vec<&ActivityEntry> {
-    (0..feed.len().min(RECENT_MAX))
+    recent_for(feed, RECENT_MAX, None)
+}
+
+/// The newest `max` lines of the feed, of one engine when `engine` is set
+/// (the engine dashboard shows its own).
+pub fn recent_for<'a>(
+    feed: &'a Feed,
+    max: usize,
+    engine: Option<&EngineId>,
+) -> Vec<&'a ActivityEntry> {
+    (0..feed.len())
         .filter_map(|i| feed.get(i))
+        .filter(|entry| engine.is_none_or(|id| entry.engine == *id))
+        .take(max)
         .collect()
 }
 
@@ -295,7 +307,14 @@ async fn follow(services: Services, mut feed: Signal<Feed>) {
 }
 
 #[component]
-pub fn RecentActivity() -> Element {
+pub fn RecentActivity(
+    /// How many lines to show.
+    #[props(default = RECENT_MAX)]
+    max: usize,
+    /// Only this engine's entries.
+    #[props(default)]
+    engine: Option<EngineId>,
+) -> Element {
     let state = use_context::<AppState>();
     let services = try_use_context::<Services>();
     let seed = use_hook(take_seed);
@@ -320,7 +339,7 @@ pub fn RecentActivity() -> Element {
     });
 
     let feed = feed.read();
-    let lines = recent(&feed);
+    let lines = recent_for(&feed, max, engine.as_ref());
     if lines.is_empty() {
         return rsx! {};
     }

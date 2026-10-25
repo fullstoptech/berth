@@ -52,6 +52,7 @@ pub mod text_field;
 pub mod title_bar;
 pub mod toast;
 pub mod tooltip;
+pub mod usage_bar;
 pub mod virtual_table;
 
 pub use badge::{Badge, BadgeKind};
@@ -99,6 +100,7 @@ pub use text_field::TextField;
 pub use title_bar::TitleBar;
 pub use toast::{dismiss_toast, toast_timeout, ToastStack};
 pub use tooltip::Tooltip;
+pub use usage_bar::{UsageBar, UsageSegment};
 pub use virtual_table::{visible_range, VirtualTable};
 
 use dioxus::prelude::*;

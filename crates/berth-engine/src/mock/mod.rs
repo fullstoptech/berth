@@ -16,7 +16,7 @@ pub mod colima;
 pub mod compose;
 pub mod engine;
 
-pub use colima::MockColima;
+pub use colima::{MockColima, MockColimaCall};
 pub use compose::MockCompose;
 pub use engine::MockEngine;
 

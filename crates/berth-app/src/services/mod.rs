@@ -8,6 +8,7 @@ pub mod compose;
 pub mod confirm;
 pub mod detail;
 pub mod edit;
+pub mod engine_dashboard;
 pub mod engines;
 pub mod exec;
 pub mod files;

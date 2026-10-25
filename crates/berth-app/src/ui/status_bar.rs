@@ -9,7 +9,7 @@ const GIB: u64 = 1 << 30;
 /// VM memory as the profile was configured: Colima reports whole GiB
 /// ("8 GB" in the UI), so an exact GiB multiple prints as such; anything
 /// else uses the decimal formatter.
-fn vm_memory(vm: &berth_core::VmResources) -> String {
+pub(crate) fn vm_memory(vm: &berth_core::VmResources) -> String {
     let bytes = vm.memory.as_u64();
     if bytes > 0 && bytes.is_multiple_of(GIB) {
         format!("{} GB", bytes / GIB)
@@ -44,6 +44,8 @@ pub enum Connection {
     Connecting,
     /// The scoped engine is stopped: nothing on it can be checked.
     EngineStopped,
+    /// Colima is starting the scoped engine (frame "Engines / starting").
+    EngineStarting,
 }
 
 pub fn connection(engines: &[berth_core::Engine], scope: &EngineScope) -> Connection {
@@ -56,6 +58,7 @@ pub fn connection(engines: &[berth_core::Engine], scope: &EngineScope) -> Connec
     };
     match engines.iter().find(|e| e.id == *id) {
         Some(e) if e.state == S::Stopped => Connection::EngineStopped,
+        Some(e) if e.state == S::Starting => Connection::EngineStarting,
         Some(e) if e.state == S::Running && e.docker_version.is_none() => Connection::Connecting,
         _ => Connection::Ready,
     }
@@ -100,7 +103,11 @@ pub fn engine_summary(engines: &[berth_core::Engine], scope: &EngineScope) -> St
                 }
                 parts.push(format!("{} running", engine.counts.containers_running));
             } else {
-                parts.push(engine_dot(&engine.state).label.to_string());
+                parts.push(if engine.state == berth_core::EngineState::Starting {
+                    "Starting\u{2026}".to_string()
+                } else {
+                    engine_dot(&engine.state).label.to_string()
+                });
             }
             parts.join(" \u{b7} ")
         }
@@ -119,13 +126,27 @@ pub fn problems_label(count: usize) -> String {
 /// The problems count in the title bar and the status bar; click opens
 /// the Problems tab of the bottom panel.
 #[component]
-pub fn ProblemsChip() -> Element {
+pub fn ProblemsChip(
+    /// The status bar says "Checking…" where the title bar says what the
+    /// engine is doing.
+    #[props(default)]
+    in_status_bar: bool,
+) -> Element {
     let mut state = use_context::<AppState>();
     let count = state.problems.read().len();
     let connection = connection(&state.engines.read(), &state.engine_scope.read());
     let (label, icon_name, state_class) = match connection {
         Connection::Connecting => (
             "Checking\u{2026}".to_string(),
+            "loader",
+            " problems-chip-none problems-chip-checking",
+        ),
+        Connection::EngineStarting => (
+            if in_status_bar {
+                "Checking\u{2026}".to_string()
+            } else {
+                "Engine starting\u{2026}".to_string()
+            },
             "loader",
             " problems-chip-none problems-chip-checking",
         ),
@@ -139,7 +160,10 @@ pub fn ProblemsChip() -> Element {
         }
         Connection::Ready => (problems_label(count), "alert-circle", ""),
     };
-    let spin = connection == Connection::Connecting;
+    let spin = matches!(
+        connection,
+        Connection::Connecting | Connection::EngineStarting
+    );
     let class = format!("problems-chip{state_class}");
     rsx! {
         button {
@@ -168,7 +192,7 @@ pub fn StatusBar() -> Element {
     rsx! {
         footer { class: "statusbar",
             span { class: "statusbar-summary", "{summary}" }
-            ProblemsChip {}
+            ProblemsChip { in_status_bar: true }
         }
     }
 }

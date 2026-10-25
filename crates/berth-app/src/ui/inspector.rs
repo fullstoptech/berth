@@ -9,10 +9,11 @@ pub fn inspector_visible(section: Section, selection: &Selection) -> bool {
     match (section, selection) {
         // Two or more selected rows show the bulk bar instead (P2-T8).
         (Section::Containers, Selection::Containers(ids)) => ids.len() == 1,
+        // Engines draws its dashboard in the main area (frame "Engines /
+        // dashboard / 1440"): a selected engine opens no inspector.
         (Section::Images, Selection::Image(_))
         | (Section::Volumes, Selection::Volume(_))
-        | (Section::Networks, Selection::Network(_))
-        | (Section::Engines, Selection::Engine(_)) => true,
+        | (Section::Networks, Selection::Network(_)) => true,
         _ => false,
     }
 }

@@ -1445,6 +1445,20 @@ pub fn run(
         crate::keys::dispatch(state, "container.logs");
         return RunOutcome::Done;
     }
+    // Sheets, not actions: Edit resources and Clean up open over the shell.
+    if let Subject::Engine(id) = &subject {
+        match action {
+            "engine.edit_resources" => {
+                crate::sheets::edit_resources::open_sheet(state, id);
+                return RunOutcome::Done;
+            }
+            "engine.clean_up" => {
+                state.overlays.write().push(Overlay::CleanUp(id.clone()));
+                return RunOutcome::Done;
+            }
+            _ => {}
+        }
+    }
     let Some(actions) = actions else {
         return RunOutcome::Refused("Actions are not running".to_string());
     };

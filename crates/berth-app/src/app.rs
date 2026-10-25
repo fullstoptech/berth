@@ -14,6 +14,8 @@ struct Boot {
     services: Services,
     actions: ActionsService,
     stats: StatsService,
+    /// Brings engines online after Colima starts them; None in a scene.
+    link: Option<engines::EngineLink>,
     // Dropped with the App root on quit (cancels tasks, saves snapshots).
     _engines: Option<engines::EnginesHandle>,
 }
@@ -85,10 +87,15 @@ fn boot_services(state: AppState) -> Boot {
     } else {
         Some(engines::start(state, store, clients, cancel, mock))
     };
+    let link = handle.as_ref().map(engines::EnginesHandle::link);
+    if let Some(link) = &link {
+        actions.set_link(link.clone());
+    }
     Boot {
         services,
         actions,
         stats,
+        link,
         _engines: handle,
     }
 }
@@ -108,6 +115,7 @@ pub fn App() -> Element {
     crate::ui::dock::use_window_width(dock);
     let details = crate::services::detail::provide_detail_store();
     let images = crate::services::images::provide_image_store();
+    crate::services::engine_dashboard::provide_dashboard_store();
     platform::use_menu_events(state);
 
     // Services spawn once, before scene/theme forcing below (D23).
@@ -116,6 +124,8 @@ pub fn App() -> Element {
     use_context_provider(|| services);
     let actions = boot.actions.clone();
     use_context_provider(|| actions);
+    let link = boot.link.clone();
+    use_context_provider(|| link);
     let stats = boot.stats.clone();
     use_window_visibility(stats.clone());
     use_context_provider(|| stats);
@@ -280,6 +290,11 @@ fn OverlayStack() -> Element {
                     crate::sheets::create_volume::CreateVolumeSheet {}
                 } else if let Overlay::Run(id) = overlay {
                     crate::sheets::run::RunSheet { key: "{id}", id: id.clone() }
+                } else if let Overlay::EditResources(engine) = overlay {
+                    crate::sheets::edit_resources::EditResourcesSheet {
+                        key: "{engine}",
+                        engine: berth_core::EngineId(engine.clone()),
+                    }
                 } else if let Overlay::EditRecreate(id) = overlay {
                     crate::sheets::edit_recreate::EditRecreateSheet { key: "{id.0}", id: id.clone() }
                 } else if matches!(overlay, Overlay::CreateNetwork) {
@@ -405,6 +420,9 @@ pub fn Shell() -> Element {
                             }
                             if *state.section.read() == crate::state::Section::Images {
                                 crate::screens::images::ImagesScreen {}
+                            }
+                            if *state.section.read() == crate::state::Section::Engines {
+                                crate::screens::engines::EnginesScreen {}
                             }
                         }
                         if let Some((frame, width)) = right {
