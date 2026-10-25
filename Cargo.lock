@@ -185,7 +185,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "berth-app"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -218,7 +218,7 @@ dependencies = [
 
 [[package]]
 name = "berth-assistant"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "berth-core",
  "berth-sys",
@@ -226,14 +226,14 @@ dependencies = [
 
 [[package]]
 name = "berth-coolify"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "berth-plugin-protocol",
 ]
 
 [[package]]
 name = "berth-core"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "bytesize",
  "chrono",
@@ -248,7 +248,7 @@ dependencies = [
 
 [[package]]
 name = "berth-engine"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "berth-core",
@@ -273,14 +273,14 @@ dependencies = [
 
 [[package]]
 name = "berth-logs"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "berth-core",
 ]
 
 [[package]]
 name = "berth-plugin-host"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "berth-core",
  "berth-plugin-protocol",
@@ -290,25 +290,25 @@ dependencies = [
 
 [[package]]
 name = "berth-plugin-protocol"
-version = "0.0.0"
+version = "0.2.0"
 
 [[package]]
 name = "berth-registry"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "berth-core",
 ]
 
 [[package]]
 name = "berth-rules"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "berth-core",
 ]
 
 [[package]]
 name = "berth-store"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "berth-core",
  "berth-sys",
@@ -327,7 +327,7 @@ dependencies = [
 
 [[package]]
 name = "berth-sys"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "berth-core",
  "directories",
