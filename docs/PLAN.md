@@ -787,6 +787,8 @@ pub fn secret_store() -> std::sync::Arc<dyn SecretStore>;   // KeyringStore, fal
 pub struct Settings {
     pub theme: Theme, pub density: Density,
     pub text_scale: f32, // 0.85..=1.5, default 1.0 (owner request 2026-10-25)
+    pub inspector_width_px: u32, // 320..=560, default 360 (owner request, D21, 2026-10-25)
+    pub inspector_dock: InspectorDock, // Right (default) or Bottom (D21)
     pub default_engine: Option<berth_core::EngineId>,
     pub last_harness: Option<berth_core::HarnessId>,
     pub harness_paths: std::collections::BTreeMap<String, std::path::PathBuf>,   // user-chosen binaries
@@ -796,6 +798,8 @@ pub struct Settings {
     pub log_buffer_lines: u32,                       // default 100_000
     pub owner: berth_core::OwnerId,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum InspectorDock { #[default] Right, Bottom }
 impl Default for Settings { /* System, Comfortable, None, None, {}, None, None, [~/Dev if it exists], true, true, 100_000, Local */ }
 
 pub struct UserEngine { pub id: berth_core::EngineId, pub name: String, pub kind: berth_core::EngineKind, pub added: DateTime<Utc> }
