@@ -492,7 +492,6 @@ fn inspector_tabs_another_task_builds_say_which_task() {
     for (tab, task) in [
         (DetailTab::Logs, "P3-T2"),
         (DetailTab::Terminal, "P3-T6"),
-        (DetailTab::Files, "P3-T8"),
         (DetailTab::Limits, "P3-T7"),
     ] {
         let mut panel = Panel::of(&api);
@@ -503,6 +502,16 @@ fn inspector_tabs_another_task_builds_say_which_task() {
             "{tab:?}: {html}"
         );
     }
+}
+
+#[test]
+fn inspector_files_tab_mounts_the_files_panel() {
+    let api = container("shop-api-api-1");
+    let mut panel = Panel::of(&api);
+    panel.tab = DetailTab::Files;
+    let html = render(panel);
+    assert!(!html.contains("Built in P3-T8"), "{html}");
+    assert!(html.contains("class=\"fb\""), "{html}");
 }
 
 #[test]
