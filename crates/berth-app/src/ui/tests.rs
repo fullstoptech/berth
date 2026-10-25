@@ -548,3 +548,50 @@ fn gallery_renders_every_primitive() {
         assert!(html.contains(needle), "gallery missing {needle}");
     }
 }
+
+/// The CSS rules as (selector, body) pairs, comments stripped.
+fn css_rules(css: &str) -> Vec<(String, String)> {
+    let mut plain = String::new();
+    let mut rest = css;
+    while let Some(start) = rest.find("/*") {
+        plain.push_str(&rest[..start]);
+        rest = rest[start..]
+            .split_once("*/")
+            .map_or("", |(_, after)| after);
+    }
+    plain.push_str(rest);
+    plain
+        .split('}')
+        .filter_map(|rule| rule.split_once('{'))
+        .map(|(selector, body)| (selector.trim().to_string(), body.trim().to_string()))
+        .collect()
+}
+
+#[test]
+fn fields_draw_one_focus_ring_on_the_wrapper_never_on_the_input() {
+    let rules = css_rules(include_str!("../../assets/css/ui.css"));
+    // No input state may draw its own ring.
+    for (selector, body) in &rules {
+        for sel in selector.split(',').map(str::trim) {
+            let is_input_focus = ["field-input", "search-input", "select-input"]
+                .iter()
+                .any(|c| sel.starts_with(&format!(".{c}:focus")));
+            if is_input_focus {
+                assert!(
+                    body.contains("outline: none"),
+                    "{sel} must not draw a ring: {body}"
+                );
+            }
+        }
+    }
+    // The wrapper draws the one ring, with the focus token.
+    for wrapper in [".field-control", ".search-field", ".select-control"] {
+        let ring = rules.iter().any(|(selector, body)| {
+            selector
+                .split(',')
+                .any(|s| s.trim() == format!("{wrapper}:focus-within"))
+                && body.contains("outline: 2px solid var(--color-focus)")
+        });
+        assert!(ring, "{wrapper}:focus-within must draw the focus ring");
+    }
+}

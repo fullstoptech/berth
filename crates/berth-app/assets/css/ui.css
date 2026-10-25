@@ -20,7 +20,7 @@
 }
 .btn:focus-visible, .icon-btn:focus-visible, .segment:focus-visible, .tab:focus-visible,
 .tab-close:focus-visible, .menu-item:focus-visible, .checkbox:focus-visible, .switch:focus-visible,
-.search-clear:focus-visible, .field-input:focus-visible, .search-input:focus-visible, .select-input:focus-visible {
+.search-clear:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 1px;
 }
@@ -137,6 +137,13 @@
   flex: 1; min-width: 0; border: none; background: transparent; color: var(--color-ink);
   font-family: var(--font-text); font-size: var(--text-body-size); line-height: var(--text-body-line);
   padding: 0; outline: none;
+}
+/* One focus ring per field: the wrapper draws it (:focus-within above), the
+   inner input never does, in any state. */
+.field-input:focus, .field-input:focus-visible,
+.search-input:focus, .search-input:focus-visible,
+.select-input:focus, .select-input:focus-visible {
+  outline: none; border: none; box-shadow: none;
 }
 .field-input::placeholder, .search-input::placeholder { color: var(--color-ink-disabled); }
 .field-input:disabled, .search-input:disabled, .select-input:disabled { color: var(--color-ink-disabled); }
