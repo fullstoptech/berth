@@ -3,12 +3,14 @@ use dioxus::prelude::*;
 use crate::assets;
 use crate::platform;
 use crate::scenes;
-use crate::services::{activity, engines, Services};
+use crate::services::actions::ActionsService;
+use crate::services::{action_runners, activity, engines, Services};
 use crate::state::{theme_script, use_app_state, AppState, Overlay};
 use crate::ui::{inspector_visible, BottomPanel, Inspector, Sidebar, StatusBar, TitleBar};
 
 struct Boot {
     services: Services,
+    actions: ActionsService,
     // Dropped with the App root on quit (cancels tasks, saves snapshots).
     _engines: Option<engines::EnginesHandle>,
 }
@@ -55,14 +57,26 @@ fn boot_services(state: AppState) -> Boot {
         clients: clients.clone(),
         cancel: cancel.clone(),
     };
-    let handle = if std::env::var_os("BERTH_SCENE").is_some() {
+    let scene = std::env::var_os("BERTH_SCENE").is_some();
+    let mock = std::env::var("BERTH_MOCK").is_ok_and(|v| v == "1");
+    // A scene runs no live service, so its actions never reach a real binary.
+    let (compose, colima) = action_runners(mock || scene);
+    let actions = ActionsService::start(
+        state,
+        clients.clone(),
+        std::sync::Arc::clone(&store),
+        compose,
+        colima,
+        cancel.clone(),
+    );
+    let handle = if scene {
         None
     } else {
-        let mock = std::env::var("BERTH_MOCK").is_ok_and(|v| v == "1");
         Some(engines::start(state, store, clients, cancel, mock))
     };
     Boot {
         services,
+        actions,
         _engines: handle,
     }
 }
@@ -81,6 +95,8 @@ pub fn App() -> Element {
     let boot = use_hook(|| std::rc::Rc::new(boot_services(state)));
     let services = boot.services.clone();
     use_context_provider(|| services);
+    let actions = boot.actions.clone();
+    use_context_provider(|| actions);
 
     // BERTH_SCENE puts the UI into a frame's state for screenshots (D58).
     use_hook(move || {
