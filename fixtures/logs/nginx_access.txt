@@ -1,0 +1,6 @@
+172.18.0.1 - - [24/Oct/2026:09:24:00 +0000] "GET / HTTP/1.1" 200 615 "-" "curl/8.7.1"
+172.18.0.1 - - [24/Oct/2026:09:24:01 +0000] "GET /missing HTTP/1.1" 404 153 "-" "curl/8.7.1"
+172.18.0.1 - - [24/Oct/2026:09:24:02 +0000] "POST /api/orders HTTP/1.1" 502 157 "-" "Mozilla/5.0"
+2026/10/24 09:24:02 [error] 29#29: *7 connect() failed (111: Connection refused) while connecting to upstream
+2026/10/24 09:24:03 [warn] 29#29: *9 upstream response is buffered to a temporary file
+2026/10/24 09:24:04 [notice] 1#1: signal process started

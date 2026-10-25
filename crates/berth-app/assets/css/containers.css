@@ -22,7 +22,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-12);
-  padding: var(--space-12) var(--space-16) 0;
+  padding: var(--space-16) var(--gutter) var(--space-12);
   flex: none;
 }
 .ct-title {
@@ -52,21 +52,14 @@
   width: 200px;
   flex: none;
 }
-/* Below 1200 px the inspector is an overlay: this button opens it. */
+/* When the window cannot dock the inspector (under 1200 px, or the main
+   area would drop under 640 px) it is an overlay: this button opens it. */
 .ct-inspector-toggle {
   display: none;
   flex: none;
 }
-@media (max-width: 1199px) {
-  .ct-inspector-toggle {
-    display: block;
-  }
-}
-/* Space hides the docked inspector at 1200 px and wider. */
-@media (min-width: 1200px) {
-  .inspector.inspector-open {
-    display: none;
-  }
+.ct-inspector-toggle.ct-inspector-toggle-on {
+  display: block;
 }
 
 /* Filter chips */
@@ -74,7 +67,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-8);
-  padding: var(--space-8) var(--space-16) 0;
+  padding: 0 var(--gutter) var(--space-12);
   flex: none;
 }
 .ct-chip {
@@ -120,7 +113,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
-  padding: var(--space-24) var(--space-16) 0;
+  padding: var(--space-24) var(--gutter) 0;
   flex: none;
 }
 .ct-stopped .empty-state-hint {
@@ -168,12 +161,12 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  margin-top: var(--space-8);
+  margin-top: 0;
   --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(144px * var(--text-scale, 1)), 1fr);
   --ct-cols-noimage: 16px 8px minmax(110px, 1.6fr) minmax(calc(88px * var(--text-scale, 1)), 1fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(144px * var(--text-scale, 1)), 1fr);
-  /* The same, for a table that has also lost Engine (every variant below
-     inherits it from here). */
-  --ct-cols-bare: var(--ct-cols-noimage);
+  /* The last tier: Name gives up 20 px so the table fits the least main area
+     the inspector leaves (640 px x text size). */
+  --ct-cols-compact: 16px 8px minmax(80px, 1.6fr) minmax(calc(76px * var(--text-scale, 1)), 1fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(138px * var(--text-scale, 1)), 1fr);
 }
 /* With Uptime and no inspector (frames "Containers / loading", "confirm
    delete", "Palette") Name, Image, Ports and Status measure 244, 204, 121
@@ -205,70 +198,21 @@
   .ct-table .ct-engine {
     display: none;
   }
-  /* Image is dropped next when the data columns have outgrown the width
-     (text size above 100 %): 61.5 em is 800 px at 100 %, just under the
-     804 px the 1024 frame gives the table. */
-  @container containers (max-width: 61.5em) {
-    .ct-table {
-      --ct-cols: var(--ct-cols-noimage);
-    }
-    .ct-table .ct-image,
-    .ct-table .ct-image-head {
-      display: none;
-    }
-  }
 }
-/* From 1200 px the table keeps Image until it no longer fits next to the
-   data columns. The thresholds are the widths the column lists need at 100 %
-   (732, 814 and 884 px) in em, so a bigger text size drops Image sooner.
-   A table with Engine but no Uptime (inspector docked, all engines) drops
-   Engine as well below 55 em. */
-@media (min-width: 1200px) {
-  @container containers (max-width: 57em) {
-    .ct-table:not(.ct-has-uptime):not(.ct-has-engine) {
-      --ct-cols: var(--ct-cols-noimage);
-    }
-    .ct-table:not(.ct-has-uptime):not(.ct-has-engine) .ct-image,
-    .ct-table:not(.ct-has-uptime):not(.ct-has-engine) .ct-image-head {
-      display: none;
-    }
-  }
-  @container containers (max-width: 63em) {
-    .ct-table.ct-has-engine:not(.ct-has-uptime) {
-      --ct-cols: var(--ct-cols-noimage);
-    }
-    .ct-table.ct-has-engine:not(.ct-has-uptime) .ct-image,
-    .ct-table.ct-has-engine:not(.ct-has-uptime) .ct-image-head {
-      display: none;
-    }
-  }
-  @container containers (max-width: 55em) {
-    .ct-table.ct-has-engine:not(.ct-has-uptime) {
-      --ct-cols: var(--ct-cols-bare);
-    }
-    .ct-table.ct-has-engine:not(.ct-has-uptime) .ct-engine {
-      display: none;
-    }
-  }
-  @container containers (max-width: 68em) {
-    .ct-table.ct-has-uptime {
-      --ct-cols: var(--ct-cols-noimage);
-    }
-    .ct-table.ct-has-uptime .ct-image,
-    .ct-table.ct-has-uptime .ct-image-head {
-      display: none;
-    }
-  }
-}
+/* The column-drop tiers (Image, then Uptime, then Engine, then a tighter
+   Name) are in containers_tiers.css, generated from the lists above and
+   below by the table-tier generator (screens/table_tiers.rs): the widths at
+   which each list stops fitting are exact px per text size. */
 
 .ct-head {
   display: grid;
   grid-template-columns: var(--ct-cols);
   column-gap: var(--space-12);
   align-items: center;
-  padding: 0 var(--space-16);
-  height: var(--size-control-sm);
-  min-height: var(--size-control-sm);
+  padding: 0 var(--gutter);
+  box-sizing: border-box;
+  height: var(--size-control-md);
+  min-height: var(--size-control-md);
   border-bottom: 1px solid var(--color-line);
   flex: none;
 }
@@ -321,7 +265,7 @@
   column-gap: var(--space-12);
   align-items: center;
   height: var(--size-row);
-  padding: 0 var(--space-16);
+  padding: 0 var(--gutter);
   border-bottom: 1px solid var(--color-line);
   box-sizing: border-box;
   font-size: var(--text-body-size);
@@ -445,7 +389,7 @@
 /* Row buttons: on hover, keyboard focus and always on the selected row. */
 .ct-actions {
   position: absolute;
-  inset: 0 calc(-1 * var(--space-16)) 0 0;
+  inset: 0 calc(-1 * var(--gutter)) 0 0;
   display: none;
   align-items: center;
   justify-content: flex-start;
@@ -495,7 +439,7 @@
 .ct-menu {
   position: absolute;
   top: 100%;
-  right: calc(-1 * var(--space-16));
+  right: calc(-1 * var(--gutter));
   z-index: 30;
 }
 
@@ -518,7 +462,7 @@
   justify-content: space-between;
   gap: var(--space-8);
   height: var(--size-row);
-  padding: 0 var(--space-16);
+  padding: 0 var(--gutter);
   border-bottom: 1px solid var(--color-line);
   background: var(--color-danger-subtle);
   box-sizing: border-box;
@@ -551,12 +495,12 @@
 /* Group rows keep the P2-T4 look; the table draws their separators. */
 .ct-table .group-header-row {
   padding-left: var(--space-8);
-  padding-right: var(--space-16);
+  padding-right: var(--gutter);
   border-top: none;
 }
 .ct-table .skeleton-row {
   display: grid;
   grid-template-columns: var(--ct-cols);
   column-gap: var(--space-12);
-  padding: 0 var(--space-16);
+  padding: 0 var(--gutter);
 }

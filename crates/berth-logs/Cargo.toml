@@ -8,6 +8,15 @@ repository.workspace = true
 
 [dependencies]
 berth-core.workspace = true
+chrono.workspace = true
+futures.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+strip-ansi-escapes.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
 
 [lints]
 workspace = true

@@ -166,6 +166,8 @@ pub struct ProjectRowModel {
     pub restart_reason: Option<String>,
     pub rebuild_reason: Option<String>,
     pub pull_reason: Option<String>,
+    /// Why "Open terminals for all services" is unavailable (P3-T6).
+    pub terminals_reason: Option<String>,
     pub pending: Option<RowPending>,
     pub failure: Option<RowFailure>,
 }
@@ -511,6 +513,7 @@ pub fn row_model(
         restart_reason,
         rebuild_reason,
         pull_reason,
+        terminals_reason: crate::services::exec::project_terminals_reason(view.containers, project),
         pending,
         failure,
     }
@@ -641,6 +644,12 @@ pub fn menu_entries(model: &ProjectRowModel) -> Vec<MenuEntry> {
             "Pull images",
             "arrow-down-to-line",
             &model.pull_reason,
+        ),
+        entry(
+            "terminals",
+            "Open terminals for all services",
+            "terminal",
+            &model.terminals_reason,
         ),
         MenuEntry::new("delete", "Delete project\u{2026}")
             .icon("trash-2")
@@ -893,6 +902,16 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                                                     &id,
                                                     ProjectOp::PullImages,
                                                 ),
+                                                "terminals" => {
+                                                    if let (Some(core), Some(mut view)) = (
+                                                        try_consume_context::<crate::services::exec::ExecCore>(),
+                                                        try_consume_context::<crate::services::exec::TerminalView>(),
+                                                    ) {
+                                                        let _ = crate::services::exec::open_project_terminals(
+                                                            &mut state, &mut view, &core, &id,
+                                                        );
+                                                    }
+                                                }
                                                 _ => {}
                                             }
                                         }

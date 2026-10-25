@@ -99,6 +99,14 @@ const ACTIONS: &[ActionDef] = &[
         Some("K"),
         S::Global,
     ),
+    // View > dock the inspector at the other side (D21, D22). The View menu
+    // item's label names the side a click moves to.
+    def(
+        "view.dock_inspector",
+        "Dock inspector at the other side",
+        Some("⌘⇧D"),
+        S::Global,
+    ),
     // View > text size (owner request 2026-10-25). Bigger also answers to
     // ⌘+ and ⌘⇧= (`keys::map_key`); only the ⌘= string is carried here.
     def("view.text_bigger", "Bigger text", Some("⌘="), S::Global),
@@ -295,6 +303,7 @@ mod tests {
             ("F8", "logs.next_error"),
             ("⇧F8", "logs.prev_error"),
             ("⌘⇧.", "folders.toggle_hidden"),
+            ("⌘⇧D", "view.dock_inspector"),
             ("Esc", "overlay.close"),
             ("⌘,", "global.settings"),
             ("↓", "palette.next"),

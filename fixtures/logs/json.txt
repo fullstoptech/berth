@@ -1,0 +1,9 @@
+{"level":"info","msg":"server started","port":8080,"env":"dev"}
+{"severity":"ERROR","message":"payment failed","order":1042,"retry":true}
+{"level":"warn","message":"slow request","path":"/orders","ms":2300}
+{"level":50,"time":1761297245000,"pid":7,"msg":"upstream down"}
+{"level":"debug","msg":"nested","ctx":{"user":"anna","roles":["a","b"]},"ok":null}
+{"msg":"no level here","a":1,"b":2,"c":3,"d":4,"e":5,"f":6,"g":7,"h":8}
+{"level":"INFO","msg":"error budget is healthy"}
+{not json at all
+["an","array"]

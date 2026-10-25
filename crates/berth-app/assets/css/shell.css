@@ -177,7 +177,7 @@ html, body {
   gap: var(--space-6);
   box-sizing: border-box;
   width: 100%;
-  height: var(--size-row);
+  height: var(--size-control-md);
   padding: 0 var(--space-8) 0 var(--space-12) !important;
   border-radius: 0;
   text-align: left;
@@ -234,19 +234,62 @@ html, body {
 .statusbar .problems-chip { color: var(--color-ink); }
 .titlebar .problems-chip-checking, .statusbar .problems-chip-checking { color: var(--color-ink-muted); }
 
-/* Inspector: docked at 1200 px and wider, hidden below; at 1024 px and
-   narrower an explicit open (Space, P2-T7) shows it as an overlay (D8). */
+/* Inspector (D21, D22): a resizable column at the right (360 px unless the
+   user dragged it, width set inline from Settings), an overlay over the main
+   area when the window cannot dock it, or the right pane of the bottom
+   region. The body scrolls; the frame stays put so the handle on the left
+   edge does not scroll away. */
 .inspector {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: none;
   box-sizing: border-box;
   width: var(--size-inspector);
   min-width: var(--size-inspector);
   background: var(--color-surface);
   border-left: 1px solid var(--color-line);
+}
+.inspector-body {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
-@media (max-width: 1199px) {
-  .inspector { display: none; }
-  .inspector.inspector-open { display: block; position: absolute; top: 0; right: 0; bottom: 0; z-index: 10; box-shadow: var(--shadow-sheet); }
+.inspector-overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  box-shadow: var(--shadow-sheet);
+}
+/* At the bottom the inspector takes what the panel leaves (or all of it);
+   alone, the region's top line is its only edge. */
+.inspector-bottom {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+}
+.bottom-panel[data-mode="inspector"] .inspector-bottom { border-left: none; }
+
+/* The separator on a pane's left edge: an 8 px strip that keeps the 1 px
+   line of the frame under it and shows the focus colour on hover, on
+   keyboard focus and while dragged. */
+.split-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 5;
+  outline: none;
+}
+.split-handle:hover,
+.split-handle:focus-visible {
+  background: var(--color-focus);
+  opacity: 0.4;
 }
 
 /* Bottom panel */
@@ -270,10 +313,28 @@ html, body {
 }
 .bottom-resize:hover { background: var(--color-focus); opacity: 0.4; }
 .bottom-head { display: flex; align-items: stretch; justify-content: space-between; background: var(--color-surface-sunken); }
-.bottom-head .tabs-panel { border-bottom: none; background: transparent; }
+/* The panel's tabs are the inspector's: the same padding and gap, and the
+   accent underline is the active tab's own bottom border, so it sits under
+   that tab. (The button rule above would give each tab a top line and a fill.) */
+.bottom-head .tabs-underline {
+  border-bottom: none;
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.bottom-head .tab {
+  padding: 0 var(--space-12);
+  font-size: var(--text-label-size);
+  background: transparent;
+  border-top: none;
+}
 .bottom-close { display: inline-flex; align-items: center; padding-right: var(--space-4); }
 .bottom-body { flex: 1; min-height: 0; overflow: auto; }
+/* The region: the panel on the left, the inspector on the right (D22). */
+.bottom-split { display: flex; flex: 1; min-height: 0; }
+.bottom-main { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .resize-capture { position: fixed; inset: 0; z-index: 40; cursor: row-resize; }
+.resize-capture-col { cursor: col-resize; }
 
 /* Overlay stack: each overlay dims what is below it (sheets, dialogs, palette). */
 .overlay-scrim {

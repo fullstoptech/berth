@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::compose::{ComposeCommand, ComposeTarget};
-use crate::container::ContainerAction;
+use crate::container::{ContainerAction, ContainerSpec};
 use crate::effect::{EffectSummary, PrunePlan};
 use crate::engine::{Arch, ColimaStartOptions};
 use crate::generation::GenerationPlan;
@@ -65,6 +65,8 @@ pub struct Fix {
     pub source: FixSource,
     pub effect: FixEffect,
 }
+// RunAction carries an EngineAction, which can carry a whole spec (D18).
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FixEffect {
     EditFiles(GenerationPlan),
@@ -81,6 +83,8 @@ pub enum ColimaOp {
     Restart,
     Apply(ColimaStartOptions),
 }
+// Boxing the spec would change the PLAN §6 type (D18).
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EngineAction {
     Container {
@@ -103,6 +107,13 @@ pub enum EngineAction {
     },
     Prune {
         plan: PrunePlan,
+    },
+    /// Edit and recreate, and "Recreate with latest image" (`pull`) (D18).
+    Recreate {
+        engine: EngineId,
+        id: ContainerId,
+        spec: ContainerSpec,
+        pull: bool,
     },
 }
 

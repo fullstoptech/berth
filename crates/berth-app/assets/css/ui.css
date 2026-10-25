@@ -235,7 +235,7 @@
 }
 .menu-entry { display: contents; }
 .menu-item {
-  display: flex; align-items: center; gap: var(--space-8); height: var(--size-row);
+  display: flex; align-items: center; gap: var(--space-8); height: var(--size-control-md);
   padding: 0 var(--space-8); border: none; border-radius: var(--radius-md); text-align: left;
   font-weight: var(--text-body-weight); font-size: var(--text-body-size);
 }

@@ -74,7 +74,7 @@ fn px(token: &str) -> f32 {
 /// `<n>px * var(--text-scale, 1)`, `<n>ch` (a digit is 0.6 em wide, em being
 /// the 13 px body size times the scale), `var(--size-icon-md)` (16 px times the
 /// scale) or `var(--space-<n>)` (n px).
-fn term_sum(body: &str, scale: f32) -> f32 {
+fn term_sum(body: &str, scale: f32, vars: Vars) -> f32 {
     body.split(" + ")
         .map(|term| {
             let term = term.trim();
@@ -88,6 +88,12 @@ fn term_sum(body: &str, scale: f32) -> f32 {
                     * scale
             } else if term == "var(--size-icon-md)" {
                 16.0 * scale
+            } else if let Some(value) = vars
+                .iter()
+                .find(|(name, _)| term == format!("var({name})"))
+                .map(|(_, px)| *px)
+            {
+                value
             } else if let Some(n) = term
                 .strip_prefix("var(--space-")
                 .and_then(|t| t.strip_suffix(')'))
@@ -100,11 +106,20 @@ fn term_sum(body: &str, scale: f32) -> f32 {
         .sum()
 }
 
+/// Custom properties a track list reads that the test must supply, as
+/// (`--name`, px): a track may use `var(--name)` as one of its `+` terms.
+pub type Vars<'a> = &'a [(&'a str, f32)];
+
 /// The least width in px a track asks for at `scale`: `116px`,
 /// `calc(116px * var(--text-scale, 1))`, `calc(160px * var(--text-scale, 1) + 56px)`,
 /// `calc(14ch + var(--size-icon-md) + var(--space-16))`
 /// and `minmax(<min>, <max>)` (its min). A bare `fr` track asks for nothing.
 pub fn min_px(track: &str, scale: f32) -> f32 {
+    min_px_with(track, scale, &[])
+}
+
+/// [`min_px`] with the custom properties in `vars` filled in.
+pub fn min_px_with(track: &str, scale: f32, vars: Vars) -> f32 {
     if let Some(inner) = track.strip_prefix("minmax(") {
         let inner = inner.strip_suffix(')').unwrap_or(inner);
         // The comma that separates min and max sits outside any calc().
@@ -121,19 +136,24 @@ pub fn min_px(track: &str, scale: f32) -> f32 {
                 _ => {}
             }
         }
-        return min_px(inner[..split].trim(), scale);
+        return min_px_with(inner[..split].trim(), scale, vars);
     }
     if track.ends_with("fr") {
         return 0.0;
     }
     if let Some(inner) = track.strip_prefix("calc(") {
         let inner = inner.strip_suffix(')').unwrap_or(inner);
-        return term_sum(inner, scale);
+        return term_sum(inner, scale, vars);
     }
     px(track)
 }
 
 /// The sum of every track's least width.
 pub fn min_sum(list: &[String], scale: f32) -> f32 {
-    list.iter().map(|t| min_px(t, scale)).sum()
+    min_sum_with(list, scale, &[])
+}
+
+/// [`min_sum`] with the custom properties in `vars` filled in.
+pub fn min_sum_with(list: &[String], scale: f32, vars: Vars) -> f32 {
+    list.iter().map(|t| min_px_with(t, scale, vars)).sum()
 }

@@ -17,18 +17,51 @@ pub fn inspector_visible(section: Section, selection: &Selection) -> bool {
     }
 }
 
-/// The 360 px inspector column (PLAN 7.1). Docked at 1200 px and wider;
-/// below that it is hidden, and `overlay_open` (Space, P2-T7) shows it as
-/// an overlay. The body is filled per section by later tasks (P3-T3 for
-/// containers); the shell only owns the frame.
+/// Which frame the inspector is drawn in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InspectorFrame {
+    /// The right column (PLAN 7.1), 360 px unless resized (D21).
+    #[default]
+    Docked,
+    /// Over the main area: Space opens it when the window is too narrow to
+    /// dock it (D8, D21).
+    Overlay,
+    /// The right pane of the bottom region, or all of it (D22).
+    Bottom,
+}
+
+impl InspectorFrame {
+    #[must_use]
+    pub fn class(self) -> &'static str {
+        match self {
+            Self::Docked => "inspector",
+            Self::Overlay => "inspector inspector-overlay",
+            Self::Bottom => "inspector inspector-bottom",
+        }
+    }
+}
+
+/// The inspector frame: a column at the right, an overlay, or a pane of the
+/// bottom region. `width_px` is the width the user chose (a column, or a
+/// pane next to the panel); without it the CSS gives the default width, or
+/// all the room at the bottom. `handle` is the separator on its left edge.
+/// The body is filled per section by later tasks (P3-T3 for containers);
+/// the shell only owns the frame.
 #[component]
-pub fn Inspector(#[props(default)] overlay_open: bool, children: Element) -> Element {
-    let class = if overlay_open {
-        "inspector inspector-open"
-    } else {
-        "inspector"
-    };
+pub fn Inspector(
+    #[props(default)] frame: InspectorFrame,
+    #[props(default)] width_px: Option<u32>,
+    #[props(default = rsx! {})] handle: Element,
+    children: Element,
+) -> Element {
+    let style = width_px.map(|w| format!("width: {w}px; min-width: {w}px; flex: none;"));
     rsx! {
-        aside { class, "aria-label": "Inspector", {children} }
+        aside {
+            class: frame.class(),
+            style,
+            "aria-label": "Inspector",
+            {handle}
+            div { class: "inspector-body", {children} }
+        }
     }
 }

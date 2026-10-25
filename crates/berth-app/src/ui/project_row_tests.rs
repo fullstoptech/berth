@@ -439,7 +439,7 @@ fn projects_row_unassigned_menu_has_the_same_actions_and_no_compose_ones() {
     // A Compose project keeps Rebuild, Pull and Delete.
     let compose = menu_entries(&model_of(&w, "berth-site", &[]));
     let ids: Vec<&str> = compose.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, ["open", "rebuild", "pull", "delete"]);
+    assert_eq!(ids, ["open", "rebuild", "pull", "terminals", "delete"]);
 }
 
 #[test]

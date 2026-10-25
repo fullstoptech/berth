@@ -52,7 +52,7 @@ v1 is the brief's milestones M1 to M4. M5 and everything the brief marks "Later"
 
 ### 2.2 Later (no v1 task touches these)
 
-Visual Compose builder (M5). Kubernetes, Swarm, Nomad. Windows. A Linux package and a supported Linux GUI. Accounts, sync, roles, LDAP. Edge agents. Webhooks for redeploy. Coolify env editing, rollback, preview deployments, backups, server cleanup. Plugins with custom UI or WASM plugins. Network sandboxing of plugins. Auto-apply of fixes in watch mode. containerd and Incus runtimes. Languages other than English, right-to-left. ANSI colour rendering in logs (v1 strips escapes). A Rust-native terminal replacing xterm.js.
+Visual Compose builder (M5). Kubernetes, Swarm, Nomad. Windows. A Linux package and a supported Linux GUI. Accounts, sync, roles, LDAP. Edge agents. Webhooks for redeploy. Coolify env editing, rollback, preview deployments, backups, server cleanup. Plugins with custom UI or WASM plugins. Network sandboxing of plugins. Auto-apply of fixes in watch mode. containerd and Incus runtimes. Languages other than English, right-to-left. ANSI colour rendering in logs (v1 strips escapes). A Rust-native terminal replacing xterm.js. Undocking the inspector into its own window (D22, 2026-10-25).
 
 ---
 
@@ -244,7 +244,7 @@ Reached through `dioxus::desktop` re-exports, never as direct dependencies: `wry
 
 Not approved: Tailwind or any CSS framework, any JS framework, `serde_yaml`/`serde_yml`, `git2`/`gix`, `openssl`, `aws-lc-rs`, `keyring` 4, `portable-pty` (exec needs no local PTY), `notify` (no folder watching), any other UI crate, any ORM.
 
-Node tooling (only for `scripts/build-web.sh`): `@xterm/xterm` 6.0.0, `@xterm/addon-fit` 0.11.0, `@xterm/addon-search` 0.16.0, `@xterm/addon-web-links` 0.12.0, `codemirror` 6.0.2, `@codemirror/lang-yaml` 6.1.3, `@codemirror/view` 6.43, `@codemirror/state` 6.7, `esbuild` 0.28.2 (npm, 2026-10-24). pnpm 12 needs `pnpm approve-builds esbuild` once and refuses packages younger than 24 h (Ferry Mac session).
+Node tooling (only for `scripts/build-web.sh`): `@xterm/xterm` 6.0.0, `@xterm/addon-fit` 0.11.0, `@xterm/addon-search` 0.16.0, `@xterm/addon-web-links` 0.12.0, `codemirror` 6.0.2, `@codemirror/lang-yaml` 6.1.3, `@codemirror/view` 6.43, `@codemirror/state` 6.7, `@codemirror/language` 6.13.1, `@codemirror/lint` 6.9.7, `@lezer/highlight` 1.2.5 (added 2026-10-25, D10), `esbuild` 0.28.2 (npm, 2026-10-24). pnpm 12 needs `pnpm approve-builds esbuild` once and refuses packages younger than 24 h (Ferry Mac session).
 
 ---
 
@@ -485,7 +485,15 @@ pub struct ContainerSpec {               // what Edit and recreate edits (brief 
     pub env: Vec<(String, String)>, pub ports: Vec<PortMapping>, pub mounts: Vec<Mount>,
     pub networks: Vec<String>, pub labels: std::collections::BTreeMap<String, String>,
     pub restart: RestartPolicy, pub limits: Limits, pub platform: Option<String>,
+    // D16 (architect, 2026-10-25): recreate must not silently drop how the container runs.
+    pub working_dir: Option<String>, pub user: Option<String>, pub healthcheck: Option<HealthCheck>,
+    pub cap_add: Vec<String>, pub cap_drop: Vec<String>,
+    pub network_aliases: std::collections::BTreeMap<String, Vec<String>>, // network name -> aliases
 }
+pub struct HealthCheck { pub test: Vec<String>, pub interval_s: Option<u64>, pub timeout_s: Option<u64>, pub retries: Option<u32>, pub start_period_s: Option<u64> }
+// Anything else the inspect carries that the spec cannot is listed by `ContainerSpec::uncarried(&ContainerDetail) -> Vec<String>`; Recreate is disabled with those names as its reason (D16 backstop).
+// D17: a Compose-managed container is never recreated outside Compose; the sheet offers Apply limits and "Write to compose.yaml instead" (P5-T3) with the reason.
+// D19: memory is formatted in binary units labelled "MB" (256m shows "256 MB"); image and disk sizes stay decimal.
 #[derive(Default)] pub struct Limits { pub cpus: Option<f32>, pub memory: Option<ByteSize>, pub memory_swap: Option<ByteSize> }
 pub enum RestartPolicy { No, Always, UnlessStopped, OnFailure { max_retries: u16 } }
 pub struct SpecChange { pub field: String, pub before: String, pub after: String }   // env values shown masked
@@ -610,6 +618,7 @@ pub enum EngineAction {
     Colima { profile: String, op: ColimaOp },
     PullImage { engine: EngineId, reference: String, platform: Option<String> },
     Prune { plan: PrunePlan },
+    Recreate { engine: EngineId, id: ContainerId, spec: ContainerSpec, pull: bool }, // D18 (2026-10-25): edit-and-recreate and "Recreate with latest image"
 }
 
 // ---------- generation.rs ----------
@@ -778,6 +787,9 @@ pub fn secret_store() -> std::sync::Arc<dyn SecretStore>;   // KeyringStore, fal
 pub struct Settings {
     pub theme: Theme, pub density: Density,
     pub text_scale: f32, // 0.85..=1.5, default 1.0 (owner request 2026-10-25)
+    pub inspector_width_px: u32, // 320..=560, default 360 (owner request, D21, 2026-10-25)
+    pub inspector_dock: InspectorDock, // Right (default) or Bottom (D21; bottom is Chrome-DevTools-style, D22)
+    pub inspector_split_pct: u8, // bottom dock: inspector share of the bottom region, default 40, each pane >= 320 px (D22)
     pub default_engine: Option<berth_core::EngineId>,
     pub last_harness: Option<berth_core::HarnessId>,
     pub harness_paths: std::collections::BTreeMap<String, std::path::PathBuf>,   // user-chosen binaries
@@ -787,6 +799,8 @@ pub struct Settings {
     pub log_buffer_lines: u32,                       // default 100_000
     pub owner: berth_core::OwnerId,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum InspectorDock { #[default] Right, Bottom }
 impl Default for Settings { /* System, Comfortable, None, None, {}, None, None, [~/Dev if it exists], true, true, 100_000, Local */ }
 
 pub struct UserEngine { pub id: berth_core::EngineId, pub name: String, pub kind: berth_core::EngineKind, pub added: DateTime<Utc> }
@@ -1010,7 +1024,8 @@ pub struct LogFilter { pub stdout: bool, pub stderr: bool, pub levels: std::coll
 #[derive(Debug, Clone, Default)] pub struct SearchSummary { pub matches: u32, pub current: Option<u32> }   // "3 of 41"
 #[derive(Debug, Clone, Default)] pub struct ViewDelta { pub appended: u32, pub dropped: u32, pub new_while_paused: u32 }
 #[derive(Debug, Clone)]
-pub struct RowModel { pub seq: u64, pub ts: String, pub container: String, pub series: u8, pub stream: berth_core::Stream, pub level: Option<Level>, pub error_mark: bool, pub text: String, pub json: Option<JsonSummary>, pub fold: Fold, pub matches: Vec<std::ops::Range<usize>> }
+pub struct RowModel { pub seq: u64, pub ts: String, pub ts_utc: Option<chrono::DateTime<chrono::Utc>>, pub container: String, pub series: u8, pub stream: berth_core::Stream, pub level: Option<Level>, pub error_mark: bool, pub text: String, pub json: Option<JsonSummary>, pub fold: Fold, pub matches: Vec<std::ops::Range<usize>> }
+// ts_utc (architect, 2026-10-25, D20): the full timestamp, so the UI shows local time and puts UTC in a tooltip; `ts` stays the UTC HH:MM:SS.mmm used for text and copy.
 
 pub struct LogView { /* LogBuffer, filter, visible index list, folds expanded, search state, follow */ }
 impl LogView {

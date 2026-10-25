@@ -19,3 +19,20 @@ pub fn use_traffic_lights() {}
 
 /// No native menu bar off macOS yet (D3).
 pub fn use_menu_events(_state: crate::state::AppState) {}
+
+/// No native menu bar off macOS yet (D3), so no item to relabel.
+pub fn set_dock_menu_label(_dock: berth_store::InspectorDock) {}
+
+/// What to run in a terminal app (macOS only, D42).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecTarget {
+    pub docker_host: String,
+    pub container: String,
+    pub shell: String,
+    pub user: Option<String>,
+    pub workdir: Option<String>,
+}
+
+pub async fn open_in_terminal_app(_target: ExecTarget) -> Result<&'static str, String> {
+    Err("Open in Terminal app is available on macOS only".to_string())
+}

@@ -55,20 +55,23 @@ pub fn scaled_px(base: u32, scale: f32) -> u32 {
 /// row elements' inline height both come from it).
 pub fn row_height_px(density: Density, scale: f32) -> u32 {
     let base = match density {
-        Density::Comfortable => 28,
+        Density::Comfortable => 32,
         Density::Compact => 24,
     };
     scaled_px(base, scale)
 }
 
-/// The JS that sets (or clears, at the default) `--text-scale` on `<html>`.
+/// The JS that sets (or clears, at the default) `--text-scale` on `<html>`
+/// and always sets `data-text-scale` to the step, which the generated table
+/// tiers (`screens/table_tiers.rs`) key their exact px thresholds on.
 pub fn script(scale: f32) -> String {
     let scale = snap(scale);
-    if scale == DEFAULT {
+    let property = if scale == DEFAULT {
         "document.documentElement.style.removeProperty('--text-scale');".to_string()
     } else {
         format!("document.documentElement.style.setProperty('--text-scale', '{scale}');")
-    }
+    };
+    format!("{property} document.documentElement.dataset.textScale = '{scale}';")
 }
 
 /// `BERTH_TEXT_SCALE` for development shots, like `BERTH_THEME`.
@@ -137,13 +140,13 @@ mod tests {
 
     #[test]
     fn text_scale_row_height_follows_density_and_scale_in_whole_pixels() {
-        assert_eq!(row_height_px(Density::Comfortable, 1.0), 28);
+        assert_eq!(row_height_px(Density::Comfortable, 1.0), 32);
         assert_eq!(row_height_px(Density::Compact, 1.0), 24);
-        assert_eq!(row_height_px(Density::Comfortable, 1.3), 36);
-        assert_eq!(row_height_px(Density::Comfortable, 0.85), 24);
+        assert_eq!(row_height_px(Density::Comfortable, 1.3), 42);
+        assert_eq!(row_height_px(Density::Comfortable, 0.85), 27);
         assert_eq!(row_height_px(Density::Compact, 1.5), 36);
         // An unknown scale snaps first, as the stylesheet's value does.
-        assert_eq!(row_height_px(Density::Comfortable, 1.31), 36);
+        assert_eq!(row_height_px(Density::Comfortable, 1.31), 42);
     }
 
     #[test]
@@ -156,6 +159,10 @@ mod tests {
         assert!(script(1.0).contains("removeProperty('--text-scale')"));
         // Unknown values never reach the page.
         assert!(script(7.0).contains("'1.5'"));
+        // The attribute the table tiers key on carries the step, default included.
+        assert!(big.contains("dataset.textScale = '1.3'"), "{big}");
+        assert!(script(1.0).contains("dataset.textScale = '1'"));
+        assert!(script(0.85).contains("dataset.textScale = '0.85'"));
     }
 
     const TOKENS_CSS: &str = include_str!("../assets/css/tokens.css");
@@ -184,6 +191,7 @@ mod tests {
         }
         for name in [
             "--size-row",
+            "--size-row-lg",
             "--size-control-sm",
             "--size-control-md",
             "--size-control-lg",
@@ -199,6 +207,41 @@ mod tests {
             .expect("compact block")..];
         assert!(compact.contains("--size-row: round(calc(24px * var(--text-scale"));
         assert!(compact.contains("--size-control-md: calc(24px * var(--text-scale"));
+    }
+
+    #[test]
+    fn text_scale_row_height_matches_the_stylesheet_row_at_every_step() {
+        // `--size-row: round(calc(<base>px * var(--text-scale, 1)), 1px)`: the
+        // base in the stylesheet is the base the virtual table's maths uses.
+        for (selector, density) in [
+            (":root {", Density::Comfortable),
+            (":root[data-density=\"compact\"] {", Density::Compact),
+        ] {
+            let block = &TOKENS_CSS[TOKENS_CSS.find(selector).expect("block")..];
+            let value = declaration(block, "--size-row");
+            let base: f64 = value
+                .trim_start_matches("round(calc(")
+                .split("px")
+                .next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or_else(|| panic!("a px base in `{value}`"));
+            for step in STEPS {
+                assert_eq!(
+                    f64::from(row_height_px(density, step)),
+                    (base * f64::from(step)).round(),
+                    "{density:?} at {step}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn text_scale_gutter_is_16_and_20_from_1200_px_wide() {
+        assert_eq!(declaration(TOKENS_CSS, "--gutter"), "16px");
+        let wide = &TOKENS_CSS[TOKENS_CSS
+            .find("@media (min-width: 1200px) {")
+            .expect("a 1200 px block")..];
+        assert!(wide.starts_with("@media (min-width: 1200px) {\n  :root { --gutter: 20px; }"));
     }
 
     #[test]

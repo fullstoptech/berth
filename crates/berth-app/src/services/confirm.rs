@@ -10,7 +10,7 @@
 
 use berth_core::{
     ColimaOp, Container, ContainerAction, ContainerId, ContainerState, EffectKind, EffectLine,
-    EffectSummary, EngineAction, Subject, Volume,
+    EffectSummary, EngineAction, EngineId, Subject, Volume,
 };
 use dioxus::prelude::{ReadableExt, WritableExt};
 
@@ -167,6 +167,79 @@ pub fn kill_effect(container: &Container) -> EffectSummary {
     )
 }
 
+/// What uploading one file into a container folder does (Files tab,
+/// P3-T8). `replaces` says a file of that name is already there; the
+/// upload would overwrite it, which is why the dialog asks at all. The
+/// size is in the text because `bytes` means "removes" in the footer.
+#[must_use]
+pub fn upload_effect(
+    dir: &str,
+    name: &str,
+    size: bytesize::ByteSize,
+    replaces: bool,
+) -> EffectSummary {
+    let mut lines = vec![line(
+        EffectKind::Writes,
+        format!("{name} ({}) to {dir}", berth_core::fmt::bytes(size)),
+    )];
+    if replaces {
+        lines.push(line(
+            EffectKind::Changes,
+            format!("The {name} already in {dir} is overwritten"),
+        ));
+    }
+    summary("Upload", "file", "files", 1, lines)
+}
+
+/// The upload dialog's title: names the file and where it goes.
+#[must_use]
+pub fn upload_title(dir: &str, name: &str) -> String {
+    format!("Upload {name} to {dir}?")
+}
+
+/// What recreating a container does (P3-T7, D18): the loss warning of the
+/// edit sheet, the dialog of "Recreate with latest image", the activity
+/// entry and the result all read this one summary. Settings the spec
+/// cannot carry never get here: Recreate is disabled for them (D16).
+#[must_use]
+pub fn recreate_effect(
+    container: &Container,
+    volumes: &[Volume],
+    latest_image: bool,
+) -> EffectSummary {
+    let mut lines = Vec::new();
+    if latest_image {
+        lines.push(line(
+            EffectKind::Changes,
+            format!("{} is pulled again first.", container.image.reference),
+        ));
+    }
+    if is_active(container.state) {
+        lines.push(line(
+            EffectKind::Changes,
+            format!(
+                "{} is stopped, then the new container is started.",
+                container.name
+            ),
+        ));
+    }
+    lines.push(line(
+        EffectKind::Goes,
+        "Files written inside the container, outside volumes, are lost.",
+    ));
+    lines.extend(kept_lines(&[container], volumes));
+    summary("Recreate", "container", "containers", 1, lines)
+}
+
+/// The result of one recreate, in words ("Recreated 1 container").
+#[must_use]
+pub fn recreate_result() -> String {
+    result_label(
+        &summary("Recreate", "container", "containers", 1, Vec::new()),
+        1,
+    )
+}
+
 /// What stopping or restarting a Colima engine does to its containers.
 #[must_use]
 pub fn engine_effect(stop: bool, running: usize) -> EffectSummary {
@@ -234,6 +307,10 @@ pub fn delete_model(state: &AppState, ids: &[ContainerId]) -> Option<ConfirmMode
     let first = found.first()?;
     let effect = delete_effect(&found, &volumes);
     let checkbox = Some((delete_checkbox_label(&found), false));
+    let targets: Vec<Subject> = found
+        .iter()
+        .map(|c| Subject::Container(c.id.clone()))
+        .collect();
     if let [only] = found.as_slice() {
         return Some(ConfirmModel {
             title: format!("Delete container {}?", only.name),
@@ -247,12 +324,11 @@ pub fn delete_model(state: &AppState, ids: &[ContainerId]) -> Option<ConfirmMode
                 },
             },
             checkbox,
+            targets,
         });
     }
-    // PLAN §6 has no multi-container `EngineAction` and `ConfirmModel` has
-    // no target list, so a bulk model names the first container and `run`
-    // takes the rest from the selection the dialog was opened over (the
-    // dialog is modal: `containers::apply_nav` ignores J/K while it is up).
+    // PLAN §6 has no multi-container `EngineAction`, so a bulk model's
+    // action names the first container and `run` walks `targets`.
     Some(ConfirmModel {
         title: format!("Delete {}?", plural(found.len(), "container", "containers")),
         effect,
@@ -265,6 +341,7 @@ pub fn delete_model(state: &AppState, ids: &[ContainerId]) -> Option<ConfirmMode
             },
         },
         checkbox,
+        targets,
     })
 }
 
@@ -300,12 +377,40 @@ pub fn kill_model(state: &AppState, id: &ContainerId) -> Option<ConfirmModel> {
             action: ContainerAction::Kill { signal: None },
         },
         checkbox: None,
+        targets: vec![Subject::Container(container.id.clone())],
+    })
+}
+
+/// The dialog of "Recreate with latest image": one `EngineAction::Recreate`
+/// with `pull: true` (D18). The spec is read when the dialog opens, like
+/// the targets.
+#[must_use]
+pub fn recreate_latest_model(
+    state: &AppState,
+    id: &ContainerId,
+    spec: berth_core::ContainerSpec,
+) -> Option<ConfirmModel> {
+    let containers = state.containers.peek();
+    let volumes = state.volumes.peek();
+    let container = containers.iter().find(|c| c.id == *id)?;
+    Some(ConfirmModel {
+        title: format!("Recreate {} with the latest image?", container.name),
+        effect: recreate_effect(container, &volumes, true),
+        action: EngineAction::Recreate {
+            engine: container.engine.clone(),
+            id: container.id.clone(),
+            spec,
+            pull: true,
+        },
+        checkbox: None,
+        targets: vec![Subject::Container(container.id.clone())],
     })
 }
 
 /// The stop or restart dialog for a Colima engine.
 #[must_use]
 pub fn engine_model(
+    engine: &EngineId,
     engine_name: &str,
     profile: String,
     op: ColimaOp,
@@ -318,6 +423,7 @@ pub fn engine_model(
         effect: engine_effect(stop, running),
         action: EngineAction::Colima { profile, op },
         checkbox: None,
+        targets: vec![Subject::Engine(engine.clone())],
     }
 }
 
@@ -395,27 +501,6 @@ pub fn with_volumes(action: &ContainerAction, checked: bool) -> ContainerAction 
     }
 }
 
-/// The selected containers a bulk delete runs on: the ones `container.delete`
-/// is allowed on right now, in selection order.
-fn bulk_targets(state: &AppState) -> Vec<ContainerId> {
-    let ids = match &*state.selection.peek() {
-        crate::state::Selection::Containers(ids) => ids.clone(),
-        _ => return Vec::new(),
-    };
-    crate::services::actions::with_view(state, |view| {
-        ids.into_iter()
-            .filter(|id| {
-                crate::services::actions::disabled_reason(
-                    &Subject::Container(id.clone()),
-                    "container.delete",
-                    view,
-                )
-                .is_none()
-            })
-            .collect()
-    })
-}
-
 /// Send a confirmed model to the actions service. `checked` is the state
 /// of the dialog's checkbox (it means "also delete anonymous volumes" on a
 /// delete).
@@ -427,16 +512,17 @@ pub fn run(
 ) -> Launched {
     let mut out = Launched::default();
     match &model.action {
-        EngineAction::Container { id, action, .. } => {
+        EngineAction::Container { action, .. } => {
             let action = with_volumes(action, checked);
-            if model.effect.count > 1 && matches!(action, ContainerAction::Remove { .. }) {
-                // Bulk delete: one container action per selected container,
-                // each with its own pending state and activity entry.
-                for id in bulk_targets(state) {
-                    launch_container(state, actions, &id, action.clone(), &mut out);
+            // One container action per target, each with its own pending
+            // state and activity entry. The selection is not consulted.
+            for target in &model.targets {
+                match target {
+                    Subject::Container(id) => {
+                        launch_container(state, actions, id, action.clone(), &mut out);
+                    }
+                    _ => out.refused.push("This is not a container".to_string()),
                 }
-            } else {
-                launch_container(state, actions, id, action, &mut out);
             }
         }
         EngineAction::Colima { profile, op } => {
@@ -457,11 +543,57 @@ pub fn run(
                 None => out.refused.push(format!("Engine {profile} is gone")),
             }
         }
+        // Edit and recreate, and recreate with the latest image (D18).
+        EngineAction::Recreate { id, spec, pull, .. } => {
+            for target in &model.targets {
+                match target {
+                    Subject::Container(target_id) if target_id == id => {
+                        launch_recreate(state, actions, target_id, spec, *pull, &mut out);
+                    }
+                    _ => out
+                        .refused
+                        .push("This is not the container to recreate".to_string()),
+                }
+            }
+        }
         _ => out
             .refused
             .push("This action cannot run from here yet".to_string()),
     }
     out
+}
+
+fn launch_recreate(
+    state: &mut AppState,
+    actions: &ActionsService,
+    id: &ContainerId,
+    spec: &berth_core::ContainerSpec,
+    pull: bool,
+    out: &mut Launched,
+) {
+    let target = state
+        .containers
+        .peek()
+        .iter()
+        .find(|c| c.id == *id)
+        .map(ContainerTarget::from);
+    let Some(target) = target else {
+        out.refused
+            .push("This container no longer exists".to_string());
+        return;
+    };
+    let op = crate::services::edit::EditOp::Recreate {
+        spec: Box::new(spec.clone()),
+        pull,
+    };
+    let key = PendingKey {
+        subject: Subject::Container(target.id.clone()),
+        action: op.action_id(),
+    };
+    match actions.edit(state, &target, op) {
+        Ok(()) => out.keys.push(key),
+        Err(reason) => out.refused.push(reason),
+    }
 }
 
 /// How many of `keys` finished without a failure, once none is running.

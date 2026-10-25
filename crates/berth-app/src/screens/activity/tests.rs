@@ -518,3 +518,25 @@ async fn activity_screen_shows_history_then_entries_recorded_while_open() {
     assert!(html.contains("arrived-live"), "live entry shown: {html}");
     assert!(html.contains("from-history"));
 }
+
+/// The text of the `{ ... }` block that follows `header` in the Activity CSS.
+fn activity_rule(header: &str) -> &'static str {
+    ACTIVITY_CSS
+        .split(header)
+        .nth(1)
+        .and_then(|s| s.split('}').next())
+        .unwrap_or_else(|| panic!("no `{header}` rule"))
+}
+
+#[test]
+fn activity_columns_start_on_the_page_gutter_under_the_title() {
+    // The title, the filters, the column headers, the rows and the gap
+    // banner (which pulls out to the table's edge) share one left edge.
+    let header = activity_rule(".activity-thead {");
+    assert!(header.contains("padding: 0 var(--gutter);"), "{header}");
+    let rows = activity_rule(".activity-table .vt-row {");
+    assert!(rows.contains("padding: 0 var(--gutter);"), "{rows}");
+    let gap = activity_rule(".activity-gap {");
+    assert!(gap.contains("margin: 0 calc(-1 * var(--gutter));"), "{gap}");
+    assert!(gap.contains("padding: 0 var(--gutter);"), "{gap}");
+}

@@ -22,10 +22,11 @@ use tokio_util::sync::CancellationToken;
 use berth_core::{ContainerAction, Subject};
 
 use crate::services::engines::ClientMap;
-use crate::services::{activity, colima, compose};
-use crate::state::{AppState, PendingKey, PendingState};
+use crate::services::{activity, colima, compose, edit};
+use crate::state::{AppState, PendingKey, PendingState, Selection};
 
 pub use crate::services::compose::ProjectOp;
+pub use crate::services::edit::EditOp;
 
 // ---------------------------------------------------------------------
 // Ids and labels
@@ -59,6 +60,9 @@ pub fn pending_label(action_id: &str) -> &'static str {
         "container.kill" => "Killing…",
         "container.delete" | "project.delete" => "Deleting…",
         "container.rename" => "Renaming…",
+        "container.apply_limits" => "Applying…",
+        "container.recreate" => "Recreating…",
+        "container.duplicate" => "Duplicating…",
         "project.rebuild" => "Rebuilding…",
         "project.pull_images" => "Pulling…",
         "engine.edit_resources" => "Applying…",
@@ -435,20 +439,48 @@ pub async fn run_container(
 pub struct Finished {
     pub key: PendingKey,
     pub result: Result<(), String>,
+    /// The container that took the place of the one the action ran on
+    /// (a recreate gives a new id); a selection of the old one follows it.
+    pub replaced_by: Option<berth_core::ContainerId>,
+    /// The result toast, for an action that words its own.
+    pub message: Option<String>,
 }
 
 /// Success clears the pending state; failure replaces it with
 /// `PendingState::Failed` carrying the engine's message. The row itself is
 /// never touched: it still shows what the engine last said.
 pub fn apply_finished(state: &mut AppState, done: Finished) {
-    let mut pending = state.pending.write();
-    match done.result {
-        Ok(()) => {
-            pending.remove(&done.key);
+    let succeeded = done.result.is_ok();
+    {
+        let mut pending = state.pending.write();
+        match done.result {
+            Ok(()) => {
+                pending.remove(&done.key);
+            }
+            Err(message) => {
+                pending.insert(done.key.clone(), PendingState::Failed { message });
+            }
         }
-        Err(message) => {
-            pending.insert(done.key, PendingState::Failed { message });
+    }
+    if !succeeded {
+        return;
+    }
+    if let (Some(new), Subject::Container(old)) = (done.replaced_by, &done.key.subject) {
+        let follows = matches!(
+            &*state.selection.peek(),
+            Selection::Containers(ids) if ids.len() == 1 && ids[0] == *old
+        );
+        if follows {
+            state.selection.set(Selection::Containers(vec![new]));
         }
+    }
+    if let Some(text) = done.message {
+        state.toasts.write().push(crate::state::Toast {
+            id: uuid::Uuid::now_v7(),
+            text,
+            tone: crate::state::ToastTone::Success,
+            action: None,
+        });
     }
 }
 
@@ -502,6 +534,11 @@ enum Work {
         profile: String,
         op: berth_core::ColimaOp,
     },
+    Edit {
+        client: Arc<dyn berth_engine::EngineClient>,
+        id: berth_core::ContainerId,
+        op: EditOp,
+    },
 }
 
 struct Job {
@@ -524,15 +561,16 @@ struct Inner {
 }
 
 impl Inner {
-    async fn execute(&self, job: &Job) -> Result<(), String> {
+    async fn execute(&self, job: &Job) -> Result<edit::Done, String> {
         let cancel = self.cancel.child_token();
+        let plain = |result: Result<(), String>| result.map(|()| edit::Done::default());
         match &job.work {
             Work::Container {
                 client,
                 id,
                 action,
                 before_started,
-            } => {
+            } => plain(
                 run_container(
                     client.as_ref(),
                     id,
@@ -541,19 +579,22 @@ impl Inner {
                     self.settle,
                     &cancel,
                 )
-                .await
-            }
+                .await,
+            ),
             Work::Compose { target, command } => {
-                compose::run(self.compose.as_ref(), target, command.clone(), cancel).await
+                plain(compose::run(self.compose.as_ref(), target, command.clone(), cancel).await)
             }
             Work::Colima { profile, op } => {
-                colima::run(self.colima.as_ref(), profile, op.clone(), cancel).await
+                plain(colima::run(self.colima.as_ref(), profile, op.clone(), cancel).await)
+            }
+            Work::Edit { client, id, op } => {
+                edit::run_edit(client.as_ref(), id, &job.name, op.clone(), &cancel).await
             }
         }
     }
 }
 
-fn spawn_io(future: impl std::future::Future<Output = ()> + Send + 'static) {
+pub(crate) fn spawn_io(future: impl std::future::Future<Output = ()> + Send + 'static) {
     if tokio::runtime::Handle::try_current().is_ok() {
         tokio::spawn(future);
     } else {
@@ -656,7 +697,11 @@ impl ActionsService {
         );
         let inner = Arc::clone(&self.inner);
         spawn_io(async move {
-            let result = inner.execute(&job).await;
+            let executed = inner.execute(&job).await;
+            let (result, replaced_by, message) = match executed {
+                Ok(done) => (Ok(()), done.replaced_by, done.message),
+                Err(reason) => (Err(reason), None, None),
+            };
             let outcome = match &result {
                 Ok(()) => berth_core::Outcome::Ok,
                 Err(reason) => berth_core::Outcome::Failed {
@@ -678,6 +723,8 @@ impl ActionsService {
             let _ = inner.tx.send(Finished {
                 key: job.key,
                 result,
+                replaced_by,
+                message,
             });
         });
     }
@@ -708,6 +755,40 @@ impl ActionsService {
                     id: target.id.clone(),
                     action,
                     before_started: target.started,
+                },
+            },
+        );
+        Ok(())
+    }
+
+    /// One edit of a container: apply limits, recreate, recreate with the
+    /// latest image, duplicate (P3-T7). Same contract as [`container`]:
+    /// `Err` carries the reason and nothing is set pending.
+    ///
+    /// [`container`]: ActionsService::container
+    pub fn edit(
+        &self,
+        state: &mut AppState,
+        target: &ContainerTarget,
+        op: EditOp,
+    ) -> Result<(), String> {
+        let key = PendingKey {
+            subject: Subject::Container(target.id.clone()),
+            action: op.action_id(),
+        };
+        Self::check(state, &key.subject, key.action)?;
+        let client = self.client_for(&target.engine)?;
+        self.launch(
+            state,
+            Job {
+                key,
+                engine: target.engine.clone(),
+                name: target.name.clone(),
+                project: target.project.clone(),
+                work: Work::Edit {
+                    client,
+                    id: target.id.clone(),
+                    op,
                 },
             },
         );

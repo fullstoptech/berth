@@ -11,7 +11,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  padding: var(--space-12) var(--space-16) var(--space-8);
+  padding: var(--space-16) var(--gutter) var(--space-8);
 }
 .activity-title {
   margin: 0;
@@ -28,13 +28,13 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-8);
-  padding: 0 var(--space-16) var(--space-12);
+  padding: 0 var(--gutter) var(--space-12);
 }
 .activity-filter-select {
   min-width: 150px;
 }
 .activity-banner {
-  padding: 0 var(--space-16) var(--space-8);
+  padding: 0 var(--gutter) var(--space-12);
 }
 .activity-table {
   flex: 1;
@@ -47,6 +47,10 @@
 .activity-table .virtual-table {
   flex: 1;
 }
+/* The first column starts on the page gutter, under the title. */
+.activity-table .vt-row {
+  padding: 0 var(--gutter);
+}
 .activity-cols {
   display: grid;
   grid-template-columns: 120px 110px 120px 140px minmax(0, 1fr) 320px;
@@ -57,11 +61,13 @@
 }
 .activity-thead {
   display: flex;
-  padding: 0 var(--space-12);
+  padding: 0 var(--gutter);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-line);
 }
 .activity-thead .table-header-cell {
+  height: var(--size-control-md);
+  min-height: var(--size-control-md);
   padding: 0;
   border-bottom: none;
 }
@@ -120,8 +126,8 @@
   flex: 1;
   min-width: 0;
   height: 100%;
-  margin: 0 calc(-1 * var(--space-12));
-  padding: 0 var(--space-12);
+  margin: 0 calc(-1 * var(--gutter));
+  padding: 0 var(--gutter);
   background: var(--color-warning-subtle);
   color: var(--color-warning);
   font-size: var(--text-label-size);

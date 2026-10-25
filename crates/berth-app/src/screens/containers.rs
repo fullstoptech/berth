@@ -24,21 +24,25 @@ use crate::services::actions::{
 };
 use crate::services::confirm;
 use crate::services::group_ops::{is_active, run as run_group_action, GroupIds};
+use crate::services::stats::{use_row_stats, StatsKey, StatsService};
 use crate::state::{AppState, EngineScope, PendingKey, PendingState, Section, Selection};
 use crate::ui::bulk_bar::{applicable, bulk_counts};
 use crate::ui::container_row::{
     ContainerRow, ContainerRowData, Meter, PortLink, RowAction, RowButton,
 };
 use crate::ui::{
-    count_label, inspector_visible, scope_includes, Badge, BadgeKind, Banner, BannerTone,
-    BulkAction, BulkBar, Button, ButtonVariant, CellAlign, ControlSize, EmptyState, GroupHeaderRow,
-    IconButton, InlineMessage, InlineTone, Menu, MenuEntry, SearchField, Select, SelectOption,
-    SkeletonRows, SortDirection, TableHeaderCell, VirtualTable,
+    count_label, scope_includes, Badge, BadgeKind, Banner, BannerTone, BulkAction, BulkBar, Button,
+    ButtonVariant, CellAlign, ControlSize, EmptyState, GroupHeaderRow, IconButton, InlineMessage,
+    InlineTone, Menu, MenuEntry, SearchField, Select, SelectOption, SkeletonRows, SortDirection,
+    TableHeaderCell, VirtualTable,
 };
 
 /// The screen's CSS. Rendered with the screen (`style` element) so the
 /// screen owns its styling; colours come only from `tokens.css`.
-pub const CONTAINERS_CSS: &str = include_str!("../../assets/css/containers.css");
+pub const CONTAINERS_CSS: &str = concat!(
+    include_str!("../../assets/css/containers.css"),
+    include_str!("../../assets/css/containers_tiers.css")
+);
 
 // ---------------------------------------------------------------------
 // View state
@@ -856,8 +860,15 @@ fn row_buttons(c: &Container, view: &StateView<'_>) -> Vec<RowButton> {
             RowAction::Terminal,
             "terminal",
             format!("Terminal for {}", c.name),
-            tooltip_for("Terminal", "container.terminal"),
-            Some("Terminal is not built yet".to_string()),
+            tooltip_for(
+                if is_active(c.state) {
+                    "Terminal"
+                } else {
+                    "Start and open terminal"
+                },
+                "container.terminal",
+            ),
+            crate::services::exec::terminal_disabled_reason(c.state),
             false,
         ),
         button(
@@ -1126,15 +1137,46 @@ fn state_view_from<'a>(
     }
 }
 
+/// The listed container with the service's newest fresh sample in place of
+/// its own `stats` (the list never carries live ones). Without a service,
+/// or without a fresh sample, the listed value stands: a scene's frame
+/// values, or "—".
+fn with_live_stats<'a>(
+    listed: &'a Container,
+    stats: Option<&StatsService>,
+    key: Option<&StatsKey>,
+) -> std::borrow::Cow<'a, Container> {
+    let live = stats
+        .zip(key)
+        .and_then(|(service, key)| service.latest(key, chrono::Utc::now()));
+    match live {
+        Some(live) => std::borrow::Cow::Owned(Container {
+            stats: Some(live),
+            ..listed.clone()
+        }),
+        None => std::borrow::Cow::Borrowed(listed),
+    }
+}
+
 #[component]
 fn ContainerRowHost(id: ContainerId, show_uptime: bool, show_engine: bool) -> Element {
     let mut state = use_context::<AppState>();
     let view = use_context::<ContainersView>();
     let actions = try_consume_context::<ActionsService>();
+    let stats = try_consume_context::<StatsService>();
     let containers = state.containers.read();
-    let Some(container) = containers.iter().find(|c| c.id == id) else {
+    let listed = containers.iter().find(|c| c.id == id);
+    // D26: this row holds a stats stream open while it is rendered (inside
+    // the table's visible range) and the container runs. The hook runs
+    // before the early return so hook order never changes.
+    let key = listed
+        .filter(|c| matches!(c.state, ContainerState::Running | ContainerState::Paused))
+        .map(|c| StatsKey::new(&c.engine, &c.id));
+    use_row_stats(stats.as_ref(), key.clone());
+    let Some(listed) = listed else {
         return rsx! {};
     };
+    let container = &*with_live_stats(listed, stats.as_ref(), key.as_ref());
     let engines = state.engines.read();
     let projects = state.projects.read();
     let pending = state.pending.read();
@@ -1180,6 +1222,10 @@ fn ContainerRowHost(id: ContainerId, show_uptime: bool, show_engine: bool) -> El
                 RowAction::Logs => {
                     select_only(&mut state, &id);
                     crate::keys::dispatch(&mut state, "container.logs");
+                }
+                RowAction::Terminal => {
+                    select_only(&mut state, &id);
+                    crate::keys::dispatch(&mut state, "container.terminal");
                 }
                 other => run_container_action(&mut state, actions.as_ref(), &id, &other),
             },
@@ -1508,11 +1554,10 @@ pub fn ContainersScreen() -> Element {
     };
     let chip_list = chips(&engines, &scope, &filters);
     let banners = engine_banners(&engines, &scope);
-    let toggled = *view.inspector_toggled.read();
-    let docked_inspector = {
-        let section = *state.section.read();
-        inspector_visible(section, &state.selection.read()) && !toggled
-    };
+    // The inspector takes the table's room only docked at the right (D21);
+    // overlaid, hidden or at the bottom the table has the full width.
+    let docked_inspector = crate::ui::dock::inspector_docked();
+    let overlay_inspector = crate::ui::dock::inspector_is_overlay();
     let show_uptime = !docked_inspector;
     let show_engine = matches!(scope, EngineScope::All);
     let bulk_ids: Option<Vec<ContainerId>> = match &*state.selection.read() {
@@ -1539,11 +1584,7 @@ pub fn ContainersScreen() -> Element {
             return rsx! {};
         };
         let engine_scope_all = matches!(&*state.engine_scope.read(), EngineScope::All);
-        let toggled = *view.inspector_toggled.read();
-        let docked = {
-            let section = *state.section.read();
-            inspector_visible(section, &state.selection.read()) && !toggled
-        };
+        let docked = crate::ui::dock::inspector_docked();
         match row {
             ListRow::Group(info) => rsx! { GroupRowHost { key: "{info.key}", info: info.clone() } },
             ListRow::Container(id) => rsx! {
@@ -1661,7 +1702,8 @@ pub fn ContainersScreen() -> Element {
                         },
                     }
                 }
-                div { class: "ct-inspector-toggle",
+                div {
+                    class: if overlay_inspector { "ct-inspector-toggle ct-inspector-toggle-on" } else { "ct-inspector-toggle" },
                     Button {
                         label: "Inspector".to_string(),
                         icon: "file-text",

@@ -6,9 +6,15 @@ pub mod activity;
 pub mod colima;
 pub mod compose;
 pub mod confirm;
+pub mod detail;
+pub mod edit;
 pub mod engines;
+pub mod exec;
+pub mod files;
 pub mod group_ops;
+pub mod logs;
 pub mod search;
+pub mod stats;
 
 /// The moment the bundled mock world is written for: its container start
 /// times give the uptimes the frames show (2 h, 6 h, 35 min, 1 d, 3 d …)

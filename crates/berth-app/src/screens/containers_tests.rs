@@ -216,10 +216,14 @@ fn containers_scene_selected_1024_drops_uptime_and_engine_below_1200() {
     // that removes Uptime and Engine below 1200 px (D78).
     assert!(html.contains("shop-api-worker-1"));
     assert!(html.contains(">Inspector<"), "overlay toggle button");
+    assert!(
+        html.contains("ct-inspector-toggle ct-inspector-toggle-on"),
+        "shown, because 1024 px cannot dock the inspector: {html}"
+    );
     let css = CONTAINERS_CSS;
     let media = css
         .split("@media (max-width: 1199px)")
-        .nth(2)
+        .nth(1)
         .expect("a narrow-width block for the table");
     // One rule hides both columns (cells and header cells share the classes).
     assert!(
@@ -229,6 +233,7 @@ fn containers_scene_selected_1024_drops_uptime_and_engine_below_1200() {
 }
 
 use super::super::css_tracks as css;
+use super::super::table_tiers::{containers_state_at, Col, View};
 use crate::text_scale::STEPS;
 
 /// The body of the table's block for the viewports under 1200 px.
@@ -303,7 +308,8 @@ fn containers_every_column_list_scales_its_data_tracks() {
 }
 
 /// The list in force for a table `width` px wide at `scale`, for a
-/// viewport under (`narrow`) or over 1200 px with the given column classes.
+/// viewport under (`narrow`) or over 1200 px with the given column classes,
+/// from the generated tiers: whether Image is hidden and the tracks.
 fn containers_tracks_at(
     width: f32,
     scale: f32,
@@ -311,38 +317,78 @@ fn containers_tracks_at(
     uptime: bool,
     engine: bool,
 ) -> (bool, Vec<String>) {
-    let em = width / (13.0 * scale);
-    let (selector, limit) = if narrow {
-        ("narrow", 61.5)
-    } else if uptime {
-        ("uptime", 68.0)
-    } else if engine {
-        ("engine", 63.0)
-    } else {
-        ("plain", 57.0)
-    };
-    let body = match selector {
-        "narrow" => narrow_viewport_block(),
-        "uptime" if engine => {
-            css::block(CONTAINERS_CSS, "\n.ct-table.ct-has-uptime.ct-has-engine {")
+    let view = if narrow { View::Narrow } else { View::Wide };
+    let state = containers_state_at(view, uptime, engine, width, scale);
+    (state.hidden.contains(&Col::Image), state.tracks)
+}
+
+/// The table's width next to the inspector at `stored` px in a `window` px
+/// wide window at `scale` text, and whether the inspector took room from it
+/// (D21, D24): docked, clamped to keep the main area at 640 px x scale, only
+/// from 1200 px up and when 320 px of it fit; else it overlays and the table
+/// has the whole main area.
+fn table_width_with_inspector(window: f32, stored: u32, scale: f32) -> (f32, bool) {
+    match crate::ui::dock::docked_width(f64::from(window), stored, scale) {
+        Some(width) => (window - 220.0 - width as f32, true),
+        None => (window - 220.0, false),
+    }
+}
+
+#[test]
+fn containers_table_fits_every_window_inspector_width_and_text_size() {
+    // The D24 sweep: windows 1024 / 1220 / 1440, inspector widths 320 / 360 /
+    // 480 / 560, every text size, with and without Engine (all engines). A
+    // docked inspector takes Uptime away; an overlay or none leaves it.
+    let mut docked_cases = 0;
+    for window in [1024.0, 1220.0, 1440.0] {
+        for stored in [320, 360, 480, 560] {
+            for scale in STEPS {
+                let (width, docked) = table_width_with_inspector(window, stored, scale);
+                docked_cases += usize::from(docked);
+                for engine in [false, true] {
+                    assert_table_fits(width, window < 1200.0, !docked, engine, scale);
+                }
+            }
         }
-        "uptime" => css::block(CONTAINERS_CSS, "\n.ct-table.ct-has-uptime {"),
-        "engine" => css::block(CONTAINERS_CSS, "\n.ct-table.ct-has-engine {"),
-        _ => css::block(CONTAINERS_CSS, "\n.ct-table {"),
-    };
-    let no_image = em <= limit;
-    // Engine goes too below 55 em when there is no Uptime: the plain list.
-    let body = if selector == "engine" && em <= 55.0 {
-        css::block(CONTAINERS_CSS, "\n.ct-table {")
-    } else {
-        body
-    };
-    let name = if no_image {
-        "--ct-cols-noimage"
-    } else {
-        "--ct-cols"
-    };
-    (no_image, css::tracks(&css::declaration(body, name)))
+    }
+    // The sweep is not vacuous: plenty of the cases dock the inspector.
+    assert!(docked_cases > 30, "{docked_cases} docked cases");
+}
+
+#[test]
+fn containers_table_fits_the_main_area_floor_at_every_text_size() {
+    // The floor itself (640 px x text size) is what the narrowest list must
+    // fit: a docked inspector can leave exactly that much.
+    for scale in STEPS {
+        let floor = crate::ui::dock::main_min_px(scale) as f32;
+        for engine in [false, true] {
+            assert_table_fits(floor, false, false, engine, scale);
+        }
+    }
+}
+
+#[test]
+fn containers_inspector_overlays_at_1440_and_150_percent_and_leaves_the_table_whole() {
+    // Accepted in D24: 1440 - 220 - 960 leaves no room for 320 px.
+    let (width, docked) = table_width_with_inspector(1440.0, 360, 1.5);
+    assert!(!docked);
+    assert_eq!(width, 1220.0);
+    // At 130 % a 480 px inspector docks clamped to 388, not at 480.
+    let (width, docked) = table_width_with_inspector(1440.0, 480, 1.3);
+    assert!(docked);
+    assert_eq!(width, 1440.0 - 220.0 - 388.0);
+}
+
+/// Every text size's (or just `scale`'s) column list fits `width` px.
+fn assert_table_fits(width: f32, narrow: bool, uptime: bool, engine: bool, scale: f32) {
+    let (_, tracks) = containers_tracks_at(width, scale, narrow, uptime, engine);
+    // The page gutter is 16 px under 1200 px wide, 20 px from there up.
+    let gutters = if narrow { 32.0 } else { 40.0 };
+    let used = css::min_sum(&tracks, scale) + 12.0 * (tracks.len() as f32 - 1.0) + gutters;
+    assert!(
+        used <= width + 0.5,
+        "{width} px at {scale} (narrow {narrow}, uptime {uptime}, engine {engine}): needs {used} ({tracks:?})"
+    );
 }
 
 #[test]
@@ -359,41 +405,40 @@ fn containers_table_fits_at_1024_and_1440_for_every_text_size() {
     ];
     for (width, narrow, uptime, engine) in cases {
         for scale in STEPS {
-            let (_, tracks) = containers_tracks_at(width, scale, narrow, uptime, engine);
-            let used = css::min_sum(&tracks, scale) + 12.0 * (tracks.len() as f32 - 1.0) + 32.0;
-            assert!(
-                used <= width + 0.5,
-                "{width} px at {scale} (uptime {uptime}, engine {engine}): needs {used} ({tracks:?})"
-            );
+            assert_table_fits(width, narrow, uptime, engine, scale);
         }
     }
 }
 
 #[test]
-fn containers_tables_keep_image_at_100_percent_and_drop_it_at_150() {
-    // The frames at 100 % show Image everywhere; a bigger text size drops it.
-    for (width, narrow, uptime, engine) in [
-        (1024.0 - 220.0, true, false, false),
-        (1440.0 - 220.0 - 360.0, false, false, false),
-        (1440.0 - 220.0 - 360.0, false, false, true),
-        (1440.0 - 220.0, false, true, false),
-        (1440.0 - 220.0, false, true, true),
+fn containers_tables_keep_image_at_100_percent_and_drop_it_where_it_no_longer_fits() {
+    // The frames at 100 % show Image everywhere. A bigger text size drops it
+    // from the tables that no longer have the room: the 1024 and the docked
+    // inspector's, not the full-width 1220 px one.
+    for (width, narrow, uptime, engine, drops_at_150) in [
+        (1024.0 - 220.0, true, false, false, true),
+        (1440.0 - 220.0 - 360.0, false, false, false, true),
+        (1440.0 - 220.0 - 360.0, false, false, true, true),
+        (1440.0 - 220.0, false, true, false, false),
+        (1440.0 - 220.0, false, true, true, false),
     ] {
         let (dropped, _) = containers_tracks_at(width, 1.0, narrow, uptime, engine);
         assert!(!dropped, "{width} px at 100 % keeps Image");
         let (dropped, _) = containers_tracks_at(width, 1.5, narrow, uptime, engine);
-        assert!(dropped, "{width} px at 150 % drops Image");
+        assert_eq!(dropped, drops_at_150, "{width} px at 150 %");
     }
-    // The thresholds the sweeps above assume are the stylesheet's own.
-    for em in ["61.5", "57", "63", "55", "68"] {
+    // The generated tiers are in the stylesheet, for every text size.
+    for scale in STEPS {
         assert!(
-            CONTAINERS_CSS.contains(&format!("@container containers (max-width: {em}em)")),
-            "a {em} em block"
+            CONTAINERS_CSS.contains(&format!(":root[data-text-scale=\"{scale}\"]")) || scale == 1.0,
+            "tiers for {scale}"
         );
     }
+    assert!(!CONTAINERS_CSS.contains("em) {"), "no em thresholds left");
     // Cells and header cell both go with the track.
     assert!(CONTAINERS_CSS.contains(".ct-table .ct-image-head {\n      display: none;"));
     assert!(CONTAINERS_CSS.contains(".ct-table .ct-image,"));
+    assert!(CONTAINERS_CSS.contains(".ct-table.ct-has-uptime.ct-has-engine .ct-image-head"));
     let html = markup("Containers / selected / 1440");
     assert!(
         html.contains("class=\"ct-image-head\""),
@@ -1103,10 +1148,10 @@ fn containers_row_buttons_carry_tooltips_toggle_and_disabled_reasons() {
     );
     assert_eq!(tooltip(&running, RowAction::Restart).0, "Restart · ⌘R");
     assert_eq!(tooltip(&running, RowAction::Logs).0, "Logs · ⌘L");
-    // Terminal waits for its task and says so; Delete asks first (P2-T8).
+    // Terminal opens a shell (P3-T6); Delete asks first (P2-T8).
     let terminal = tooltip(&running, RowAction::Terminal);
-    assert!(terminal.1);
-    assert_eq!(terminal.0, "Terminal is not built yet");
+    assert!(!terminal.1);
+    assert_eq!(terminal.0, "Terminal · ⌘T");
     let delete = tooltip(&running, RowAction::Delete);
     assert!(!delete.1);
     assert_eq!(delete.0, "Delete \u{00b7} \u{232b}");
@@ -1426,6 +1471,7 @@ fn ScreenRoot(setup: SetupFn) -> Element {
     let mut state = use_app_state();
     use_context_provider(|| state);
     let mut view = provide_containers_view();
+    crate::ui::dock::use_dock_view(state);
     use_hook(move || (setup.0)(&mut state, &mut view));
     rsx! { ContainersScreen {} }
 }
@@ -1602,4 +1648,119 @@ fn containers_group_by_values_round_trip() {
     }
     assert_eq!(GroupBy::parse("garbage"), GroupBy::Project);
     assert_eq!(GroupBy::Engine.label(), "Group by: Engine");
+}
+
+// ---------- live stats feed the rows (P3-T4, D26) ----------
+
+mod stats_wiring {
+    use std::cell::RefCell;
+
+    use bytesize::ByteSize;
+
+    use super::*;
+    use crate::services::stats::{StatsKey, StatsService};
+
+    thread_local! {
+        static SERVICE: RefCell<Option<StatsService>> = const { RefCell::new(None) };
+    }
+
+    fn provide_service(state: &mut AppState, _view: &mut ContainersView) {
+        mock_state(state);
+        let service = StatsService::new(
+            crate::services::engines::client_map(),
+            tokio_util::sync::CancellationToken::new(),
+        );
+        SERVICE.with(|slot| *slot.borrow_mut() = Some(service.clone()));
+        provide_context(service);
+    }
+
+    fn service() -> StatsService {
+        SERVICE
+            .with(|slot| slot.borrow().clone())
+            .expect("service provided")
+    }
+
+    fn api_key() -> StatsKey {
+        let world = world();
+        let api = container(&world, "shop-api-api-1");
+        StatsKey::new(&api.engine, &api.id)
+    }
+
+    fn reading(cpu: f32) -> berth_core::LiveStats {
+        berth_core::LiveStats {
+            cpu_pct: cpu,
+            mem_used: ByteSize::mb(99),
+            mem_limit: ByteSize::mb(512),
+            net_rx: ByteSize::b(1),
+            net_tx: ByteSize::b(1),
+            at: chrono::Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn stats_rows_register_only_the_running_containers_they_render() {
+        let mut dom = VirtualDom::new_with_props(
+            ScreenRoot,
+            ScreenRootProps {
+                setup: SetupFn(provide_service),
+            },
+        );
+        let _ = dom.rebuild_to_vec();
+        let opened = service().reconcile().opened;
+        let world = world();
+        let api = container(&world, "shop-api-api-1");
+        let db = container(&world, "shop-api-db-1");
+        assert!(
+            opened.contains(&StatsKey::new(&api.engine, &api.id)),
+            "{opened:?}"
+        );
+        assert!(
+            !opened.iter().any(|k| k.id == db.id),
+            "an exited container has no stats stream"
+        );
+        assert!(opened.len() <= crate::services::stats::MAX_SUBSCRIPTIONS);
+        assert!(opened.iter().all(|k| {
+            world
+                .containers
+                .iter()
+                .find(|c| c.id == k.id)
+                .is_some_and(|c| {
+                    matches!(c.state, ContainerState::Running | ContainerState::Paused)
+                })
+        }));
+        // The screen going away releases every row: nothing stays open.
+        drop(dom);
+        let closed = service().reconcile().closed;
+        assert_eq!(closed.len(), opened.len());
+        assert_eq!(service().subscription_count(), 0);
+    }
+
+    #[test]
+    fn stats_a_fresh_sample_replaces_the_listed_value_in_the_row() {
+        let before = render_screen(provide_service);
+        let again = render_screen(|state, view| {
+            provide_service(state, view);
+            service().seed(&api_key(), [(chrono::Utc::now(), reading(77.7))]);
+        });
+        assert!(!before.contains("77.7%"));
+        assert!(again.contains("77.7%"), "{again}");
+        assert!(again.contains("99 MB"), "{again}");
+    }
+
+    #[test]
+    fn stats_a_stale_sample_is_not_shown() {
+        let html = render_screen(|state, view| {
+            provide_service(state, view);
+            let old = chrono::Utc::now() - chrono::Duration::seconds(60);
+            service().seed(&api_key(), [(old, reading(77.7))]);
+        });
+        assert!(!html.contains("77.7%"), "{html}");
+    }
+
+    #[test]
+    fn stats_without_a_service_the_row_keeps_the_listed_value() {
+        // The frame scenes run no service: the mock's own values stay.
+        let html = render_screen(|state, _view| mock_state(state));
+        assert!(html.contains("3.2%"), "{html}");
+    }
 }

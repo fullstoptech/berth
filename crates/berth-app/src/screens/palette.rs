@@ -12,9 +12,9 @@ use crate::services::Services;
 use crate::state::{AppState, Overlay};
 use crate::ui::{Icon, IconSize, PaletteItem};
 
-/// Shown on the disabled "Run as docker command?" row until P3-T6 builds
-/// terminal tabs.
-pub const DOCKER_COMMAND_REASON: &str = "Terminal tabs are not built yet";
+/// Shown on the disabled "Run as docker command?" row when no engine can
+/// run the command.
+pub const DOCKER_COMMAND_REASON: &str = "Start an engine to run docker commands";
 
 thread_local! {
     static INITIAL_QUERY: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
@@ -173,6 +173,23 @@ pub fn PaletteScreen() -> Element {
         close_palette(&mut state);
         search::run(&mut state, actions.as_ref(), &item);
     });
+
+    // "Run as docker command?" opens a terminal tab (P3-T6).
+    let run_docker = use_callback(move |typed: String| {
+        let mut state = state;
+        close_palette(&mut state);
+        let (Some(core), Some(mut view), Some(engine)) = (
+            try_consume_context::<crate::services::exec::ExecCore>(),
+            try_consume_context::<crate::services::exec::TerminalView>(),
+            crate::services::exec::docker_engine(&state),
+        ) else {
+            return;
+        };
+        let _ =
+            crate::services::exec::open_docker_tab(&mut state, &mut view, &core, engine, &typed);
+    });
+    let docker_runnable = crate::services::exec::docker_engine(&state).is_some()
+        && try_consume_context::<crate::services::exec::ExecCore>().is_some();
 
     // Keep the active row visible while arrow keys walk a long list.
     use_effect(move || {
@@ -340,7 +357,11 @@ pub fn PaletteScreen() -> Element {
                             icon: "terminal",
                             title: "Run as docker command?",
                             meta: "docker {typed}",
-                            disabled_reason: DOCKER_COMMAND_REASON,
+                            disabled_reason: (!docker_runnable).then(|| DOCKER_COMMAND_REASON.to_string()),
+                            onclick: {
+                                let typed = typed.clone();
+                                move |_| run_docker.call(typed.clone())
+                            },
                         }
                     }
                 }

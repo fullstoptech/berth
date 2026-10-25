@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+use super::dock::RegionMode;
 use super::icon_button::IconButton;
 use super::tabs::{TabItem, Tabs, TabsVariant};
 use crate::state::{AppState, BottomTab};
@@ -66,22 +67,54 @@ fn window_height() -> f64 {
         .height
 }
 
-/// Bottom panel (⌃`): tabs, a close button and a top edge you drag to
-/// resize, 160 px up to 60 % of the window. Tab bodies are filled by the
-/// log (P3-T2), terminal (P3-T6), problems and assistant tasks.
+/// The Logs tab: a log view over the selected containers (or the selected project's), opened by
+/// the Logs button on a row, ⌘L or the project row's Logs button.
 #[component]
-pub fn BottomPanel() -> Element {
+fn BottomLogs() -> Element {
+    let state = use_context::<AppState>();
+    let ids = crate::screens::logs::ids_from_selection(
+        &state.selection.read(),
+        &state.containers.read(),
+        &state.projects.read(),
+    );
+    rsx! { crate::screens::logs::LogPanel { containers: ids } }
+}
+
+/// What the region shows now: the dock's answer, or the panel alone when
+/// the shell made no dock signals (a panel rendered by itself).
+fn region_of(open: bool) -> Option<RegionMode> {
+    match super::dock::dock_view() {
+        Some(view) => view.layout.read().region,
+        None => open.then_some(RegionMode::PanelOnly),
+    }
+}
+
+/// The bottom region (⌃`, D22): one full-width area under the main area with
+/// a top edge you drag to resize, 160 px up to 60 % of the window. It shows
+/// the Logs/Terminal/Problems/Assistant panel, the docked inspector (the
+/// `inspector` element the shell built), or both side by side with the panel
+/// on the left. Tab bodies are filled by the log (P3-T2), terminal (P3-T6),
+/// problems and assistant tasks.
+#[component]
+pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
     let mut state = use_context::<AppState>();
     let mut drag = use_signal(|| None::<Drag>);
     let panel = state.bottom.read().clone();
-    if !panel.open {
+    let Some(mode) = region_of(panel.open) else {
         return rsx! {};
-    }
+    };
     let problem_count = state.problems.read().len();
     let dragging = drag().is_some();
+    let data_mode = match mode {
+        RegionMode::InspectorOnly => "inspector",
+        RegionMode::PanelOnly => "panel",
+        RegionMode::Split => "split",
+    };
+    let shows_panel = mode != RegionMode::InspectorOnly;
     rsx! {
         section {
             class: "bottom-panel",
+            "data-mode": data_mode,
             style: "height: {panel.height_px}px;",
             "aria-label": "Bottom panel",
             div {
@@ -98,28 +131,42 @@ pub fn BottomPanel() -> Element {
                     }));
                 },
             }
-            div { class: "bottom-head",
-                Tabs {
-                    items: bottom_tabs(problem_count),
-                    selected: tab_id(panel.tab).to_string(),
-                    variant: TabsVariant::Panel,
-                    aria_label: "Panel".to_string(),
-                    on_select: move |id: String| {
-                        if let Some(tab) = tab_from_id(&id) {
-                            state.bottom.write().tab = tab;
+            div { class: "bottom-split",
+                if shows_panel {
+                    div { class: "bottom-main",
+                        div { class: "bottom-head",
+                            Tabs {
+                                items: bottom_tabs(problem_count),
+                                selected: tab_id(panel.tab).to_string(),
+                                variant: TabsVariant::Underline,
+                                aria_label: "Panel".to_string(),
+                                on_select: move |id: String| {
+                                    if let Some(tab) = tab_from_id(&id) {
+                                        state.bottom.write().tab = tab;
+                                    }
+                                },
+                            }
+                            div { class: "bottom-close",
+                                IconButton {
+                                    icon: "x",
+                                    label: "Close panel".to_string(),
+                                    tooltip: "Close \u{b7} \u{2303}`".to_string(),
+                                    onclick: move |_| state.bottom.write().open = false,
+                                }
+                            }
                         }
-                    },
-                }
-                div { class: "bottom-close",
-                    IconButton {
-                        icon: "x",
-                        label: "Close panel".to_string(),
-                        tooltip: "Close \u{b7} \u{2303}`".to_string(),
-                        onclick: move |_| state.bottom.write().open = false,
+                        div { class: "bottom-body", role: "tabpanel",
+                            if panel.tab == BottomTab::Terminal {
+                                super::terminal::TerminalBody {}
+                            }
+                            if panel.tab == BottomTab::Logs {
+                                BottomLogs {}
+                            }
+                        }
                     }
                 }
+                {inspector}
             }
-            div { class: "bottom-body", role: "tabpanel" }
             if dragging {
                 div {
                     class: "resize-capture",

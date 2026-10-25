@@ -170,7 +170,9 @@
   --size-control-sm: calc(24px * var(--text-scale, 1));
   --size-control-md: calc(28px * var(--text-scale, 1));
   --size-control-lg: calc(32px * var(--text-scale, 1));
-  --size-row: round(calc(28px * var(--text-scale, 1)), 1px);
+  --size-row: round(calc(32px * var(--text-scale, 1)), 1px);
+  --size-row-lg: round(calc(36px * var(--text-scale, 1)), 1px);
+  --gutter: 16px;
   --size-icon-sm: calc(14px * var(--text-scale, 1));
   --size-icon-md: calc(16px * var(--text-scale, 1));
   --size-sidebar: 220px;
@@ -187,6 +189,9 @@
   --dwell-toast: 5000ms;
   --dwell-toast-action: 10000ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+@media (min-width: 1200px) {
+  :root { --gutter: 20px; }
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -304,6 +309,7 @@
 }
 :root[data-density="compact"] {
   --size-row: round(calc(24px * var(--text-scale, 1)), 1px);
+  --size-row-lg: round(calc(28px * var(--text-scale, 1)), 1px);
   --size-control-md: calc(24px * var(--text-scale, 1));
   --space-12: 8px;
 }

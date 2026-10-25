@@ -8,6 +8,7 @@ const SHELL_CSS: &str = include_str!("../assets/css/shell.css");
 const TABLES_CSS: &str = include_str!("../assets/css/tables.css");
 const UI_CSS: &str = include_str!("../assets/css/ui.css");
 const PALETTE_CSS: &str = include_str!("../assets/css/palette.css");
+const LOGS_CSS: &str = include_str!("../assets/css/logs.css");
 pub const FONTS_CSS: &str = include_str!("../assets/css/fonts.css");
 pub const ICONS_SVG: &str = include_str!("../assets/icons.svg");
 
@@ -38,7 +39,7 @@ const FONTS: &[(&str, &[u8])] = &[
 /// rendered by the root component after the /fonts/ handler registers (D5).
 pub fn head_html() -> String {
     format!(
-        "<style>{TOKENS_CSS}</style><style>{SHELL_CSS}</style><style>{UI_CSS}</style><style>{TABLES_CSS}</style><style>{PALETTE_CSS}</style>"
+        "<style>{TOKENS_CSS}</style><style>{SHELL_CSS}</style><style>{UI_CSS}</style><style>{TABLES_CSS}</style><style>{PALETTE_CSS}</style><style>{LOGS_CSS}</style>"
     )
 }
 

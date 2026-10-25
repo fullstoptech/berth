@@ -102,7 +102,7 @@ impl Default for BottomPanel {
     fn default() -> Self {
         Self {
             open: false,
-            height_px: 260,
+            height_px: 320,
             tab: BottomTab::Logs,
             terminals: Vec::new(),
         }
@@ -122,6 +122,10 @@ pub struct ConfirmModel {
     pub effect: berth_core::EffectSummary,
     pub action: berth_core::EngineAction,
     pub checkbox: Option<(String, bool)>,
+    /// The subjects the dialog acts on, fixed when it opens
+    /// (`effect.count == targets.len()`). `confirm::run` never re-reads the
+    /// selection; a target gone by confirm time becomes a refused line.
+    pub targets: Vec<berth_core::Subject>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastTone {

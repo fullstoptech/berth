@@ -69,6 +69,8 @@ def main():
     for name in ("sm", "md", "lg"):
         out.append(f"  --size-control-{name}: {scaled(tokens['size']['control'][name]['$value'])};")
     out.append(f"  --size-row: {scaled_whole(tokens['size']['row']['md']['$value'])};")
+    out.append(f"  --size-row-lg: {scaled_whole(tokens['size']['row']['lg']['$value'])};")
+    out.append(f"  --gutter: {tokens['layout']['gutter']['default']['$value']};")
     for name in ("sm", "md"):
         out.append(f"  --size-icon-{name}: {scaled(tokens['size']['icon'][name]['$value'])};")
     # Fixed on purpose: the title bar keeps the native traffic lights centred; the
@@ -83,6 +85,11 @@ def main():
         out.append(f"  --dwell-{name}: {value};")
     out.append(f"  --ease-standard: {tokens['motion']['easing']['standard']['$value']};")
     out.append("}")
+    # The page gutter widens with the window; a media query cannot read a variable,
+    # so the breakpoint comes straight from the token file.
+    out.append(f"@media (min-width: {tokens['layout']['wide-min-width']['$value']}) {{")
+    out.append(f"  :root {{ --gutter: {tokens['layout']['gutter']['wide']['$value']}; }}")
+    out.append("}")
 
     dark_roles = leaves(tokens["dark"]["color"])
     out.append('@media (prefers-color-scheme: dark) {')
@@ -96,6 +103,7 @@ def main():
 
     out.append(':root[data-density="compact"] {')
     out.append(f"  --size-row: {scaled_whole(tokens['density']['compact']['size']['row']['md']['$value'])};")
+    out.append(f"  --size-row-lg: {scaled_whole(tokens['density']['compact']['size']['row']['lg']['$value'])};")
     out.append(f"  --size-control-md: {scaled(tokens['density']['compact']['size']['control']['md']['$value'])};")
     out.append(f"  --space-12: {tokens['density']['compact']['space']['12']['$value']};")
     out.append("}")

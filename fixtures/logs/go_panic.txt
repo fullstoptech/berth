@@ -1,0 +1,10 @@
+2026/10/24 09:23:00 listening on :9000
+panic: runtime error: index out of range [5] with length 3
+
+goroutine 1 [running]:
+main.handler(0xc000012345, 0x5)
+	/app/main.go:27 +0x1d
+main.main()
+	/app/main.go:12 +0x45
+exit status 2
+2026/10/24 09:23:05 restarted

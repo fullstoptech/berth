@@ -23,13 +23,18 @@ berth-store.workspace = true
 berth-sys.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
+bytes.workspace = true
+bytesize.workspace = true
 chrono.workspace = true
 dioxus.workspace = true
 dioxus-ssr.workspace = true
 futures.workspace = true
 nucleo-matcher.workspace = true
+rfd.workspace = true
 rustls.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+tar.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
@@ -37,8 +42,6 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-bytes.workspace = true
-bytesize.workspace = true
 tempfile.workspace = true
 
 [lints]
