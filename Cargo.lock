@@ -220,6 +220,7 @@ dependencies = [
  "chrono",
  "dioxus",
  "dioxus-ssr",
+ "flate2",
  "futures",
  "nucleo-matcher",
  "rfd",

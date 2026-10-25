@@ -197,6 +197,113 @@ pub fn upload_title(dir: &str, name: &str) -> String {
     format!("Upload {name} to {dir}?")
 }
 
+/// What deleting a volume does (P4-T4): everything stored in it goes, and
+/// the name must be typed (D33). The size is the footer ("Removes 1.2 GB"),
+/// kept off the button label.
+#[must_use]
+pub fn delete_volume_effect(name: &str, size: Option<bytesize::ByteSize>) -> EffectSummary {
+    let mut effect = summary(
+        "Delete",
+        "volume",
+        "volumes",
+        1,
+        vec![line(
+            EffectKind::Goes,
+            format!("{name}, with every file stored in it"),
+        )],
+    );
+    effect.bytes = size;
+    effect.typed_name = Some(name.to_string());
+    effect
+}
+
+/// What restoring a backup into a volume does (P4-T4): the files of the
+/// backup are written over the volume's, and the name must be typed. The
+/// volume is not emptied first: files the backup does not have stay.
+#[must_use]
+pub fn restore_effect(
+    volume: &str,
+    file: &str,
+    files: u64,
+    size: bytesize::ByteSize,
+    users: &[String],
+) -> EffectSummary {
+    let count = usize::try_from(files).unwrap_or(usize::MAX);
+    let mut lines = vec![
+        line(
+            EffectKind::Writes,
+            format!(
+                "{} {} ({}) from {file} into {volume}",
+                crate::ui::file_browser::thousands(count),
+                if count == 1 { "file" } else { "files" },
+                berth_core::fmt::bytes(size)
+            ),
+        ),
+        line(
+            EffectKind::Changes,
+            format!("Files in {volume} with the same names are overwritten"),
+        ),
+        line(
+            EffectKind::Stays,
+            format!("Other files in {volume} are not touched"),
+        ),
+    ];
+    if !users.is_empty() {
+        lines.push(line(
+            EffectKind::Changes,
+            format!(
+                "{} use {volume} and see the files change; stop them first for a clean restore",
+                users.join(", ")
+            ),
+        ));
+    }
+    let mut effect = summary("Restore", "backup", "backups", 1, lines);
+    effect.typed_name = Some(volume.to_string());
+    effect
+}
+
+/// The restore dialog's title.
+#[must_use]
+pub fn restore_title(volume: &str) -> String {
+    format!("Restore {volume} from a backup?")
+}
+
+/// The first-use dialog of the volume helper image (D51): what it is, what
+/// it weighs, and that it stays.
+#[must_use]
+pub fn helper_effect() -> EffectSummary {
+    summary(
+        "Download",
+        "image",
+        "images",
+        1,
+        vec![
+            line(
+                EffectKind::Writes,
+                format!(
+                    "{} (about {}) is downloaded once and stays on this engine",
+                    crate::services::volumes::HELPER_IMAGE,
+                    berth_core::fmt::bytes(crate::services::volumes::HELPER_SIZE)
+                ),
+            ),
+            line(
+                EffectKind::Changes,
+                "A short-lived helper container mounts the volume to read it, then is removed"
+                    .to_string(),
+            ),
+        ],
+    )
+}
+
+/// The helper dialog's title.
+#[must_use]
+pub fn helper_title() -> String {
+    format!(
+        "Berth uses a small helper image {} to read volumes",
+        crate::services::volumes::HELPER_IMAGE
+    )
+}
+
 /// What recreating a container does (P3-T7, D18): the loss warning of the
 /// edit sheet, the dialog of "Recreate with latest image", the activity
 /// entry and the result all read this one summary. Settings the spec
@@ -492,6 +599,45 @@ pub fn engine_model(
         checkbox: None,
         targets: vec![Subject::Engine(engine.clone())],
     }
+}
+
+/// The delete dialog for a volume: typed name, and `EngineAction::Remove`
+/// of the volume on the engine that has it (D25a). `None` when the volume
+/// is gone, in use, or its engine cannot be told.
+#[must_use]
+pub fn delete_volume_model(state: &AppState, name: &str) -> Option<ConfirmModel> {
+    let volumes = state.volumes.peek();
+    let containers = state.containers.peek();
+    let engines = state.engines.peek();
+    let volume = volumes.iter().find(|v| v.name == name)?;
+    if !volume.used_by.is_empty() {
+        return None;
+    }
+    let engine = crate::services::volumes::owner_engine(volume, &containers, &engines)?;
+    Some(ConfirmModel {
+        title: format!("Delete volume {name}?"),
+        effect: delete_volume_effect(name, volume.size),
+        action: EngineAction::Remove {
+            engine,
+            target: ResourceRef::Volume(name.to_string()),
+            force: false,
+        },
+        checkbox: None,
+        targets: vec![Subject::Volume(name.to_string())],
+    })
+}
+
+/// Open the delete dialog for one volume on the overlay stack. False when
+/// nothing can be deleted (see [`delete_volume_model`]).
+pub fn open_delete_volume(state: &mut AppState, name: &str) -> bool {
+    let Some(model) = delete_volume_model(state, name) else {
+        return false;
+    };
+    state
+        .overlays
+        .write()
+        .push(crate::state::Overlay::Confirm(model));
+    true
 }
 
 /// Open the delete dialog for these containers on the overlay stack.

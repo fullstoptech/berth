@@ -42,14 +42,14 @@ pub enum View {
 }
 
 impl View {
-    fn gutter(self) -> f32 {
+    pub(super) fn gutter(self) -> f32 {
         match self {
             Self::Narrow => 16.0,
             Self::Wide => 20.0,
         }
     }
 
-    fn media(self) -> &'static str {
+    pub(super) fn media(self) -> &'static str {
         match self {
             Self::Narrow => "(max-width: 1199px)",
             Self::Wide => "(min-width: 1200px)",
@@ -77,7 +77,7 @@ impl Col {
 
 /// `max-width` for the container query that leaves a list: the widest width
 /// (whole px) under which the list's `need` no longer fits.
-fn threshold(need: f32) -> u32 {
+pub(super) fn threshold(need: f32) -> u32 {
     // The 0.001 keeps a need that is a whole number of px from rounding up.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let up = (need - 0.001).ceil().max(1.0) as u32;
@@ -86,7 +86,7 @@ fn threshold(need: f32) -> u32 {
 
 /// Selectors scoped to a text size. The default size also matches before the
 /// attribute is set.
-fn scoped(scale: f32, selectors: &str) -> String {
+pub(super) fn scoped(scale: f32, selectors: &str) -> String {
     let roots: Vec<String> = if (scale - 1.0).abs() < f32::EPSILON {
         vec![
             ":root:not([data-text-scale])".to_string(),
@@ -479,7 +479,7 @@ fn projects_css() -> String {
 // The files
 // ---------------------------------------------------------------------
 
-fn write_or_check(path: &str, generated: &str) {
+pub(super) fn write_or_check(path: &str, generated: &str) {
     if std::env::var_os("BERTH_REGEN_TIERS").is_some() {
         std::fs::write(path, generated).expect("write the generated stylesheet");
         return;

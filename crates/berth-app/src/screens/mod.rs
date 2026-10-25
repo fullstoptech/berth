@@ -17,3 +17,7 @@ pub mod projects;
 pub mod recent_activity;
 #[cfg(test)]
 pub(crate) mod table_tiers;
+pub mod volume_browser;
+pub mod volumes;
+#[cfg(test)]
+pub(crate) mod volumes_tiers;

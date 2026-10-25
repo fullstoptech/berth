@@ -28,6 +28,7 @@ bytesize.workspace = true
 chrono.workspace = true
 dioxus.workspace = true
 dioxus-ssr.workspace = true
+flate2.workspace = true
 futures.workspace = true
 nucleo-matcher.workspace = true
 rfd.workspace = true

@@ -59,6 +59,7 @@ pub fn pending_label(action_id: &str) -> &'static str {
         "container.resume" => "Resuming…",
         "container.kill" => "Killing…",
         "container.delete" | "project.delete" => "Deleting…",
+        "volume.create" => "Creating…",
         "container.rename" => "Renaming…",
         "network.create" => "Creating…",
         "network.delete" | "image.delete" | "volume.delete" => "Deleting…",
@@ -281,13 +282,15 @@ fn volume_reason(name: &str, action: &str, state: &StateView<'_>) -> Option<Stri
     let Some(volume) = state.volumes.iter().find(|v| v.name == name) else {
         return Some("This volume no longer exists".to_string());
     };
-    if volume.used_by.is_empty() {
-        None
-    } else {
-        Some(format!(
+    if !volume.used_by.is_empty() {
+        return Some(format!(
             "Used by {}",
             plural(volume.used_by.len(), "container", "containers")
-        ))
+        ));
+    }
+    match crate::services::volumes::owner_engine(volume, state.containers, state.engines) {
+        Some(engine) => engine_unavailable(&engine, state),
+        None => Some(crate::services::volumes::OWNER_UNKNOWN.to_string()),
     }
 }
 
@@ -559,6 +562,10 @@ enum Work {
         target: berth_core::ResourceRef,
         force: bool,
     },
+    Volume {
+        client: Arc<dyn berth_engine::EngineClient>,
+        op: crate::services::volumes::VolumeOp,
+    },
 }
 
 struct Job {
@@ -624,6 +631,9 @@ impl Inner {
             )
             .await
             .map(|()| edit::Done::default()),
+            Work::Volume { client, op } => {
+                crate::services::volumes::run(client.as_ref(), op.clone(), &cancel).await
+            }
         }
     }
 }
@@ -896,6 +906,36 @@ impl ActionsService {
                     target: target.clone(),
                     force,
                 },
+            },
+        );
+        Ok(())
+    }
+
+    /// Create one volume (P4-T4). Deleting goes through [`remove`]. `Err`
+    /// carries the disabled reason; nothing is set pending in that case.
+    ///
+    /// [`remove`]: ActionsService::remove
+    pub fn volume(
+        &self,
+        state: &mut AppState,
+        engine: &berth_core::EngineId,
+        name: &str,
+        op: crate::services::volumes::VolumeOp,
+    ) -> Result<(), String> {
+        let key = PendingKey {
+            subject: Subject::Volume(name.to_string()),
+            action: op.action_id(),
+        };
+        Self::check(state, &key.subject, key.action)?;
+        let client = self.client_for(engine)?;
+        self.launch(
+            state,
+            Job {
+                key,
+                engine: engine.clone(),
+                name: name.to_string(),
+                project: None,
+                work: Work::Volume { client, op },
             },
         );
         Ok(())

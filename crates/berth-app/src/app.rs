@@ -103,6 +103,7 @@ pub fn App() -> Element {
     let mut state = use_app_state();
     use_context_provider(|| state);
     crate::screens::containers::provide_containers_view();
+    crate::screens::volumes::provide_volumes_view();
     let dock = crate::ui::dock::use_dock_view(state);
     crate::ui::dock::use_window_width(dock);
     let details = crate::services::detail::provide_detail_store();
@@ -273,6 +274,8 @@ fn OverlayStack() -> Element {
                     crate::screens::palette::PaletteScreen {}
                 } else if let Overlay::Confirm(model) = overlay {
                     crate::ui::ConfirmOverlay { key: "{model.title}", model: model.clone() }
+                } else if matches!(overlay, Overlay::CreateVolume) {
+                    crate::sheets::create_volume::CreateVolumeSheet {}
                 } else if let Overlay::EditRecreate(id) = overlay {
                     crate::sheets::edit_recreate::EditRecreateSheet { key: "{id.0}", id: id.clone() }
                 } else if matches!(overlay, Overlay::CreateNetwork) {
@@ -319,6 +322,14 @@ pub fn Shell() -> Element {
         }
         if let Selection::Network(id) = &*state.selection.read() {
             crate::screens::network_detail::NetworkDetailPanel { key: "{id}", id: id.clone() }
+        }
+        if *state.section.read() == crate::state::Section::Volumes {
+            if let Selection::Volume(name) = &*state.selection.read() {
+                crate::screens::volume_browser::VolumeDetailPanel {
+                    key: "{name}",
+                    name: name.clone(),
+                }
+            }
         }
     };
     let right = match layout.slot {
@@ -381,6 +392,9 @@ pub fn Shell() -> Element {
                             }
                             if *state.section.read() == crate::state::Section::Networks {
                                 crate::screens::networks::NetworksScreen {}
+                            }
+                            if *state.section.read() == crate::state::Section::Volumes {
+                                crate::screens::volumes::VolumesScreen {}
                             }
                         }
                         if let Some((frame, width)) = right {

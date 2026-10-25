@@ -16,6 +16,8 @@ pub mod logs;
 pub mod networks;
 pub mod search;
 pub mod stats;
+pub mod volume_backup;
+pub mod volumes;
 
 /// The moment the bundled mock world is written for: its container start
 /// times give the uptimes the frames show (2 h, 6 h, 35 min, 1 d, 3 d …)

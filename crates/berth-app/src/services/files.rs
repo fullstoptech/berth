@@ -266,10 +266,13 @@ pub struct EngineFiles {
 impl EngineFiles {
     #[must_use]
     pub fn new(client: Arc<dyn EngineClient>, container: ContainerId) -> Self {
-        Self {
-            client,
-            target: FileTarget::Container(container),
-        }
+        Self::for_target(client, FileTarget::Container(container))
+    }
+
+    /// Any target: a container, or a volume through the helper (D51).
+    #[must_use]
+    pub fn for_target(client: Arc<dyn EngineClient>, target: FileTarget) -> Self {
+        Self { client, target }
     }
 }
 
@@ -295,7 +298,7 @@ impl FileSource for EngineFiles {
 pub struct FilesBackend(pub Arc<dyn FileSource>);
 
 /// Run `future` on the I/O runtime and wait for it here.
-async fn on_io<T: Send + 'static>(
+pub(crate) async fn on_io<T: Send + 'static>(
     future: impl std::future::Future<Output = T> + Send + 'static,
 ) -> Option<T> {
     let (tx, rx) = tokio::sync::oneshot::channel();

@@ -1,0 +1,353 @@
+/* Volumes screen, volume detail and the create sheet (P4-T4). Colours and
+   sizes come only from tokens.css. No frame draws these screens: the header
+   and table follow "Containers / selected / 1440", the sheet the confirm
+   dialog, the inspector the container's. */
+
+.volumes-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  font-size: var(--text-body-size);
+  /* The column-drop tiers (volumes_tiers.css) key on this width. */
+  container: volumes / inline-size;
+}
+.main:has(> .volumes-screen) {
+  overflow: hidden;
+}
+
+/* Header: title, count, filter, usage filter, Create volume */
+.vl-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--gutter) var(--space-12);
+  flex: none;
+}
+.vl-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-body-weight);
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.vl-header .badge-count {
+  height: var(--size-control-sm);
+  padding: 0 var(--space-8);
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  border-radius: var(--radius-md);
+}
+.vl-spacer {
+  flex: 1;
+}
+.vl-filter {
+  flex: 0 1 240px;
+  min-width: calc(120px * var(--text-scale, 1));
+}
+.vl-usage {
+  flex: none;
+}
+.vl-create {
+  flex: none;
+}
+.vl-banners {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: 0 var(--gutter) var(--space-12);
+  flex: none;
+}
+
+/* Table: header and rows share one grid. Columns: name, project, size,
+   used by, driver, created, buttons. Every track that holds a number or a
+   button grows with the text size. The narrower lists are in
+   volumes_tiers.css, generated from this one (screens/volumes_tiers.rs). */
+.vl-table {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  --vl-cols: minmax(140px, 2fr) minmax(calc(90px * var(--text-scale, 1)), 1.2fr) calc(92px * var(--text-scale, 1)) minmax(calc(110px * var(--text-scale, 1)), 1.4fr) calc(64px * var(--text-scale, 1)) calc(100px * var(--text-scale, 1)) calc(60px * var(--text-scale, 1));
+}
+.vl-head {
+  display: grid;
+  grid-template-columns: var(--vl-cols);
+  column-gap: var(--space-12);
+  align-items: center;
+  padding: 0 var(--gutter);
+  box-sizing: border-box;
+  height: var(--size-control-md);
+  min-height: var(--size-control-md);
+  border-bottom: 1px solid var(--color-line);
+  flex: none;
+}
+.vl-head .table-header-cell {
+  padding: 0;
+  border-bottom: none;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+}
+.vl-head .table-header-cell.align-right {
+  justify-content: flex-end;
+}
+.vl-table .virtual-table {
+  flex: 1;
+  min-height: 0;
+  max-height: none !important;
+}
+.vl-table .vt-row {
+  display: block;
+  padding: 0;
+  gap: 0;
+  height: auto;
+  min-height: 0;
+  border-bottom: none;
+}
+.vl-table .vt-row:hover {
+  background: none;
+}
+.vl-skeleton {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  /* Skeleton rows show after 300 ms (brief 7.3): hidden, then revealed. */
+  opacity: 0;
+  animation: vl-reveal 0s linear 300ms forwards;
+}
+@keyframes vl-reveal {
+  to {
+    opacity: 1;
+  }
+}
+
+.vl-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--vl-cols);
+  column-gap: var(--space-12);
+  align-items: center;
+  height: var(--size-row);
+  padding: 0 var(--gutter);
+  border-bottom: 1px solid var(--color-line);
+  box-sizing: border-box;
+  font-size: var(--text-body-size);
+  color: var(--color-ink);
+  white-space: nowrap;
+  cursor: default;
+}
+.vl-row:hover {
+  background: var(--color-surface-hover);
+}
+.vl-row.vl-selected {
+  background: var(--color-selection);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.vl-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vl-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.vl-name .icon {
+  flex: none;
+  color: var(--color-ink-muted);
+}
+.vl-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vl-muted {
+  color: var(--color-ink-muted);
+}
+.vl-dash {
+  color: var(--color-ink-disabled);
+}
+.vl-size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.vl-size-wait {
+  color: var(--color-ink-muted);
+}
+.vl-used {
+  color: var(--color-ink);
+}
+.vl-row-failure {
+  color: var(--color-danger-dot);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Row buttons: on hover, keyboard focus and always on the selected row. */
+.vl-actions {
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
+  min-width: 0;
+  overflow: visible;
+}
+.vl-row:hover .vl-actions,
+.vl-row:focus-within .vl-actions,
+.vl-row.vl-selected .vl-actions {
+  display: flex;
+}
+.vl-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* The detail in the inspector reuses the container header's classes
+   (container_detail.css); these are what it adds. */
+.vd-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+.vd-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.vd-users {
+  margin: 0;
+  padding: 0 var(--space-12);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.vd-user {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+  text-align: left;
+  cursor: pointer;
+}
+.vd-user:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+.vd-user:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+.vd-section {
+  margin: var(--space-8) var(--space-12) 0;
+  font-size: var(--text-h3-size);
+  line-height: var(--text-h3-line);
+  font-weight: var(--text-h3-weight);
+}
+.vd-note {
+  margin: 0 var(--space-12);
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.vd-failure {
+  margin: 0 var(--space-12);
+}
+.vd-busy {
+  margin: 0 var(--space-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+}
+.vd-bar {
+  height: var(--space-4);
+  border-radius: var(--radius-full);
+  background: var(--color-line);
+  overflow: hidden;
+}
+.vd-bar-fill {
+  height: 100%;
+  background: var(--color-accent);
+}
+/* Where the folder browser sits in the inspector: its own scroll. */
+.vd-files {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.vd-helper {
+  margin: var(--space-8) var(--space-12);
+  padding: var(--space-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  align-items: flex-start;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.vd-helper p {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+
+/* Create volume sheet: the confirm dialog's card, a little wider. */
+.overlay-scrim:has(> .cv-sheet) {
+  padding-top: 120px;
+  background: color-mix(in srgb, var(--neutral-dark-50) 40%, transparent);
+}
+.cv-sheet {
+  box-sizing: border-box;
+  width: 520px;
+  max-width: calc(100vw - var(--space-32));
+  padding: var(--space-24);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-dialog);
+  color: var(--color-ink);
+}
+.cv-title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-body-lg-size);
+  line-height: var(--text-body-lg-line);
+  font-weight: var(--text-body-weight);
+}
+.cv-lede {
+  margin: 0 0 var(--space-16);
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.cv-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.cv-help {
+  margin: var(--space-4) 0 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.cv-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  margin-top: var(--space-16);
+}

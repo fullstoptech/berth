@@ -885,6 +885,79 @@ fn containers_engine_stopped(state: &mut AppState) {
     }
 }
 
+// --- Volumes (P4-T4): no frame, the nearest is "Containers / selected / 1440" ---
+
+/// The mock world on the Volumes screen, dark like the Containers frame.
+fn volumes_world(state: &mut AppState) {
+    load_mock_world(state);
+    state.settings.write().theme = berth_store::Theme::Dark;
+    state.section.set(Section::Volumes);
+}
+
+fn volumes_list(state: &mut AppState) {
+    volumes_world(state);
+}
+
+/// A volume in use selected: its Overview in the inspector.
+fn volumes_selected(state: &mut AppState) {
+    volumes_world(state);
+    state
+        .selection
+        .set(Selection::Volume("shop-api_pgdata".to_string()));
+}
+
+/// The Files tab of that volume over an in-memory Postgres data folder,
+/// with the helper image already on the engine.
+fn volumes_browser(state: &mut AppState) {
+    use crate::services::files::{FilesBackend, MemoryFiles};
+    volumes_selected(state);
+    let now = chrono::Utc::now().timestamp();
+    let day = 86_400;
+    let files = MemoryFiles::new()
+        .with_dir("/base", now - 2 * day)
+        .with_dir("/global", now - 2 * day)
+        .with_dir("/pg_wal", now - 600)
+        .with_dir("/pg_stat", now - 600)
+        .with_file("/PG_VERSION", b"17\n", now - 9 * day)
+        .with_file("/postgresql.conf", &[b'x'; 30_912], now - 9 * day)
+        .with_file("/pg_hba.conf", &[b'x'; 5_711], now - 9 * day)
+        .with_file("/postmaster.pid", &[b'x'; 98], now - 7_200)
+        .with_file("/postmaster.opts", &[b'x'; 40], now - 7_200);
+    provide_context(FilesBackend(std::sync::Arc::new(files)));
+    provide_context(crate::screens::volume_browser::HelperPreset(
+        crate::screens::volume_browser::Helper::Ready,
+    ));
+    if let Some(view) = try_consume_context::<crate::screens::volumes::VolumesView>() {
+        let mut browse = view.browse;
+        browse.set(Some("shop-api_pgdata".to_string()));
+    }
+}
+
+/// The Files tab before the helper image is on the engine.
+fn volumes_helper(state: &mut AppState) {
+    volumes_browser(state);
+    provide_context(crate::screens::volume_browser::HelperPreset(
+        crate::screens::volume_browser::Helper::Missing,
+    ));
+}
+
+fn volumes_create(state: &mut AppState) {
+    volumes_world(state);
+    state
+        .overlays
+        .write()
+        .push(crate::state::Overlay::CreateVolume);
+}
+
+/// The typed-name delete dialog of an unused volume.
+fn volumes_confirm_delete(state: &mut AppState) {
+    volumes_world(state);
+    state
+        .selection
+        .set(Selection::Volume("stale-cache".to_string()));
+    crate::services::confirm::open_delete_volume(state, "stale-cache");
+}
+
 const SCENES: &[Scene] = &[
     Scene {
         frame: "Projects / empty / 1440",
@@ -1000,6 +1073,30 @@ const SCENES: &[Scene] = &[
         frame: "Networks / create / 1440",
         setup: networks_create,
     },
+    Scene {
+        frame: "Volumes / list / 1440",
+        setup: volumes_list,
+    },
+    Scene {
+        frame: "Volumes / selected / 1440",
+        setup: volumes_selected,
+    },
+    Scene {
+        frame: "Volumes / browser / 1440",
+        setup: volumes_browser,
+    },
+    Scene {
+        frame: "Volumes / helper / 1440",
+        setup: volumes_helper,
+    },
+    Scene {
+        frame: "Volumes / create / 1440",
+        setup: volumes_create,
+    },
+    Scene {
+        frame: "Volumes / confirm delete / 1440",
+        setup: volumes_confirm_delete,
+    },
 ];
 
 pub fn scenes() -> &'static [Scene] {
@@ -1023,6 +1120,7 @@ fn SceneRoot(frame: String) -> Element {
     let mut state = use_app_state();
     use_context_provider(|| state);
     crate::screens::containers::provide_containers_view();
+    crate::screens::volumes::provide_volumes_view();
     let dock = crate::ui::dock::use_dock_view(state);
     crate::services::exec::provide_scene_terminals();
     let details = crate::services::detail::provide_detail_store();
@@ -1063,7 +1161,7 @@ mod tests {
         assert!(find("Projects / empty / 1440").is_some());
         assert!(find("Components / primitives").is_some());
         assert!(find("Containers / selected / 1440").is_some());
-        assert_eq!(scenes().len(), 28);
+        assert_eq!(scenes().len(), 34);
         assert!(find("No such frame").is_none());
     }
 

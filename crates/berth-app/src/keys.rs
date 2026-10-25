@@ -277,6 +277,8 @@ pub fn dispatch(state: &mut AppState, action: ActionId) {
         "container.delete" | "bulk.delete" => open_delete_for_selection(state),
         // ⌫ on the selected network asks first, unless it is built in (P4-T5).
         "network.delete" => crate::screens::networks::delete_selected(state),
+        // ⌫ on the selected volume asks for its name first (P4-T4).
+        "volume.delete" => crate::screens::volumes::open_delete_for_selection(state),
         // J/K and Space act on the visible list (P2-T7).
         "global.select_next" | "global.select_prev" | "global.toggle_inspector" => {
             crate::screens::containers::dispatch(state, action);

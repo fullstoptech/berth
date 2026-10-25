@@ -435,8 +435,12 @@ impl EngineClient for BollardEngine {
     async fn volume_sizes(
         &self,
     ) -> Result<std::collections::BTreeMap<String, bytesize::ByteSize>, EngineError> {
+        // `system df` walks every volume: seconds on a busy engine (4 s
+        // measured), so it gets its own budget instead of the 2 s default.
         let df = self
             .docker
+            .clone()
+            .with_timeout(std::time::Duration::from_secs(60))
             .df(None::<DataUsageOptions>)
             .await
             .map_err(|e| self.err(e))?;
