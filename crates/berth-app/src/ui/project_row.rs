@@ -143,6 +143,7 @@ pub struct ProjectRowModel {
     pub name: String,
     pub kind: RowKind,
     pub path_short: String,
+    /// The whole `~/…` path, or "—" when the project has no folder.
     pub path_full: String,
     pub engine_name: String,
     pub branch: Option<String>,
@@ -492,7 +493,7 @@ pub fn row_model(
         path_full: project
             .folder
             .as_deref()
-            .map_or_else(String::new, |f| berth_core::fmt::tilde(f, home)),
+            .map_or_else(|| "—".to_string(), |f| berth_core::fmt::tilde(f, home)),
         engine_name: engine.map_or_else(|| project.engine.0.clone(), |e| e.name.clone()),
         branch: project.git.as_ref().and_then(|g| g.branch.clone()),
         dots,
@@ -688,11 +689,17 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
     rsx! {
         div { class: "project-row-wrap",
             div { class: "{row_class}", role: "row",
-                div { class: "project-cell project-cell-name", role: "cell",
+                // The full path is the name cell's tooltip at any size, so it
+                // stays reachable when the Path column is hidden (D3). The
+                // button inside carries it too: a child's title wins on hover.
+                div {
+                    class: "project-cell project-cell-name",
+                    role: "cell",
+                    title: "{model.path_full}",
                     button {
                         class: "project-name",
                         r#type: "button",
-                        title: "Open {model.name}",
+                        title: "Open {model.name}\n{model.path_full}",
                         onclick: {
                             let mut open_project = open_project.clone();
                             move |_| open_project()

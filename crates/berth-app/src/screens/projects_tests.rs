@@ -615,12 +615,32 @@ fn projects_table_ports_track_closes_in_the_narrowest_tier() {
     }
 }
 
-/// The column list in force for a screen `width` px wide at `scale`, and
-/// the number of px beside the tracks (table margins and row padding).
+/// The body of the container block that also drops Path.
+fn no_path_block() -> &'static str {
+    css::block(PROJECTS_CSS, "@container projects (max-width: 49.5em) {")
+}
+
+/// The container-query width in em for a screen `width` px wide at `scale`:
+/// ems resolve against the 13 px body size times the scale.
+fn em_at(width: f32, scale: f32) -> f32 {
+    width / (13.0 * scale)
+}
+
+/// Main-area widths of the two windows the tests sweep.
+const MAIN_1024: f32 = 1024.0 - 220.0;
+const MAIN_1440: f32 = 1440.0 - 220.0;
+
+/// Whether the Path column is hidden: the width falls in the last tier.
+fn path_hidden_at(width: f32, scale: f32) -> bool {
+    em_at(width, scale) <= 49.5
+}
+
+/// The column list in force for a screen `width` px wide at `scale`.
 fn projects_tracks_at(width: f32, scale: f32) -> Vec<String> {
-    // Container-query ems resolve against the 13 px body size times the scale.
-    let em = width / (13.0 * scale);
-    let list = if em <= 61.5 {
+    let em = em_at(width, scale);
+    let list = if em <= 49.5 {
+        css::declaration(no_path_block(), "--projects-cols")
+    } else if em <= 61.5 {
         css::declaration(narrowest_block(), "--projects-cols")
     } else if em <= 92.3 {
         css::declaration(narrow_block(), "--projects-cols")
@@ -635,17 +655,18 @@ fn projects_tracks_at(width: f32, scale: f32) -> Vec<String> {
 
 #[test]
 fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
-    for width in [1024.0 - 220.0, 1440.0 - 220.0] {
+    for width in [MAIN_1024, MAIN_1440] {
         for scale in STEPS {
             let tracks = projects_tracks_at(width, scale);
             let room = width - 32.0 - 16.0 - css::min_sum(&tracks, scale);
             // The buttons are a track of their own in the narrow lists and
-            // the `1fr` in the wide one; Path and Services keep some room.
+            // the `1fr` in the wide one; Path and Services (or Services
+            // alone, once Path is gone) keep some room.
             let buttons = 160.0 * scale + 56.0;
-            let (need, what) = if tracks.len() == 9 {
-                (buttons, "the buttons")
-            } else {
-                (120.0, "Path and Services")
+            let (need, what) = match tracks.len() {
+                9 => (buttons, "the buttons"),
+                6 => (120.0, "Services"),
+                _ => (120.0, "Path and Services"),
             };
             assert!(
                 room >= need,
@@ -653,6 +674,94 @@ fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
             );
         }
     }
+}
+
+#[test]
+fn projects_path_column_is_hidden_at_1024_from_130_percent_up_only() {
+    // Hidden: 1024 px at 130 % and 150 %.
+    for scale in [1.3, 1.5] {
+        assert!(path_hidden_at(MAIN_1024, scale), "1024 x {scale}");
+    }
+    // Shown: 1024 px at every step up to 120 %, and 1440 px at every step.
+    for scale in STEPS.into_iter().filter(|s| *s <= 1.2) {
+        assert!(!path_hidden_at(MAIN_1024, scale), "1024 x {scale}");
+    }
+    for scale in STEPS {
+        assert!(!path_hidden_at(MAIN_1440, scale), "1440 x {scale}");
+    }
+    // The tracks agree: Path keeps a track exactly where it is shown.
+    for (width, scale, tracks) in [
+        (MAIN_1024, 1.2, 7),
+        (MAIN_1024, 1.3, 6),
+        (MAIN_1024, 1.5, 6),
+        (MAIN_1440, 1.5, 7),
+        (MAIN_1440, 1.0, 9),
+    ] {
+        assert_eq!(
+            projects_tracks_at(width, scale).len(),
+            tracks,
+            "{width} x {scale}"
+        );
+    }
+}
+
+#[test]
+fn projects_no_path_tier_hides_path_and_gives_services_its_share() {
+    let block = no_path_block();
+    // The header's second cell and the row's Path cell.
+    assert!(
+        block.contains(".projects-head > :nth-child(2),\n  .project-cell-path {"),
+        "{block}"
+    );
+    assert!(block.contains("display: none;"), "{block}");
+    // Child 2 is Path while the markup keeps that order; the row's cell
+    // carries the class hidden above.
+    let html = scene("Projects / default / 1440");
+    let head = html.split("class=\"projects-head\"").nth(1).expect("head");
+    let second = head
+        .split("table-header-label\">")
+        .nth(2)
+        .and_then(|s| s.split('<').next());
+    assert_eq!(second, Some("Path"));
+    assert!(html.contains("project-cell project-cell-path"));
+    // Six visible columns: the nine less Path, Engine and Branch. Name and
+    // Services keep the 116:216 split of what is left (Services is Path's
+    // 104 plus its own 112), Ports stays closed, the numeric tracks and the
+    // buttons keep their size.
+    let tracks = css::tracks(&css::declaration(block, "--projects-cols"));
+    assert_eq!(tracks.len(), 6, "{tracks:?}");
+    assert_eq!(tracks[1], "minmax(0, 216fr)", "Services");
+    assert_eq!(tracks[2], "0px", "Ports");
+    for i in [0, 3, 4, 5] {
+        assert!(css::has_scale(&tracks[i]), "track {i} `{}`", tracks[i]);
+    }
+    // The tier is narrower than the Ports tier it builds on.
+    assert!(
+        PROJECTS_CSS.find("max-width: 49.5em").expect("tier")
+            > PROJECTS_CSS.find("max-width: 61.5em").expect("ports tier")
+    );
+}
+
+#[test]
+fn projects_name_cell_carries_the_full_path_as_its_tooltip() {
+    let html = scene("Projects / default / 1440");
+    // At any size: the cell, whatever the collapsed text in the Path column.
+    assert!(
+        html.contains("project-cell-name\" role=\"cell\" title=\"~/Dev/clients/acme/shop-api\""),
+        "{html}"
+    );
+    assert!(html.contains("title=\"~/Dev/analytics\""), "{html}");
+}
+
+#[test]
+fn projects_name_cell_of_unassigned_has_a_dash_for_its_tooltip() {
+    let html = scene("Projects / with unassigned / 1440");
+    let at = html
+        .find("<span class=\"project-name-text\">Unassigned</span>")
+        .expect("Unassigned row");
+    let cell = &html[..at];
+    let cell = &cell[cell.rfind("project-cell-name").expect("name cell")..];
+    assert!(cell.contains("title=\"\u{2014}\""), "{cell}");
 }
 
 // --- The Unassigned row (loose containers; the owner keeps it) ---
@@ -691,7 +800,7 @@ fn projects_scene_with_unassigned_shows_the_row_last_and_the_sidebar_hides_it() 
     let row = &table[loose..];
     let row = &row[..row.find("project-row-wrap").unwrap_or(row.len())];
     assert!(
-        row.contains("project-cell-path\" role=\"cell\" title=\"\">—<"),
+        row.contains("project-cell-path\" role=\"cell\" title=\"—\">—<"),
         "{row}"
     );
     assert!(row.contains(">Stop all<"), "{row}");
