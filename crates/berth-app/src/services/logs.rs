@@ -19,7 +19,8 @@ use std::time::{Duration, Instant};
 
 use berth_core::{ContainerId, EngineId, LogLine, LogQuery};
 use berth_logs::{
-    batch_counted, series_for, LogView, SearchSummary, DEFAULT_QUEUE_LINES, MAX_BATCH_LINES,
+    batch_counted, series_for, LogView, PreparedBatch, SearchSummary, DEFAULT_QUEUE_LINES,
+    MAX_BATCH_LINES,
 };
 use dioxus::prelude::*;
 use futures::stream::BoxStream;
@@ -87,7 +88,8 @@ pub struct LogCore {
     new_lines: AtomicU64,
     /// Batches applied so far.
     batches: AtomicU64,
-    /// Slowest `push_batch`, in microseconds (measurement, logged at debug).
+    /// Longest hold of the view lock by one batch commit, in microseconds (measurement, logged at
+    /// debug).
     slowest_push_us: AtomicU64,
     status: Mutex<LogStatus>,
     search_error: Mutex<Option<String>>,
@@ -115,6 +117,10 @@ fn spawn_io(future: impl Future<Output = ()> + Send + 'static) {
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn micros(d: Duration) -> u64 {
+    u64::try_from(d.as_micros()).unwrap_or(u64::MAX)
 }
 
 /// A throwaway view that touches every lazily built pattern and the first memory pages, so the
@@ -324,7 +330,7 @@ impl LogCore {
         self.batches.load(Ordering::Relaxed)
     }
 
-    /// The slowest `push_batch` so far.
+    /// The longest the view lock was held by one batch commit so far.
     #[must_use]
     pub fn slowest_push(&self) -> Duration {
         Duration::from_micros(self.slowest_push_us.load(Ordering::Relaxed))
@@ -448,34 +454,41 @@ fn apply(
     if lines.is_empty() {
         return;
     }
-    let mut guard = lock(&core.view);
-    let Some(view) = guard.as_mut() else {
-        return;
-    };
     let mut rest = lines;
     while !rest.is_empty() {
         let tail = rest.split_off(rest.len().min(MAX_BATCH_LINES));
         let chunk = std::mem::replace(&mut rest, tail);
-        let started = Instant::now();
-        let delta = view.push_batch(chunk);
-        let took = started.elapsed();
+        // Classification, JSON parsing and fold facts run before the lock is taken (D23): the UI
+        // reads the view while this chunk is prepared, and waits only for the commit.
+        let prepare_started = Instant::now();
+        let prepared = PreparedBatch::new(chunk);
+        let prepare_us = micros(prepare_started.elapsed());
+        let mut guard = lock(&core.view);
+        let Some(view) = guard.as_mut() else {
+            return;
+        };
+        let commit_started = Instant::now();
+        let delta = view.commit_batch(prepared);
+        let commit_us = micros(commit_started.elapsed());
+        drop(guard);
         core.new_lines
             .fetch_add(u64::from(delta.new_while_paused), Ordering::Relaxed);
         core.batches.fetch_add(1, Ordering::Relaxed);
-        let us = u64::try_from(took.as_micros()).unwrap_or(u64::MAX);
-        core.slowest_push_us.fetch_max(us, Ordering::Relaxed);
+        core.slowest_push_us.fetch_max(commit_us, Ordering::Relaxed);
         tracing::debug!(
-            push_batch_us = us,
+            prepare_us,
+            commit_us,
             appended = delta.appended,
             "log batch applied"
         );
     }
     let total = drops.total();
     if total > *counted_drops {
-        view.add_dropped(total - *counted_drops);
+        if let Some(view) = lock(&core.view).as_mut() {
+            view.add_dropped(total - *counted_drops);
+        }
         *counted_drops = total;
     }
-    drop(guard);
     core.set_status(LogStatus::Following);
     core.wake.notify_one();
 }

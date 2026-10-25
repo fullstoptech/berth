@@ -68,6 +68,32 @@ fn is_panic_head(text: &str) -> bool {
     text.starts_with("panic:") || text.starts_with("fatal error:")
 }
 
+/// What a line's text alone says about folding, computed without any state so that it can run
+/// before the view lock is taken (D23). [`FoldTracker::place_with`] combines it with the previous
+/// line of the same container and stream, which is the part that has to run in order.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FoldFacts {
+    own: Option<Kind>,
+    blank: bool,
+    leading_whitespace: bool,
+    leading_tab: bool,
+    go_function: bool,
+    panic_head: bool,
+}
+
+impl FoldFacts {
+    pub(crate) fn of(text: &str) -> Self {
+        Self {
+            own: own_kind(text),
+            blank: text.trim().is_empty(),
+            leading_whitespace: text.starts_with(char::is_whitespace),
+            leading_tab: text.starts_with('\t'),
+            go_function: is_go_function_line(text),
+            panic_head: is_panic_head(text),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Last {
     seq: u64,
@@ -93,11 +119,14 @@ impl Last {
 /// frames of a stderr trace), so a trace must follow its own stream, not the container's line order.
 #[derive(Debug, Default)]
 pub(crate) struct FoldTracker {
-    last: HashMap<(ContainerId, Stream), Last>,
+    /// `[stdout, stderr]` per container. Keyed by the container alone so that a lookup clones
+    /// nothing: this runs for every line under the view lock.
+    last: HashMap<ContainerId, [Option<Last>; 2]>,
 }
 
 impl FoldTracker {
     /// Records the line at `seq` and returns the head `seq` it folds under, if it continues a trace.
+    #[cfg(test)]
     pub(crate) fn place(
         &mut self,
         container: &ContainerId,
@@ -105,9 +134,27 @@ impl FoldTracker {
         seq: u64,
         text: &str,
     ) -> Option<u64> {
-        let key = (container.clone(), stream);
-        let prev = self.last.get(&key).copied();
-        let kind = prev.and_then(|p| continuation_kind(text, &p));
+        self.place_with(container, stream, seq, &FoldFacts::of(text))
+    }
+
+    /// [`place`](Self::place) for a line whose [`FoldFacts`] are already known.
+    pub(crate) fn place_with(
+        &mut self,
+        container: &ContainerId,
+        stream: Stream,
+        seq: u64,
+        facts: &FoldFacts,
+    ) -> Option<u64> {
+        if !self.last.contains_key(container) {
+            self.last.insert(container.clone(), [None, None]);
+        }
+        let slots = self.last.get_mut(container)?;
+        let slot = &mut slots[match stream {
+            Stream::Stdout => 0,
+            Stream::Stderr => 1,
+        }];
+        let prev = *slot;
+        let kind = prev.and_then(|p| continuation_kind(facts, &p));
         let (head, entry) = match (kind, prev) {
             (Some(kind), Some(p)) => {
                 let head = p.head_for_next();
@@ -129,11 +176,11 @@ impl FoldTracker {
                     head: seq,
                     member: false,
                     kind: Kind::Other,
-                    panic_head: is_panic_head(text),
+                    panic_head: facts.panic_head,
                 },
             ),
         };
-        self.last.insert(key, entry);
+        *slot = Some(entry);
         head
     }
 
@@ -142,23 +189,20 @@ impl FoldTracker {
     }
 }
 
-fn continuation_kind(text: &str, prev: &Last) -> Option<Kind> {
-    if let Some(kind) = own_kind(text) {
+fn continuation_kind(facts: &FoldFacts, prev: &Last) -> Option<Kind> {
+    if let Some(kind) = facts.own {
         return Some(kind);
     }
-    let blank = text.trim().is_empty();
     match prev.kind {
         // The source line under a `File "…"` frame, and the `~~~^^` marker lines.
-        Kind::Python if prev.member && !blank && text.starts_with(char::is_whitespace) => {
+        Kind::Python if prev.member && !facts.blank && facts.leading_whitespace => {
             Some(Kind::Python)
         }
         // The function line above a `\t/app/main.go:12` frame, the frame lines, blank separators.
-        Kind::Go
-            if prev.member && (blank || text.starts_with('\t') || is_go_function_line(text)) =>
-        {
+        Kind::Go if prev.member && (facts.blank || facts.leading_tab || facts.go_function) => {
             Some(Kind::Go)
         }
-        _ if !prev.member && prev.panic_head && blank => Some(Kind::Go),
+        _ if !prev.member && prev.panic_head && facts.blank => Some(Kind::Go),
         _ => None,
     }
 }

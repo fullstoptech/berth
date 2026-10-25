@@ -36,7 +36,7 @@ fn batch(n: usize, seed: usize) -> Vec<LogLine> {
         .collect()
 }
 
-/// (first batch, later batches) of 2,048 lines each.
+/// (first batch, later batches) of 2,048 lines each (two chunks of `MAX_BATCH_LINES` in the app).
 fn run(label: &str, warm: bool) -> (Duration, Vec<Duration>) {
     if warm {
         // What the app's service does before the first real batch.

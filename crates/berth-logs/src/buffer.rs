@@ -5,8 +5,8 @@ use std::collections::VecDeque;
 use berth_core::LogLine;
 
 use crate::classify::classify_with;
-use crate::fold::FoldTracker;
-use crate::{summarize_json, Fold, Level, LogEntry};
+use crate::fold::{FoldFacts, FoldTracker};
+use crate::{summarize_json, Fold, JsonSummary, Level, LogEntry};
 
 /// Lines per level currently in the buffer (`Trace` counts as `Debug`; a line with the error mark
 /// and no level counts as `Error`).
@@ -34,6 +34,70 @@ impl LevelCounts {
 /// F8 treat it). A trace member never adds to the count: its head carries the mark.
 fn counted_level(level: Option<Level>, error_mark: bool, fold: Fold) -> Option<Level> {
     level.or_else(|| (error_mark && !matches!(fold, Fold::Member { .. })).then_some(Level::Error))
+}
+
+/// A line with everything that does not depend on its neighbours worked out: ANSI escapes and the
+/// line ending stripped, JSON summary, level and error mark, and the text facts the fold decision
+/// uses.
+#[derive(Debug)]
+pub(crate) struct PreparedLine {
+    pub(crate) line: LogLine,
+    json: Option<JsonSummary>,
+    level: Option<Level>,
+    error_mark: bool,
+    fold_facts: FoldFacts,
+}
+
+impl PreparedLine {
+    fn new(mut line: LogLine) -> Self {
+        if line.text.contains('\x1b') {
+            line.text = strip_ansi_escapes::strip_str(&line.text);
+        }
+        let kept = line.text.trim_end_matches(['\r', '\n']).len();
+        line.text.truncate(kept);
+        let json = summarize_json(&line.text);
+        let (level, error_mark) = classify_with(&line.text, line.stream, json.as_ref());
+        let fold_facts = FoldFacts::of(&line.text);
+        Self {
+            line,
+            json,
+            level,
+            error_mark,
+            fold_facts,
+        }
+    }
+}
+
+/// A batch of lines run through the part of [`LogView::push_batch`](crate::LogView::push_batch)
+/// that needs no view state (D23): ANSI stripping, classification, JSON parsing and the text facts
+/// for folding. Build it with [`PreparedBatch::new`] outside any lock, then hand it to
+/// [`LogView::commit_batch`](crate::LogView::commit_batch), which does the short remainder: the
+/// fold link to the previous line, sequence numbers, counts, the visible list, the search and
+/// eviction. Batches must be committed in the order their lines should appear.
+#[derive(Debug)]
+pub struct PreparedBatch {
+    pub(crate) lines: Vec<PreparedLine>,
+}
+
+impl PreparedBatch {
+    /// Prepares `lines`. Touches no view, so it can run while the UI reads one.
+    #[must_use]
+    pub fn new(lines: Vec<LogLine>) -> Self {
+        Self {
+            lines: lines.into_iter().map(PreparedLine::new).collect(),
+        }
+    }
+
+    /// Lines in the batch.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.lines.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
 }
 
 #[derive(Debug)]
@@ -66,20 +130,25 @@ impl LogBuffer {
     /// Adds a line and returns its sequence number. Sequence numbers only grow, also across
     /// [`clear`](Self::clear), so a row key never repeats. The oldest line is dropped when the
     /// buffer is full.
-    pub fn push(&mut self, mut line: LogLine, series: u8) -> u64 {
-        if line.text.contains('\x1b') {
-            line.text = strip_ansi_escapes::strip_str(&line.text);
-        }
-        let kept = line.text.trim_end_matches(['\r', '\n']).len();
-        line.text.truncate(kept);
+    pub fn push(&mut self, line: LogLine, series: u8) -> u64 {
+        self.push_prepared(PreparedLine::new(line), series)
+    }
 
+    /// [`push`](Self::push) for a line that is already prepared: only the parts that depend on
+    /// the lines before it run here (sequence number, fold link, counts, eviction).
+    pub(crate) fn push_prepared(&mut self, prepared: PreparedLine, series: u8) -> u64 {
+        let PreparedLine {
+            line,
+            json,
+            level,
+            error_mark,
+            fold_facts,
+        } = prepared;
         let seq = self.next_seq;
         self.next_seq += 1;
-        let json = summarize_json(&line.text);
-        let (level, error_mark) = classify_with(&line.text, line.stream, json.as_ref());
         let fold = match self
             .folds
-            .place(&line.container, line.stream, seq, &line.text)
+            .place_with(&line.container, line.stream, seq, &fold_facts)
         {
             Some(head) => {
                 self.add_hidden_to(head);

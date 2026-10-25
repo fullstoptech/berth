@@ -1,11 +1,13 @@
-//! PLAN §1.3 / D25: 10,000 lines a second through `batch` and `LogView::push_batch`, at most one
-//! batch per 16 ms tick. Run with `cargo nextest run -p berth-logs --release --no-capture throughput`
-//! to see the numbers; the assertions hold in a debug build too.
+//! PLAN §1.3 / D23 / D25: 10,000 lines a second through `batch`, `PreparedBatch::new` (outside the
+//! view lock) and `LogView::commit_batch` (under it), at most one batch per 16 ms tick, and no
+//! commit holding the lock for more than 4 ms (checked in a release build only). Run with
+//! `cargo nextest run -p berth-logs --release --no-capture throughput` to see the numbers; the
+//! other assertions hold in a debug build too.
 //!
 //! Two measurements, because one number cannot say both things:
 //! - saturated: the source never waits, so the rate is what the pipeline can do (CPU bound on the
-//!   per-line work in `LogBuffer::push`: level scan, error-word scan, JSON parse for JSON lines,
-//!   fold bookkeeping, filter check);
+//!   per-line work in `PreparedBatch::new`: level scan, error-word scan, JSON parse for JSON
+//!   lines, fold facts; and in `commit_batch`: fold link, counts, filter check, eviction);
 //! - paced: lines arrive at a steady rate above 10,000 a second, like a chatty container, and the
 //!   batches must come once per tick with the lines of a whole tick in each.
 //!
@@ -18,7 +20,7 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use berth_core::{ContainerId, LogLine, Stream};
-use berth_logs::{batch_counted, LogView, MAX_BATCH_LINES};
+use berth_logs::{batch_counted, LogView, PreparedBatch, MAX_BATCH_LINES};
 use chrono::DateTime;
 use futures::stream::{self, StreamExt};
 use tokio_util::sync::CancellationToken;
@@ -66,10 +68,13 @@ struct Run {
     total: usize,
     batches: usize,
     wall: Duration,
-    in_view: Duration,
+    /// Total time in `PreparedBatch::new`, which the app runs outside the view lock.
+    prepare: Duration,
+    /// Total time in `LogView::commit_batch`, which the app runs under the view lock.
+    commit: Duration,
     largest_batch: usize,
-    /// Slowest single `push_batch`: what the UI path would wait for.
-    max_push: Duration,
+    /// Longest single `commit_batch`: how long the UI can be kept from reading the view.
+    max_commit: Duration,
 }
 
 impl Run {
@@ -86,8 +91,9 @@ impl Run {
         println!(
             "{label}: {total} lines in {wall:.1?} = {rate:.0} lines/s; \
              {batches} batches in {ticks} ticks ({per_tick:.2} batches per 16 ms tick, \
-             largest batch {largest} lines); slowest push_batch {max_push:.2?}; view.push_batch alone = {view_rate:.0} lines/s \
-             ({busy:.0}% of wall)",
+             largest batch {largest} lines); lock hold (max commit) {max_commit:.2?}; \
+             prepare (unlocked) {prepare:.1?} = {prepare_rate:.0} lines/s, commit (locked) {commit:.1?} = {commit_rate:.0} lines/s \
+             ({busy:.0}% of wall under the lock)",
             total = self.total,
             wall = self.wall,
             rate = self.lines_per_second(),
@@ -95,9 +101,12 @@ impl Run {
             ticks = self.ticks(),
             per_tick = self.batches as f64 / self.ticks() as f64,
             largest = self.largest_batch,
-            max_push = self.max_push,
-            view_rate = self.total as f64 / self.in_view.as_secs_f64(),
-            busy = 100.0 * self.in_view.as_secs_f64() / self.wall.as_secs_f64(),
+            max_commit = self.max_commit,
+            prepare = self.prepare,
+            prepare_rate = self.total as f64 / self.prepare.as_secs_f64(),
+            commit = self.commit,
+            commit_rate = self.total as f64 / self.commit.as_secs_f64(),
+            busy = 100.0 * self.commit.as_secs_f64() / self.wall.as_secs_f64(),
         );
     }
 }
@@ -108,20 +117,24 @@ async fn run(source: stream::BoxStream<'static, LogLine>, total: usize) -> Run {
     let started = Instant::now();
     // The queue holds the whole run, so nothing is dropped and every line must reach the view.
     let (mut rx, drops) = batch_counted(vec![source], TICK, CancellationToken::new(), total);
-    let mut max_push = Duration::ZERO;
+    let mut max_commit = Duration::ZERO;
     let (mut batches, mut seen, mut largest) = (0, 0, 0);
-    let mut in_view = Duration::ZERO;
+    let (mut prepare, mut commit) = (Duration::ZERO, Duration::ZERO);
     while let Some(b) = rx.recv().await {
         assert!(!b.is_empty(), "batch yielded an empty Vec");
         batches += 1;
         seen += b.len();
         largest = largest.max(b.len());
         assert!(b.len() <= MAX_BATCH_LINES, "batch of {} lines", b.len());
+        // The two halves the app runs: prepare with no lock held, then the commit under it.
         let t = Instant::now();
-        view.push_batch(b);
+        let prepared = PreparedBatch::new(b);
+        prepare += t.elapsed();
+        let t = Instant::now();
+        view.commit_batch(prepared);
         let took = t.elapsed();
-        in_view += took;
-        max_push = max_push.max(took);
+        commit += took;
+        max_commit = max_commit.max(took);
     }
     let wall = started.elapsed();
     assert_eq!(drops.total(), 0);
@@ -131,9 +144,10 @@ async fn run(source: stream::BoxStream<'static, LogLine>, total: usize) -> Run {
         total,
         batches,
         wall,
-        in_view,
+        prepare,
+        commit,
         largest_batch: largest,
-        max_push,
+        max_commit,
     }
 }
 
@@ -227,35 +241,30 @@ async fn paced_source_batches_once_per_tick() -> Run {
     run
 }
 
-/// CLAUDE.md: no work over 4 ms on the UI path.
-const PUSH_BUDGET: Duration = Duration::from_millis(4);
+/// CLAUDE.md: no work over 4 ms on the UI path. D23: what the UI can wait for is the locked
+/// commit, so that is the time held to the budget (the unlocked prepare is only reported).
+const LOCK_HOLD_BUDGET: Duration = Duration::from_millis(4);
 
-/// Runs `attempt` and holds its slowest `push_batch` to [`PUSH_BUDGET`] in a release build (a debug
-/// build is only checked for correctness). Other processes can only make a batch slower, never
-/// faster, so a release run gets five tries and passes when one stays in budget; the cost of the
-/// code itself is the lowest of the five.
-async fn within_push_budget<F, Fut>(label: &str, attempt: F)
-where
-    F: Fn() -> Fut,
-    Fut: std::future::Future<Output = Run>,
-{
-    let tries = if cfg!(debug_assertions) { 1 } else { 5 };
-    let mut slowest = Vec::new();
-    for _ in 0..tries {
-        let run = attempt().await;
-        run.report(label);
-        if cfg!(debug_assertions) || run.max_push <= PUSH_BUDGET {
-            return;
-        }
-        slowest.push(run.max_push);
+/// Prints the run and, in a release build, holds its longest lock hold to [`LOCK_HOLD_BUDGET`] (a
+/// debug build is an order of magnitude slower and is only checked for correctness).
+fn report_within_lock_budget(label: &str, run: &Run) {
+    run.report(label);
+    if !cfg!(debug_assertions) {
+        assert!(
+            run.max_commit <= LOCK_HOLD_BUDGET,
+            "{label}: the view lock was held for {:?} by one commit_batch of at most {MAX_BATCH_LINES} lines, over the 4 ms UI budget",
+            run.max_commit
+        );
     }
-    panic!("slowest push_batch per attempt {slowest:?}: over the 4 ms UI budget every time");
 }
 
 /// One test, not two: nextest runs tests in parallel, and a saturated run on the next core would
-/// stretch the paced run's `push_batch` times.
+/// stretch the paced run's commit times.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn throughput() {
-    within_push_budget("saturated", saturated_source).await;
-    within_push_budget("paced 15,000 lines/s", paced_source_batches_once_per_tick).await;
+    report_within_lock_budget("saturated", &saturated_source().await);
+    report_within_lock_budget(
+        "paced 15,000 lines/s",
+        &paced_source_batches_once_per_tick().await,
+    );
 }

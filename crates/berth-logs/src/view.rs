@@ -7,7 +7,7 @@ use std::ops::Range;
 use berth_core::{ContainerId, LogLine, Stream};
 use chrono::{DateTime, SecondsFormat, Utc};
 
-use crate::buffer::{LevelCounts, LogBuffer};
+use crate::buffer::{LevelCounts, LogBuffer, PreparedBatch};
 use crate::search::{Matcher, Query, SearchState, SearchSummary};
 use crate::{series_for, Fold, JsonSummary, Level, LogEntry, LogsError};
 
@@ -129,12 +129,23 @@ impl LogView {
         }
     }
 
+    /// Adds a batch: [`PreparedBatch::new`] then [`commit_batch`](Self::commit_batch). A caller
+    /// that shares the view behind a lock should make the two calls itself, so that only the
+    /// commit runs under the lock (D23).
     pub fn push_batch(&mut self, lines: Vec<LogLine>) -> ViewDelta {
+        self.commit_batch(PreparedBatch::new(lines))
+    }
+
+    /// The short, order-dependent half of [`push_batch`](Self::push_batch): appends the prepared
+    /// lines to the ring, links folds to the previous line of the same container and stream,
+    /// updates the level counts, the visible list and the search, and evicts what the ring no
+    /// longer holds.
+    pub fn commit_batch(&mut self, batch: PreparedBatch) -> ViewDelta {
         let dropped_before = self.buffer.dropped();
         let mut appended = 0_u32;
-        for line in lines {
-            let series = self.series_for_container(&line.container);
-            let seq = self.buffer.push(line, series);
+        for prepared in batch.lines {
+            let series = self.series_for_container(&prepared.line.container);
+            let seq = self.buffer.push_prepared(prepared, series);
             if self.admit(seq) {
                 appended += 1;
             }
@@ -627,6 +638,31 @@ mod tests {
                 Some(Fold::Head { hidden: 10 }),
                 "split after {split} lines"
             );
+        }
+    }
+
+    #[test]
+    fn preparing_batches_ahead_of_committing_them_folds_like_push_batch() {
+        // D23: the prepare step has no view state, so both halves of a split trace may be prepared
+        // (even on another thread) before either is committed. The fold link must be made at
+        // commit, in order.
+        let trace = stderr_trace();
+        for split in 0..=trace.len() {
+            let first = PreparedBatch::new(trace[..split].to_vec());
+            let second = PreparedBatch::new(trace[split..].to_vec());
+            let mut view = LogView::new(1000, BTreeMap::new());
+            view.commit_batch(first);
+            view.commit_batch(second);
+
+            let mut reference = LogView::new(1000, BTreeMap::new());
+            reference.push_batch(trace.clone());
+            assert_eq!(
+                traceback_fold(&view),
+                Some(Fold::Head { hidden: 10 }),
+                "split after {split} lines"
+            );
+            assert_eq!(view.rows(0..view.len()), reference.rows(0..reference.len()));
+            assert_eq!(view.counts(), reference.counts());
         }
     }
 

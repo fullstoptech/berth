@@ -20,14 +20,15 @@ const CHANNEL_DEPTH: usize = 4;
 /// stream never has to wait.
 const DRAIN_STEP: usize = 1024;
 
-/// Most lines in one emitted batch, so that `LogView::push_batch` (which runs on the UI path)
-/// stays under the 4 ms budget of CLAUDE.md. Derivation: a release build pushes about 1.8-2.0
-/// million lines a second, so 4 ms is about 7,200-8,000 lines on average. The worst batch is what
-/// the UI feels, though: with 4,096 lines the slowest of 30 batches took 2.5-4.0 ms (first-touch
-/// memory and ring eviction add to the 2.2 ms average), too close to the limit. At 2,048 lines
-/// the average is about 1.1 ms and the worst stays near 2 ms. One batch per 16 ms tick at this cap
-/// still carries 128,000 lines a second, 12 times the 10,000 lines a second budget.
-pub const MAX_BATCH_LINES: usize = 2048;
+/// Most lines in one emitted batch, so that the locked half of a push (`LogView::commit_batch`,
+/// which holds the view lock the UI reads, D23) stays under the 4 ms budget of CLAUDE.md. The
+/// other half, `PreparedBatch::new`, runs outside the lock and does not count against it.
+/// Derivation: the lock hold is the worst batch, not the mean, and a batch that meets a cold
+/// cache, first-touch memory or a preempted thread takes several times its average. A whole
+/// `push_batch` of 2,048 lines took 6-18 ms under machine load, so the cap bounds how many lines
+/// that worst case can multiply. At 1,024 lines one batch per 16 ms tick still carries 64,000
+/// lines a second, 6 times the 10,000 lines a second requirement.
+pub const MAX_BATCH_LINES: usize = 1024;
 
 /// Lines held for later ticks by [`batch`]: the size of a view's ring (D25). Lines beyond that
 /// would be pushed out of the ring as soon as they arrived, so the oldest are dropped here.

@@ -10,7 +10,7 @@ mod search;
 mod view;
 
 pub use batch::{batch, batch_counted, BatchDrops, DEFAULT_QUEUE_LINES, MAX_BATCH_LINES};
-pub use buffer::{LevelCounts, LogBuffer};
+pub use buffer::{LevelCounts, LogBuffer, PreparedBatch};
 pub use classify::classify;
 pub use fold::is_stack_continuation;
 pub use json::summarize_json;

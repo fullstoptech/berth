@@ -73,7 +73,7 @@ async fn logs_session_feeds_batches_into_the_view_and_ends_with_its_streams() {
         &CancellationToken::new(),
     );
     assert!(until(|| visible(&core) == 3000).await, "{}", visible(&core));
-    // 3,000 lines cannot go through in one batch of at most 2,048.
+    // 3,000 lines cannot go through in one batch of at most 1,024.
     assert!(core.batches() >= 2, "{}", core.batches());
     let counts = core.with_view(|v| v.counts().clone()).expect("view");
     assert_eq!((counts.error, counts.info), (30, 2970));
@@ -150,7 +150,7 @@ fn hidden_of_tracebacks(core: &LogCore) -> Vec<berth_logs::Fold> {
 
 #[tokio::test]
 async fn logs_a_trace_folds_whole_across_the_batch_cap_and_the_merge_window() {
-    // One stream: the trace starts a few lines before the 2,048-line batch cap and runs past it.
+    // One stream: the trace starts a few lines before the third 1,024-line batch boundary (line 2,048) and runs past it.
     let mut lines: Vec<LogLine> = (0..2_044)
         .map(|i| line("web", i, false, &format!("INFO filler {i}")))
         .collect();
