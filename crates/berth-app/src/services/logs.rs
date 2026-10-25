@@ -463,6 +463,8 @@ fn apply(
         let prepare_started = Instant::now();
         let prepared = PreparedBatch::new(chunk);
         let prepare_us = micros(prepare_started.elapsed());
+        // Only error-marked lines feed the problem rules (D35, D82); outside the lock too.
+        crate::services::problems::tap_errors(prepared.error_lines());
         let mut guard = lock(&core.view);
         let Some(view) = guard.as_mut() else {
             return;

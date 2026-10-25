@@ -84,7 +84,7 @@ pub use menu::{Menu, MenuEntry};
 pub use metric_tile::{MetricTile, MetricTileData, StatsPanel};
 pub use palette_item::PaletteItem;
 pub use palette_trigger::PaletteTrigger;
-pub use problem_item::{FixButton, ProblemItem, ProblemView};
+pub use problem_item::{FixButton, ProblemItem, ProblemView, PROBLEM_ITEM_CSS};
 pub use progress_bar::ProgressBar;
 pub use search_field::SearchField;
 pub use segmented_control::{SegmentedControl, SegmentedItem};

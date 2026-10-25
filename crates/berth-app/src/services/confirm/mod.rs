@@ -28,6 +28,7 @@ mod engines;
 mod images;
 mod networks;
 mod project_delete;
+mod projects;
 mod remove;
 mod upload;
 mod volumes;
@@ -37,6 +38,7 @@ pub use engines::*;
 pub use images::*;
 pub use networks::*;
 pub use project_delete::*;
+pub use projects::*;
 pub use upload::*;
 pub use volumes::*;
 
@@ -158,6 +160,7 @@ const RUNNERS: &[Runner] = &[
     containers::run,
     containers::run_recreate,
     engines::run,
+    projects::run,
     remove::run,
 ];
 

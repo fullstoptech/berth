@@ -8,10 +8,10 @@ use std::time::{Duration, Instant};
 
 use berth_core::{
     Container, ContainerAction, ContainerDetail, ContainerState, EngineAction, EnvVar, FixEffect,
-    FixSource, Health, Mount, MountKind, Problem, ProblemKind, RestartPolicy, Subject,
+    Health, Mount, MountKind, Problem, RestartPolicy, Subject,
 };
 
-use crate::services::actions::{container_action_id, disabled_reason, StateView};
+use crate::services::actions::{disabled_reason, StateView};
 use crate::services::group_ops::is_active;
 use crate::state::{PendingKey, PendingState};
 use crate::ui::tabs::TabItem;
@@ -442,110 +442,6 @@ pub fn overview_rows(detail: &ContainerDetail, home: &std::path::Path) -> Vec<Ke
 // Problems in the inspector
 // ---------------------------------------------------------------------
 
-/// The Problems of this container, as the inspector's compact items.
-/// Fix ids are `<problem id>#<index>`; "Go to X" is `goto:<container id>`.
-#[must_use]
-pub fn problem_views(
-    c: &Container,
-    problems: &[Problem],
-    siblings: &[Container],
-    view: &StateView<'_>,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Vec<ProblemView> {
-    problems
-        .iter()
-        .filter(|p| p.subject == Subject::Container(c.id.clone()))
-        .map(|p| problem_view(p, siblings, view, now))
-        .collect()
-}
-
-fn problem_view(
-    p: &Problem,
-    siblings: &[Container],
-    view: &StateView<'_>,
-    now: chrono::DateTime<chrono::Utc>,
-) -> ProblemView {
-    let mut fixes: Vec<FixButton> = Vec::new();
-    for (index, fix) in p.fixes.iter().enumerate() {
-        let id = format!("{}#{index}", p.id.0);
-        let (disabled_reason, loading) = match (&fix.source, &fix.effect) {
-            (FixSource::Harness(_), _) => (Some("Needs a harness (P7-T6)".to_string()), false),
-            (
-                FixSource::Rule,
-                FixEffect::RunAction {
-                    action: EngineAction::Container { id, action, .. },
-                    ..
-                },
-            ) => {
-                let key = container_action_id(action);
-                let loading = view.pending.iter().any(|(k, v)| {
-                    k.action == key
-                        && k.subject == Subject::Container(id.clone())
-                        && matches!(v, PendingState::Running { .. })
-                });
-                (
-                    disabled_reason(&Subject::Container(id.clone()), key, view),
-                    loading,
-                )
-            }
-            (FixSource::Rule, _) => (Some("Built in P5-T7".to_string()), false),
-        };
-        let harness = matches!(fix.source, FixSource::Harness(_));
-        fixes.push(FixButton {
-            id,
-            label: fix.label.clone(),
-            primary: index == 0 && !harness,
-            icon: harness.then_some("sparkles"),
-            split: harness,
-            disabled_reason,
-            loading,
-        });
-    }
-    if let ProblemKind::DependencyFailed { service } = &p.kind {
-        if let Some(dependency) = dependency_of(p, service, siblings) {
-            let go = FixButton {
-                id: format!("goto:{}", dependency.id.0),
-                label: format!("Go to {}", dependency.name),
-                primary: false,
-                icon: None,
-                split: false,
-                disabled_reason: None,
-                loading: false,
-            };
-            let at = fixes.iter().position(|f| f.split).unwrap_or(fixes.len());
-            fixes.insert(at, go);
-        }
-    }
-    ProblemView {
-        severity: p.severity,
-        title: p.title.clone(),
-        age: berth_core::fmt::uptime(p.first_seen, now),
-        explanation: p.explanation.clone(),
-        evidence: p.evidence.clone(),
-        fixes,
-    }
-}
-
-/// The container of the service a failed dependency names, in the same
-/// Compose project as the problem's container.
-fn dependency_of<'a>(
-    p: &Problem,
-    service: &str,
-    siblings: &'a [Container],
-) -> Option<&'a Container> {
-    let Subject::Container(id) = &p.subject else {
-        return None;
-    };
-    let project = siblings
-        .iter()
-        .find(|c| c.id == *id)?
-        .compose_project
-        .as_ref()?;
-    siblings.iter().find(|c| {
-        c.compose_project.as_ref() == Some(project) && c.service.as_deref() == Some(service)
-    })
-}
-
 /// The card for a restart loop nobody has diagnosed yet: shown when the
 /// container restarts and no Problem names it.
 #[must_use]
@@ -555,14 +451,17 @@ pub fn restart_loop_view(c: &Container, view: &StateView<'_>) -> ProblemView {
         .exit_code
         .map_or_else(String::new, |code| format!(" with code {code}"));
     ProblemView {
+        id: format!("restart-loop:{}", c.id.0),
         severity: berth_core::Severity::Warning,
         title: format!("{} keeps restarting", c.name),
+        subject: None,
         age: String::new(),
         explanation: format!(
             "It exits{code} and Docker starts it again; it has restarted {}.",
             times(c.restart_count)
         ),
         evidence: Vec::new(),
+        notes: Vec::new(),
         fixes: vec![FixButton {
             id: format!("stop-loop:{}", c.id.0),
             label: "Stop the restart loop".to_string(),
@@ -575,6 +474,7 @@ pub fn restart_loop_view(c: &Container, view: &StateView<'_>) -> ProblemView {
                     && k.subject == subject
                     && matches!(v, PendingState::Running { .. })
             }),
+            failed: None,
         }],
     }
 }

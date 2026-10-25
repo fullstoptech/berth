@@ -102,6 +102,91 @@ fn logs_view_selected_rows_count_and_copy_follow_the_visible_rows() {
     assert_eq!(selected_rows(&view, &[(2, 99)]), 2);
 }
 
+#[test]
+fn logs_view_explain_reads_the_selected_rows_with_their_container_names() {
+    let mut names = BTreeMap::new();
+    names.insert(ContainerId("web".to_string()), "shop-api-web-1".to_string());
+    let mut view = LogView::new(1000, names);
+    view.push_batch(vec![
+        line(1, false, "INFO one"),
+        line(2, true, "Error: connect ECONNREFUSED 172.19.0.3:5432"),
+        line(3, false, "INFO three"),
+        line(4, true, "ERROR four"),
+    ]);
+    // Rows 1 and 3 (seq 1 and 3): the spans are sequence numbers, as the selection holds them.
+    let lines = selected_lines(&view, &[(1, 1), (3, 3)]);
+    assert_eq!(
+        lines,
+        vec![
+            ExplainLine {
+                container: "shop-api-web-1".to_string(),
+                text: "Error: connect ECONNREFUSED 172.19.0.3:5432".to_string(),
+            },
+            ExplainLine {
+                container: "shop-api-web-1".to_string(),
+                text: "ERROR four".to_string(),
+            },
+        ]
+    );
+    assert!(selected_lines(&view, &[]).is_empty());
+}
+
+#[tokio::test]
+async fn logs_view_explain_selection_runs_the_rules_for_the_selected_rows_only() {
+    let world = crate::services::mock_world_at(Utc::now());
+    let api = world
+        .containers
+        .iter()
+        .find(|c| c.name == "shop-api-api-1")
+        .cloned()
+        .expect("shop-api-api-1");
+    let mut names = BTreeMap::new();
+    names.insert(api.id.clone(), api.name.clone());
+    let at = |second: i64, text: &str| LogLine {
+        container: api.id.clone(),
+        ts: Utc
+            .timestamp_opt(1_792_850_000 + second, 0)
+            .single()
+            .expect("ts"),
+        stream: Stream::Stderr,
+        text: text.to_string(),
+    };
+    let mut view = LogView::new(1000, names);
+    view.push_batch(vec![
+        at(1, "listening on 3000"),
+        at(
+            2,
+            "Error response from daemon: Bind for 0.0.0.0:3000 failed: port is already allocated",
+        ),
+        at(3, "GET /health 200"),
+    ]);
+    let core = LogCore::seeded(view);
+    let service = ProblemsService::inert();
+    let world_now = World {
+        engines: world.engines.clone(),
+        containers: world.containers.clone(),
+        projects: world.projects.clone(),
+    };
+    // The error row selected: the port rule answers, with its fixes.
+    let found = explain_selection(
+        std::sync::Arc::clone(&core),
+        vec![(1, 1)],
+        service.clone(),
+        world_now.clone(),
+        None,
+    )
+    .await;
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].kind,
+        berth_core::ProblemKind::PortAllocated { port: 3000 }
+    );
+    assert_eq!(found[0].subject, berth_core::Subject::Container(api.id));
+    // The plain rows selected: nothing is said, even though the error is in the same view.
+    let plain = explain_selection(core, vec![(0, 0), (2, 2)], service, world_now, None).await;
+    assert!(plain.is_empty(), "{plain:?}");
+}
+
 // ---- rows, tones, columns ----
 
 #[test]

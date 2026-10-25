@@ -4,6 +4,7 @@ use crate::assets;
 use crate::platform;
 use crate::scenes;
 use crate::services::actions::ActionsService;
+use crate::services::problems::ProblemsService;
 use crate::services::stats::{use_window_visibility, StatsService};
 use crate::services::{action_runners, activity, engines, Services};
 use crate::state::{theme_script, use_app_state, AppState};
@@ -13,6 +14,7 @@ use crate::ui::{BottomPanel, Inspector, InspectorFrame, Sidebar, StatusBar, Titl
 struct Boot {
     services: Services,
     actions: ActionsService,
+    problems: ProblemsService,
     stats: StatsService,
     /// Brings engines online after Colima starts them; None in a scene.
     link: Option<engines::EngineLink>,
@@ -83,6 +85,13 @@ fn boot_services(mut state: AppState) -> Boot {
         colima,
         cancel.clone(),
     );
+    // The Problems list (P5-T8): rules re-run when the engines, projects or a Compose
+    // failure change. A scene shows the frame's problems and runs no pass.
+    let problems = if scene {
+        ProblemsService::inert()
+    } else {
+        ProblemsService::start(state, services.clone(), actions.clone())
+    };
     // Live stats (D26): streams open only for what is on screen.
     let stats = StatsService::start(clients.clone(), cancel.clone());
     let handle = if scene {
@@ -97,6 +106,7 @@ fn boot_services(mut state: AppState) -> Boot {
     Boot {
         services,
         actions,
+        problems,
         stats,
         link,
         _engines: handle,
@@ -122,6 +132,16 @@ pub fn App() -> Element {
     use_context_provider(|| services);
     let actions = boot.actions.clone();
     use_context_provider(|| actions);
+    let problems = boot.problems.clone();
+    use_context_provider(|| problems.clone());
+    use_effect(move || {
+        // Everything the rules read; the service skips a pass whose inputs did not change.
+        let _ = state.engines.read();
+        let _ = state.containers.read();
+        let _ = state.projects.read();
+        let _ = state.pending.read();
+        problems.nudge();
+    });
     let link = boot.link.clone();
     use_context_provider(|| link);
     let stats = boot.stats.clone();

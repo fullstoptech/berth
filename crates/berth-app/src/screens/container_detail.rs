@@ -17,13 +17,15 @@ use std::time::Instant;
 
 use dioxus::prelude::*;
 
-use berth_core::{Container, ContainerAction, ContainerId, EngineAction, EnvVar, FixEffect};
+use berth_core::{Container, ContainerAction, ContainerId, EnvVar};
 
-use crate::screens::containers::{failure_of, select_only};
+use crate::screens::containers::failure_of;
+use crate::screens::problems::model::{card_views, click};
 use crate::services::actions::{dismiss, ActionsService, ContainerTarget, StateView};
 use crate::services::confirm;
 use crate::services::detail::{DetailEntry, DetailStore, Loaded};
 use crate::services::group_ops::is_active;
+use crate::services::plans::PlanStore;
 use crate::services::Services;
 use crate::sheets::edit_recreate::{menu_click, RenameBar};
 use crate::state::{AppState, Overlay, Selection};
@@ -33,9 +35,8 @@ use crate::ui::{
     InspectorHeader, JsonTree, KeyValueList, Menu, ProblemItem, ProblemView, SearchField, Tabs,
 };
 use model::{
-    env_rows, header_buttons, header_menu, offers_stop, overview_rows, problem_views,
-    restart_loop_view, short_id, state_note, tab_strip, DetailTab, EnvRow, EnvShown, Reveals,
-    REVEAL_FOR,
+    env_rows, header_buttons, header_menu, offers_stop, overview_rows, restart_loop_view, short_id,
+    state_note, tab_strip, DetailTab, EnvRow, EnvShown, Reveals, REVEAL_FOR,
 };
 
 /// The screen's CSS, rendered with the panel (colours from tokens only).
@@ -103,12 +104,15 @@ fn header_click(
     run_container(state, actions, &container.id, action);
 }
 
-/// A click on a problem's fix button: see `model::problem_views` for ids.
-fn fix_click(state: &mut AppState, actions: Option<&ActionsService>, fix_id: &str) {
-    if let Some(id) = fix_id.strip_prefix("goto:") {
-        select_only(state, &ContainerId(id.to_string()));
-        return;
-    }
+/// A click on a problem's fix button: a rule's fix opens Review changes, a confirm dialog or
+/// Clean up (`problems::model`); "Stop the restart loop" is the one button that acts at once,
+/// because it is Stop on a container that is restarting by itself.
+fn fix_click(
+    state: &mut AppState,
+    actions: Option<&ActionsService>,
+    plans: Option<&PlanStore>,
+    fix_id: &str,
+) {
     if let Some(id) = fix_id.strip_prefix("stop-loop:") {
         run_container(
             state,
@@ -118,30 +122,8 @@ fn fix_click(state: &mut AppState, actions: Option<&ActionsService>, fix_id: &st
         );
         return;
     }
-    let Some((problem, index)) = fix_id.rsplit_once('#') else {
-        return;
-    };
-    let Ok(index) = index.parse::<usize>() else {
-        return;
-    };
-    let fix = state
-        .problems
-        .peek()
-        .iter()
-        .find(|p| p.id.0 == problem)
-        .and_then(|p| p.fixes.get(index).cloned());
-    if let Some(berth_core::Fix {
-        source: berth_core::FixSource::Rule,
-        effect:
-            FixEffect::RunAction {
-                action: EngineAction::Container { id, action, .. },
-                ..
-            },
-        ..
-    }) = fix
-    {
-        run_container(state, actions, &id, action);
-    }
+    let problems = state.problems.peek().clone();
+    click(state, plans, &problems, fix_id);
 }
 
 // ---------------------------------------------------------------------
@@ -214,7 +196,7 @@ pub fn ContainerDetailPanel(
             pending: &pending,
             backing: *state.backing.peek(),
         };
-        let mut shown = problem_views(&c, &problems, &containers, &view, now);
+        let mut shown = card_views(&c, &problems, &view, now);
         if c.state == berth_core::ContainerState::Restarting && !offers_stop(&problems, &c) {
             shown.push(restart_loop_view(&c, &view));
         }
@@ -243,6 +225,7 @@ pub fn ContainerDetailPanel(
     let status = berth_core::status_of(c.state, c.health, c.exit_code);
     let header_actions = actions.clone();
     let fix_actions = actions.clone();
+    let fix_plans = try_consume_context::<PlanStore>();
     let header_container = c.clone();
     let menu_container = c.clone();
     let menu_actions = actions.clone();
@@ -250,6 +233,7 @@ pub fn ContainerDetailPanel(
 
     rsx! {
         style { "{CONTAINER_DETAIL_CSS}" }
+        style { "{crate::ui::PROBLEM_ITEM_CSS}" }
         div { class: "cd",
             InspectorHeader {
                 name: c.name.clone(),
@@ -351,7 +335,9 @@ pub fn ContainerDetailPanel(
                         &c,
                         entry,
                         overview_problems,
-                        move |fix: String| fix_click(&mut state, fix_actions.as_ref(), &fix),
+                        move |fix: String| {
+                            fix_click(&mut state, fix_actions.as_ref(), fix_plans.as_ref(), &fix);
+                        },
                     )
                 }
             }

@@ -68,6 +68,7 @@ scene_modules! {
     networks,
     open_folder,
     palette,
+    problems,
     project_detail,
     projects,
     review_changes,

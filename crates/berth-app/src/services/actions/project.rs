@@ -83,9 +83,36 @@ impl ActionsService {
         project: &berth_core::Project,
         op: ProjectOp,
     ) -> Result<(), String> {
+        self.compose_job(state, project, op.action_id(), op.command())
+    }
+
+    /// One Compose command a problem's fix proposes (a restart of the one service that failed): the
+    /// same checks, pending key, activity entry and failure lines as the project action it
+    /// resembles (`compose::command_action_id`).
+    pub fn project_command(
+        &self,
+        state: &mut AppState,
+        project: &berth_core::Project,
+        command: berth_core::ComposeCommand,
+    ) -> Result<(), String> {
+        self.compose_job(
+            state,
+            project,
+            compose::command_action_id(&command),
+            command,
+        )
+    }
+
+    fn compose_job(
+        &self,
+        state: &mut AppState,
+        project: &berth_core::Project,
+        action: &'static str,
+        command: berth_core::ComposeCommand,
+    ) -> Result<(), String> {
         let key = PendingKey {
             subject: Subject::Project(project.id.clone()),
-            action: op.action_id(),
+            action,
         };
         Self::check(state, &key.subject, key.action)?;
         let client = self.client_for(&project.engine)?;
@@ -97,10 +124,7 @@ impl ActionsService {
                 engine: project.engine.clone(),
                 name: project.name.clone(),
                 project: Some(project.id.clone()),
-                work: Box::new(ComposeWork {
-                    target,
-                    command: op.command(),
-                }),
+                work: Box::new(ComposeWork { target, command }),
             },
         );
         Ok(())

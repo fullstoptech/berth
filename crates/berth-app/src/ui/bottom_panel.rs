@@ -94,7 +94,7 @@ fn region_of(open: bool) -> Option<RegionMode> {
 /// the Logs/Terminal/Problems/Assistant panel, the docked inspector (the
 /// `inspector` element the shell built), or both side by side with the panel
 /// on the left. Tab bodies are filled by the log (P3-T2), terminal (P3-T6),
-/// problems and assistant tasks.
+/// problems (P5-T8) and assistant tasks.
 #[component]
 pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
     let mut state = use_context::<AppState>();
@@ -161,6 +161,9 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
                             }
                             if panel.tab == BottomTab::Logs {
                                 BottomLogs {}
+                            }
+                            if panel.tab == BottomTab::Problems {
+                                crate::screens::problems::ProblemsPanel {}
                             }
                         }
                     }

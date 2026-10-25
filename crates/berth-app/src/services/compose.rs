@@ -7,6 +7,22 @@ use std::sync::Arc;
 use futures::StreamExt;
 use tokio_util::sync::CancellationToken;
 
+/// The pending key and activity action of a Compose command that a problem's fix runs: the
+/// project action that does the same to the whole project (`Restart` of one service is
+/// `project.restart`, so the two block each other).
+#[must_use]
+pub fn command_action_id(command: &berth_core::ComposeCommand) -> &'static str {
+    use berth_core::ComposeCommand as C;
+    match command {
+        C::Up { build: true, .. } | C::Build { .. } => "project.rebuild",
+        C::Up { .. } | C::Start { .. } => "project.start",
+        C::Stop { .. } => "project.stop",
+        C::Restart { .. } => "project.restart",
+        C::Pull { .. } => "project.pull_images",
+        C::Down { .. } => "project.delete",
+    }
+}
+
 /// A project-level action (brief §7.2). `Delete` carries the options of the
 /// delete sheet: named volumes and images are kept unless the user ticked
 /// them.
@@ -141,11 +157,13 @@ pub const FAILURE_LINES: usize = 20;
 /// A Compose command that did not end well.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComposeFailure {
-    /// What the row says: the tail of stderr, else the last error event, else a sentence naming the
-    /// exit code.
+    /// What the row says, as plain text: the tail of stderr without the warnings and notices
+    /// Compose mixes in (and with its JSON read as the sentence it carries), else the last error
+    /// event, else a sentence naming the exit code.
     pub message: String,
-    /// Up to [`FAILURE_LINES`] lines of what the run printed: stderr lines and `Error` progress
-    /// events (`Container shop-db-1: Error response from daemon: ...`), in the order they came.
+    /// Up to [`FAILURE_LINES`] lines of what the run printed, as plain text: stderr lines (warnings
+    /// included) and `Error` progress events (`Container shop-db-1: Error response from daemon:
+    /// ...`), in the order they came. The rules and the Problems card read these.
     pub lines: Vec<String>,
 }
 
@@ -164,6 +182,31 @@ fn error_line(id: &str, status: &str, text: Option<&str>) -> String {
     format!("{id}: {detail}")
 }
 
+/// One stderr line as a person reads it. With `--progress json` Compose prints its own messages as
+/// JSON on stderr: `{"level":"warning","msg":"The \"X\" variable is not set..."}` and, last, the
+/// error itself as `{"error":true,"message":"Error response from daemon: ..."}`. The text is the
+/// `msg` or `message`; the flag says the line is only a warning or a notice, which belongs in the
+/// failure lines but is not what went wrong. A plain line, or JSON of another shape, stays as it is.
+fn plain_stderr(raw: &str) -> (String, bool) {
+    let trimmed = raw.trim();
+    if !trimmed.starts_with('{') {
+        return (raw.to_string(), false);
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+        return (raw.to_string(), false);
+    };
+    let text_of = |key: &str| value.get(key).and_then(serde_json::Value::as_str);
+    if let Some(message) = text_of("msg") {
+        let level = text_of("level").unwrap_or("error");
+        let noise = matches!(level, "warning" | "warn" | "info" | "debug" | "trace");
+        return (message.to_string(), noise);
+    }
+    match text_of("message") {
+        Some(message) => (message.to_string(), false),
+        None => (raw.to_string(), false),
+    }
+}
+
 /// Keep `line` as one of the last [`FAILURE_LINES`].
 fn keep(lines: &mut Vec<String>, line: String) {
     lines.push(line);
@@ -175,7 +218,9 @@ fn keep(lines: &mut Vec<String>, line: String) {
 /// Run one Compose command to its end. `Ok` only when the command reports
 /// `Done { code: 0 }`; otherwise a [`ComposeFailure`]: the message is the tail
 /// of stderr (else the last `Error` event, else a plain sentence naming the
-/// exit code) and the lines are what the run printed on the way.
+/// exit code) and the lines are what the run printed on the way. With `--progress json`
+/// Compose prints its own messages as JSON on stderr; [`plain_stderr`] reads them as text, so the
+/// row shows "Error response from daemon: ..." and never `{"error":true,...}`.
 pub async fn run(
     runner: &dyn berth_engine::ComposeRunner,
     target: &berth_core::ComposeTarget,
@@ -203,11 +248,14 @@ pub async fn run(
                 stream: berth_core::Stream::Stderr,
                 text,
             }) => {
+                let (text, noise) = plain_stderr(&text);
                 if !text.trim().is_empty() {
                     keep(&mut lines, text.clone());
-                    tail.push(text);
-                    if tail.len() > TAIL_LINES {
-                        tail.remove(0);
+                    if !noise {
+                        tail.push(text);
+                        if tail.len() > TAIL_LINES {
+                            tail.remove(0);
+                        }
                     }
                 }
             }
@@ -557,6 +605,90 @@ mod tests {
         assert!(failure.message.contains("docker went away"), "{failure:?}");
         assert_eq!(failure.lines, ["pulling"]);
     }
+    #[tokio::test]
+    async fn actions_compose_failure_reads_compose_json_as_plain_text() {
+        // The stderr of `compose --progress json up` on a service whose image does not exist,
+        // as Compose 5 prints it: a warning, then the error as `{"error":true,"message":...}`.
+        let warning = r#"{"level":"warning","msg":"The \"BERTHFX_MISSING\" variable is not set. Defaulting to a blank string.","time":"2026-10-25T22:27:05+01:00"}"#;
+        let error = r#"{"error":true,"message":"Error response from daemon: pull access denied for berthfx/does-not-exist, repository does not exist or may require 'docker login'"}"#;
+        let runner = Scripted(vec![
+            Ok(berth_core::ComposeEvent::Line {
+                stream: berth_core::Stream::Stderr,
+                text: warning.to_string(),
+            }),
+            Ok(berth_core::ComposeEvent::Line {
+                stream: berth_core::Stream::Stderr,
+                text: error.to_string(),
+            }),
+            Ok(berth_core::ComposeEvent::Done { code: 1 }),
+        ]);
+        let failure = run(
+            &runner,
+            &target(),
+            ProjectOp::Start.command(),
+            CancellationToken::new(),
+        )
+        .await
+        .expect_err("fails");
+        // The row says the error, not the JSON and not the warning.
+        assert_eq!(
+            failure.message,
+            "Error response from daemon: pull access denied for berthfx/does-not-exist, repository does not exist or may require 'docker login'"
+        );
+        // The detail keeps both lines, as text, for the rules and the Problems card.
+        assert_eq!(
+            failure.lines,
+            vec![
+                "The \"BERTHFX_MISSING\" variable is not set. Defaulting to a blank string."
+                    .to_string(),
+                failure.message.clone(),
+            ]
+        );
+        assert!(!failure.lines.iter().any(|l| l.contains('{')));
+    }
+
+    #[test]
+    fn actions_compose_plain_stderr_leaves_other_shapes_alone() {
+        assert_eq!(
+            plain_stderr("yaml: line 4: did not find expected key"),
+            ("yaml: line 4: did not find expected key".to_string(), false)
+        );
+        assert_eq!(
+            plain_stderr(r#"{"something":"else"}"#),
+            (r#"{"something":"else"}"#.to_string(), false)
+        );
+        assert_eq!(
+            plain_stderr("{ not json"),
+            ("{ not json".to_string(), false)
+        );
+        assert_eq!(
+            plain_stderr(r#"{"level":"error","msg":"boom"}"#),
+            ("boom".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn actions_compose_command_ids_follow_the_project_action_they_resemble() {
+        use berth_core::ComposeCommand as C;
+        assert_eq!(
+            command_action_id(&C::Restart {
+                services: vec!["db".to_string()]
+            }),
+            "project.restart"
+        );
+        assert_eq!(
+            command_action_id(&C::Up {
+                services: vec![],
+                build: true
+            }),
+            "project.rebuild"
+        );
+        assert_eq!(
+            command_action_id(&C::Pull { services: vec![] }),
+            "project.pull_images"
+        );
+    }
+
     #[test]
     fn generate_compose_project_name_follows_what_compose_derives_from_the_folder() {
         use std::path::Path;

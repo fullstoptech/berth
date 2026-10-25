@@ -1,0 +1,103 @@
+/* ProblemItem: the compact card in the inspector and the item in the Problems tab */
+.pi {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.pi .pi-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-12);
+  border: none;
+  background: transparent;
+  color: var(--color-ink);
+  font-family: var(--font-text);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  cursor: pointer;
+  text-align: left;
+}
+.pi-icon { display: inline-flex; color: var(--color-danger-dot); }
+.pi.tone-warning .pi-icon { color: var(--color-warning-dot); }
+.pi.tone-info .pi-icon { color: var(--color-info-dot); }
+.pi-title { flex: 1; min-width: 0; font-weight: var(--text-body-weight); }
+.pi-subject {
+  flex: 0 1 38%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.pi-age { color: var(--color-ink-muted); font-size: var(--text-label-size); }
+.pi-explanation {
+  margin: 0;
+  padding: 0 var(--space-12);
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.pi-evidence {
+  margin: var(--space-8) var(--space-12) 0;
+  padding: var(--space-8);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pi-fixes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-12);
+}
+.pi-fix { display: flex; }
+.pi-fix .btn { flex: 1; justify-content: center; }
+.pi-fix-split .btn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.pi .pi-split {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--size-control-md);
+  height: var(--size-control-md);
+  border: 1px solid var(--color-line-strong);
+  border-left: none;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+.pi .pi-split:disabled { color: var(--color-ink-disabled); background: var(--color-surface-hover); }
+.pi-notes {
+  margin: var(--space-8) var(--space-12) 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.pi-notes li { padding-left: var(--space-16); position: relative; }
+.pi-notes li::before { content: "\2192"; position: absolute; left: 0; }
+.pi-fail { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* `.bottom-panel button` (shell.css) resets every button inside the panel, and the inspector
+   docked at the bottom lives there too: restate the shared Button's looks one level up, as
+   terminal.css does. */
+.pi .btn { padding: 0 var(--space-12); border-radius: var(--radius-md); }
+.pi .btn-primary { background: var(--color-accent-fill); color: var(--color-on-accent-fill); }
+.pi .btn-primary:hover:not(:disabled) { background: var(--color-accent-fill-hover); }
+.pi .btn-primary:active:not(:disabled) { background: var(--color-accent-fill-pressed); }
+.pi .btn-secondary { background: var(--color-surface); border-color: var(--color-line-strong); }
+.pi .btn-secondary:hover:not(:disabled) { background: var(--color-surface-hover); }
+.pi .btn-secondary:active:not(:disabled) { background: var(--color-surface-pressed); }
+.pi .btn:disabled { color: var(--color-ink-disabled); cursor: default; }
+.pi .btn-primary:disabled { background: var(--color-surface-hover); }

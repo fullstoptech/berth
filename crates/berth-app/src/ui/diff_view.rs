@@ -65,9 +65,16 @@ pub struct LineView {
     pub old_no: Option<u32>,
     pub new_no: Option<u32>,
     pub text: String,
+    /// "value changed" on a masked line whose key also has a removed line in the same hunk: with
+    /// the values hidden, the two lines would read as identical (CLAUDE.md: secrets; the value
+    /// is never shown to say so).
+    pub note: Option<&'static str>,
     /// The line starts a new hunk: a gap in the file comes before it.
     pub gap_before: bool,
 }
+
+/// Shown after a masked line whose value changed.
+pub const VALUE_CHANGED: &str = "value changed";
 
 /// One file of a plan, ready to draw.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,8 +97,21 @@ pub fn file_view(diff: &FileDiff, revealed: bool) -> FileView {
     let masked = secret && !revealed;
     let mut lines = Vec::new();
     for hunk in &diff.hunks {
+        // Keys a masked file loses a line for in this hunk: an added line for one of them is a
+        // changed value, which masking would otherwise hide.
+        let removed_keys: Vec<&str> = if masked {
+            hunk.lines
+                .iter()
+                .filter(|l| l.kind == DiffLineKind::Removed)
+                .filter_map(|l| key_of(&l.text))
+                .collect()
+        } else {
+            Vec::new()
+        };
         for (index, line) in hunk.lines.iter().enumerate() {
             let gap_before = index == 0 && !lines.is_empty();
+            let changed = line.kind == DiffLineKind::Added
+                && key_of(&line.text).is_some_and(|key| removed_keys.contains(&key));
             lines.push(LineView {
                 kind: line.kind,
                 old_no: line.old_no,
@@ -101,6 +121,7 @@ pub fn file_view(diff: &FileDiff, revealed: bool) -> FileView {
                 } else {
                     line.text.clone()
                 },
+                note: changed.then_some(VALUE_CHANGED),
                 gap_before,
             });
         }
@@ -282,6 +303,9 @@ pub fn DiffCard(
                                 }
                             }
                             span { class: "dv-text", "{line.text}" }
+                            if let Some(note) = line.note {
+                                span { class: "dv-note", "{note}" }
+                            }
                         }
                     }
                 }

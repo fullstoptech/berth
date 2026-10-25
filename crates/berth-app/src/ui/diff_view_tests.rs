@@ -247,3 +247,67 @@ fn review_changes_file_list_shows_each_file_with_its_counts_and_marks_the_select
         "the second row is selected: {html}"
     );
 }
+
+/// A `.env` where one key got a new value and another was added: with the values masked the
+/// changed line and the line it replaces would read the same, so the view says so.
+fn changed_env_diff() -> berth_core::FileDiff {
+    berth_rules::diff::file_diff(
+        Path::new(".env"),
+        Some("NODE_ENV=development\nDATABASE_URL=postgres://app:old-secret@db/app\nPORT=3000\n"),
+        Some("NODE_ENV=development\nDATABASE_URL=postgres://app:new-secret@db/app\nPORT=3000\nREDIS_URL=redis://cache\n"),
+    )
+}
+
+#[test]
+fn review_changes_a_masked_line_whose_value_changed_says_so_without_the_value() {
+    let view = file_view(&changed_env_diff(), false);
+    assert!(view.masked);
+    let masked_line = format!("DATABASE_URL={MASK}");
+    let noted: Vec<(&str, &str)> = view
+        .lines
+        .iter()
+        .filter_map(|l| l.note.map(|n| (l.text.as_str(), n)))
+        .collect();
+    // Only the added side of the changed key; the added REDIS_URL is new, not changed.
+    assert_eq!(noted, [(masked_line.as_str(), "value changed")]);
+    let removed = view
+        .lines
+        .iter()
+        .find(|l| l.kind == berth_core::DiffLineKind::Removed)
+        .expect("the removed line");
+    assert_eq!(removed.text, masked_line);
+    assert_eq!(removed.note, None);
+    // No value anywhere in what the view holds.
+    let all = format!("{view:?}");
+    assert!(
+        !all.contains("old-secret") && !all.contains("new-secret"),
+        "{all}"
+    );
+}
+
+#[test]
+fn review_changes_the_changed_value_note_is_drawn_and_goes_when_the_file_is_revealed() {
+    let masked = card(file_view(&changed_env_diff(), false), true);
+    assert_eq!(masked.matches("class=\"dv-note\"").count(), 1, "{masked}");
+    assert!(masked.contains(">value changed<"), "{masked}");
+    assert!(!masked.contains("new-secret"));
+    // Revealed, the lines show the values themselves and need no note.
+    let revealed = file_view(&changed_env_diff(), true);
+    assert!(revealed.lines.iter().all(|l| l.note.is_none()));
+    let html = card(revealed, true);
+    assert!(!html.contains("class=\"dv-note\""), "{html}");
+    assert!(html.contains("new-secret"));
+}
+
+#[test]
+fn review_changes_a_file_that_is_not_secret_never_gets_the_note() {
+    let diff = berth_rules::diff::file_diff(
+        Path::new("compose.yaml"),
+        Some("name=old\n"),
+        Some("name=new\n"),
+    );
+    assert!(file_view(&diff, false)
+        .lines
+        .iter()
+        .all(|l| l.note.is_none()));
+}
