@@ -408,7 +408,7 @@ async fn discover_and_connect(
 fn mock_world_parts(
     clients: &ClientMap,
 ) -> (Vec<berth_core::Engine>, Vec<berth_core::PinnedFolder>) {
-    let world = berth_engine::MockWorld::bundled();
+    let world = super::mock_world_at(chrono::Utc::now());
     let mut map = match clients.lock() {
         Ok(map) => map,
         Err(poisoned) => poisoned.into_inner(),

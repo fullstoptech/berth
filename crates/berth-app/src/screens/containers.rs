@@ -965,7 +965,8 @@ pub fn row_data(
             f.clamp(0.0, 1.0)
         },
     });
-    let uptime = if c.state == ContainerState::Running {
+    // A paused container still has an age (frame: api-worker "1 d").
+    let uptime = if matches!(c.state, ContainerState::Running | ContainerState::Paused) {
         c.started.map(|t| berth_core::fmt::uptime(t, now))
     } else {
         None

@@ -168,17 +168,17 @@
    "added": "2026-10-20T09:00:00Z"
   },
   {
-   "folder": "/Users/berth/Dev/berth-site",
+   "folder": "/Users/berth/Dev/clients/berth-site",
    "engine": "colima:default",
    "added": "2026-10-20T09:00:00Z"
   },
   {
-   "folder": "/Users/berth/Dev/payments-mock",
+   "folder": "/Users/berth/Dev/clients/payments-mock",
    "engine": "colima:default",
    "added": "2026-10-20T09:00:00Z"
   },
   {
-   "folder": "/Users/berth/Dev/ml-notebooks",
+   "folder": "/Users/berth/Dev/research/ml-notebooks",
    "engine": "colima:default",
    "added": "2026-10-20T09:00:00Z"
   },
@@ -211,7 +211,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T12:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -344,7 +344,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T12:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -390,7 +390,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T12:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -436,7 +436,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T08:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -482,7 +482,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T08:02:30Z",
    "ports": [],
    "mounts": [],
    "networks": [
@@ -560,7 +560,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T08:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -606,7 +606,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T13:27:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -620,8 +620,8 @@
     "berth-site_default"
    ],
    "labels": {
-    "com.docker.compose.project.working_dir": "/Users/berth/Dev/berth-site",
-    "com.docker.compose.project.config_files": "/Users/berth/Dev/berth-site/compose.yaml",
+    "com.docker.compose.project.working_dir": "/Users/berth/Dev/clients/berth-site",
+    "com.docker.compose.project.config_files": "/Users/berth/Dev/clients/berth-site/compose.yaml",
     "com.docker.compose.project": "berth-site",
     "com.docker.compose.service": "web"
    },
@@ -652,7 +652,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T13:27:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -666,8 +666,8 @@
     "berth-site_default"
    ],
    "labels": {
-    "com.docker.compose.project.working_dir": "/Users/berth/Dev/berth-site",
-    "com.docker.compose.project.config_files": "/Users/berth/Dev/berth-site/compose.yaml",
+    "com.docker.compose.project.working_dir": "/Users/berth/Dev/clients/berth-site",
+    "com.docker.compose.project.config_files": "/Users/berth/Dev/clients/berth-site/compose.yaml",
     "com.docker.compose.project": "berth-site",
     "com.docker.compose.service": "proxy"
    },
@@ -698,7 +698,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T13:27:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -712,8 +712,8 @@
     "payments-mock_default"
    ],
    "labels": {
-    "com.docker.compose.project.working_dir": "/Users/berth/Dev/payments-mock",
-    "com.docker.compose.project.config_files": "/Users/berth/Dev/payments-mock/compose.yaml",
+    "com.docker.compose.project.working_dir": "/Users/berth/Dev/clients/payments-mock",
+    "com.docker.compose.project.config_files": "/Users/berth/Dev/clients/payments-mock/compose.yaml",
     "com.docker.compose.project": "payments-mock",
     "com.docker.compose.service": "stripe"
    },
@@ -758,8 +758,8 @@
     "ml-notebooks_default"
    ],
    "labels": {
-    "com.docker.compose.project.working_dir": "/Users/berth/Dev/ml-notebooks",
-    "com.docker.compose.project.config_files": "/Users/berth/Dev/ml-notebooks/compose.yaml",
+    "com.docker.compose.project.working_dir": "/Users/berth/Dev/research/ml-notebooks",
+    "com.docker.compose.project.config_files": "/Users/berth/Dev/research/ml-notebooks/compose.yaml",
     "com.docker.compose.project": "ml-notebooks",
     "com.docker.compose.service": "jupyter"
    },
@@ -790,8 +790,8 @@
     "ml-notebooks_default"
    ],
    "labels": {
-    "com.docker.compose.project.working_dir": "/Users/berth/Dev/ml-notebooks",
-    "com.docker.compose.project.config_files": "/Users/berth/Dev/ml-notebooks/compose.yaml",
+    "com.docker.compose.project.working_dir": "/Users/berth/Dev/research/ml-notebooks",
+    "com.docker.compose.project.config_files": "/Users/berth/Dev/research/ml-notebooks/compose.yaml",
     "com.docker.compose.project": "ml-notebooks",
     "com.docker.compose.service": "worker"
    },
@@ -854,7 +854,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-21T14:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -922,7 +922,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-23T14:02:30Z",
    "ports": [],
    "mounts": [],
    "networks": [
@@ -956,7 +956,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T10:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -1051,7 +1051,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T02:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -1092,7 +1092,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T13:42:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -1133,7 +1133,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-22T14:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -1174,7 +1174,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-16T14:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -1458,7 +1458,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-10T14:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -1504,7 +1504,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-10T14:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -1550,7 +1550,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-09-24T14:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -1591,7 +1591,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-15T14:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -1632,7 +1632,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-15T14:02:30Z",
    "ports": [],
    "mounts": [],
    "networks": [
@@ -1666,7 +1666,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-21T14:02:30Z",
    "ports": [
     {
      "host_ip": null,
@@ -1707,7 +1707,7 @@
    "exit_code": null,
    "restart_count": 0,
    "created": "2026-10-24T12:00:00Z",
-   "started": "2026-10-24T12:02:10Z",
+   "started": "2026-10-24T09:02:30Z",
    "ports": [],
    "mounts": [],
    "networks": [
@@ -4409,9 +4409,9 @@
   {
    "id": "fa98a539f6437c5e",
    "name": "berth-site",
-   "folder": "/Users/berth/Dev/berth-site",
+   "folder": "/Users/berth/Dev/clients/berth-site",
    "compose_files": [
-    "/Users/berth/Dev/berth-site/compose.yaml"
+    "/Users/berth/Dev/clients/berth-site/compose.yaml"
    ],
    "engine": "colima:default",
    "source": "Compose",
@@ -4466,9 +4466,9 @@
   {
    "id": "c02932bdb012bb52",
    "name": "payments-mock",
-   "folder": "/Users/berth/Dev/payments-mock",
+   "folder": "/Users/berth/Dev/clients/payments-mock",
    "compose_files": [
-    "/Users/berth/Dev/payments-mock/compose.yaml"
+    "/Users/berth/Dev/clients/payments-mock/compose.yaml"
    ],
    "engine": "colima:default",
    "source": "Compose",
@@ -4505,9 +4505,9 @@
   {
    "id": "fbb434612145138a",
    "name": "ml-notebooks",
-   "folder": "/Users/berth/Dev/ml-notebooks",
+   "folder": "/Users/berth/Dev/research/ml-notebooks",
    "compose_files": [
-    "/Users/berth/Dev/ml-notebooks/compose.yaml"
+    "/Users/berth/Dev/research/ml-notebooks/compose.yaml"
    ],
    "engine": "colima:default",
    "source": "Compose",

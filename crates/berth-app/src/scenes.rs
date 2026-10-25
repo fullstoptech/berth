@@ -81,7 +81,7 @@ fn components_primitives(state: &mut AppState) {
 /// every engine, container, project and resource list, scoped to the
 /// default Colima profile (D81).
 fn load_mock_world(state: &mut AppState) {
-    let world = berth_engine::MockWorld::bundled();
+    let world = crate::services::mock_world_at(chrono::Utc::now());
     state.engines.set(world.engines.clone());
     state
         .engine_scope

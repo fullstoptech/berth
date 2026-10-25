@@ -876,6 +876,36 @@ fn container<'a>(world: &'a berth_engine::MockWorld, name: &str) -> &'a Containe
 }
 
 #[test]
+fn containers_mock_uptimes_vary_like_the_frames_whatever_the_date() {
+    // Frame Uptime column: 2 h, 6 h, 35 min, 3 d; the paused worker 1 d;
+    // the restarting worker and exited containers a dash.
+    let expected = [
+        ("shop-api-api-1", Some("2 h")),
+        ("shop-api-mailpit-1", Some("2 h")),
+        ("analytics-clickhouse-1", Some("6 h")),
+        ("berth-site-web-1", Some("35 min")),
+        ("payments-mock-stripe-1", Some("35 min")),
+        ("pg-scratch", Some("3 d")),
+        ("api-worker-7f9c4d8b6-xk2lp", Some("1 d")),
+        ("shop-api-worker-1", None),
+        ("shop-api-db-1", None),
+    ];
+    for now in [
+        chrono::Utc::now(),
+        crate::services::mock_reference_now(),
+        crate::services::mock_reference_now() + chrono::Duration::days(400),
+    ] {
+        let world = crate::services::mock_world_at(now);
+        let pending = BTreeMap::new();
+        let view = view_for(&world, &pending);
+        for (name, uptime) in expected {
+            let data = row_data(container(&world, name), &view, "default", now, false);
+            assert_eq!(data.uptime.as_deref(), uptime, "{name} at {now}");
+        }
+    }
+}
+
+#[test]
 fn containers_row_buttons_carry_tooltips_toggle_and_disabled_reasons() {
     let world = world();
     let pending = BTreeMap::new();

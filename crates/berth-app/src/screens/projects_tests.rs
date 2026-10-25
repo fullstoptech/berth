@@ -81,6 +81,18 @@ fn assert_default_rows(html: &str) {
     assert!(html.contains("Start project"), "{html}");
     assert!(html.contains(">Restart<"), "{html}");
     assert!(html.contains("~/Dev/…/shop-api"), "{html}");
+    // The frame's Path column middle-truncates these as well; analytics
+    // and docs-site are short enough to stay whole.
+    for collapsed in [
+        "~/Dev/…/berth-site",
+        "~/Dev/…/payments-mock",
+        "~/Dev/…/ml-notebooks",
+        "~/Dev/…/docker-manger",
+    ] {
+        assert!(html.contains(collapsed), "{collapsed}: {html}");
+    }
+    assert!(html.contains(">~/Dev/analytics<"), "{html}");
+    assert!(html.contains(">~/Dev/docs-site<"), "{html}");
     assert!(html.contains("feat/checkout-v2"), "{html}");
     assert!(
         html.contains(">:3000<") && html.contains(">:6379<"),

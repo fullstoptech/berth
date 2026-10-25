@@ -9,6 +9,25 @@ pub mod confirm;
 pub mod engines;
 pub mod search;
 
+/// The moment the bundled mock world is written for: its container start
+/// times give the uptimes the frames show (2 h, 6 h, 35 min, 1 d, 3 d …)
+/// when read at this instant.
+pub fn mock_reference_now() -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::from_timestamp(1_792_850_550, 0).unwrap_or_default()
+}
+
+/// The bundled mock world with every start time moved by the distance from
+/// [`mock_reference_now`] to `now`, so uptimes read as the frames show them
+/// whenever the mock runs (`BERTH_MOCK=1`, scenes).
+pub fn mock_world_at(now: chrono::DateTime<chrono::Utc>) -> berth_engine::MockWorld {
+    let mut world = berth_engine::MockWorld::bundled();
+    let shift = now - mock_reference_now();
+    for container in &mut world.containers {
+        container.started = container.started.map(|started| started + shift);
+    }
+    world
+}
+
 /// Everything a later service or screen needs from the substrate P2-T1
 /// wires up: the store, the live client map and the root cancellation
 /// token. Provided as Dioxus context by the App root.
