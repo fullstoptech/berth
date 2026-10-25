@@ -33,8 +33,8 @@ use crate::ui::{
 };
 use model::{
     env_rows, header_buttons, header_menu, offers_stop, overview_rows, problem_views,
-    restart_loop_view, short_id, state_note, tab_strip, DetailTab, EnvRow, EnvShown, Reveals,
-    REVEAL_FOR,
+    restart_loop_view, short_id, state_note, tab_capacity, tab_strip, DetailTab, EnvRow, EnvShown,
+    Reveals, REVEAL_FOR,
 };
 
 /// The screen's CSS, rendered with the panel (colours from tokens only).
@@ -211,7 +211,8 @@ pub fn ContainerDetailPanel(id: ContainerId, #[props(default)] initial_tab: Deta
     };
 
     let selected = *tab.read();
-    let (tab_items, overflow) = tab_strip(selected);
+    let capacity = tab_capacity(state.settings.read().text_scale);
+    let (tab_items, overflow) = tab_strip(selected, capacity);
     let status = berth_core::status_of(c.state, c.health, c.exit_code);
     let header_actions = actions.clone();
     let fix_actions = actions.clone();

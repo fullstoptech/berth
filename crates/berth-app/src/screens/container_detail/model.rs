@@ -107,21 +107,38 @@ impl DetailTab {
     }
 }
 
-/// The five tabs in the strip: the primary ones, with a selected tab that
-/// lives under ⋯ taking Inspect's place so the selection is always seen.
+/// How many tabs the 360 px strip holds at a text scale. Each label's width
+/// grows with the text but the strip does not, so the strip shows fewer tabs
+/// (the rest sit under the ⋯ menu): five up to 100 %, four up to 130 %,
+/// three above that. Measured against the frame's 360 px at each step.
 #[must_use]
-pub fn visible_tabs(selected: DetailTab) -> [DetailTab; 5] {
-    let mut tabs = DetailTab::PRIMARY;
+pub fn tab_capacity(text_scale: f32) -> usize {
+    if text_scale <= 1.0 {
+        5
+    } else if text_scale <= 1.3 {
+        4
+    } else {
+        3
+    }
+}
+
+/// The tabs in the strip: the primary ones that fit, with a selected tab
+/// that lives under ⋯ taking the last place so the selection is always seen.
+#[must_use]
+pub fn visible_tabs(selected: DetailTab, capacity: usize) -> Vec<DetailTab> {
+    let mut tabs: Vec<DetailTab> = DetailTab::PRIMARY.into_iter().take(capacity).collect();
     if !tabs.contains(&selected) {
-        tabs[4] = selected;
+        if let Some(last) = tabs.last_mut() {
+            *last = selected;
+        }
     }
     tabs
 }
 
 /// The strip's items and the ⋯ menu's entries.
 #[must_use]
-pub fn tab_strip(selected: DetailTab) -> (Vec<TabItem>, Vec<MenuEntry>) {
-    let visible = visible_tabs(selected);
+pub fn tab_strip(selected: DetailTab, capacity: usize) -> (Vec<TabItem>, Vec<MenuEntry>) {
+    let visible = visible_tabs(selected, capacity);
     let items = visible
         .iter()
         .map(|tab| TabItem::new(tab.id(), tab.label()))

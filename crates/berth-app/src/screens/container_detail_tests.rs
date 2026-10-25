@@ -18,7 +18,7 @@ use berth_engine::EngineClient;
 
 use super::model::{
     env_rows, header_buttons, header_menu, mount_line, restart_label, short_id, state_note,
-    tab_strip, visible_tabs, DetailTab, EnvShown, Reveals, REVEAL_FOR,
+    tab_capacity, tab_strip, visible_tabs, DetailTab, EnvShown, Reveals, REVEAL_FOR,
 };
 use super::*;
 use crate::services::actions::StateView;
@@ -429,18 +429,61 @@ fn inspector_loading_and_failed_details_say_so_instead_of_an_empty_body() {
 
 #[test]
 fn inspector_tab_strip_shows_five_tabs_and_keeps_a_selected_overflow_tab_visible() {
-    let (items, overflow) = tab_strip(DetailTab::Overview);
+    let (items, overflow) = tab_strip(DetailTab::Overview, 5);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert_eq!(labels, ["Overview", "Logs", "Terminal", "Stats", "Inspect"]);
     let menu: Vec<&str> = overflow.iter().map(|e| e.label.as_str()).collect();
     assert_eq!(menu, ["Env", "Mounts", "Files", "Limits"]);
 
-    let (items, overflow) = tab_strip(DetailTab::Env);
+    let (items, overflow) = tab_strip(DetailTab::Env, 5);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert_eq!(labels, ["Overview", "Logs", "Terminal", "Stats", "Env"]);
     assert!(overflow.iter().any(|e| e.label == "Inspect"));
     assert!(!overflow.iter().any(|e| e.label == "Env"));
-    assert_eq!(visible_tabs(DetailTab::Limits)[4], DetailTab::Limits);
+    assert_eq!(visible_tabs(DetailTab::Limits, 5)[4], DetailTab::Limits);
+}
+
+#[test]
+fn inspector_tab_strip_shows_fewer_tabs_as_the_text_grows() {
+    use crate::text_scale::STEPS;
+    for (scale, want) in [(0.85, 5), (1.0, 5), (1.1, 4), (1.2, 4), (1.3, 4), (1.5, 3)] {
+        assert_eq!(tab_capacity(scale), want, "{scale}");
+    }
+    // The strip never grows with the text, and every tab stays reachable.
+    let mut last = usize::MAX;
+    for scale in STEPS {
+        let capacity = tab_capacity(scale);
+        assert!(capacity <= last, "{scale}");
+        last = capacity;
+        let (items, overflow) = tab_strip(DetailTab::Overview, capacity);
+        assert_eq!(items.len() + overflow.len(), DetailTab::ALL.len());
+    }
+    // A selected tab under ⋯ takes the last place, however few fit.
+    let (items, overflow) = tab_strip(DetailTab::Env, 3);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert_eq!(labels, ["Overview", "Logs", "Env"]);
+    assert!(overflow.iter().any(|e| e.label == "Terminal"));
+}
+
+#[test]
+fn inspector_keeps_one_12px_left_edge_and_sets_delete_apart() {
+    use super::super::css_tracks as css;
+    let rule = |header: &str| css::block(CONTAINER_DETAIL_CSS, header);
+    // Header, tabs, key/value list and the failure card all inset 12 px.
+    assert!(rule("\n.ih {").contains("padding: var(--space-16) var(--space-12) var(--space-12);"));
+    assert!(rule("\n.cd-tabs {").contains("padding: 0;"));
+    assert!(rule("\n.cd-tabs .tab {").contains("padding: 0 var(--space-12);"));
+    assert!(rule("\n.kv-list {").contains("padding: 0 var(--space-12);"));
+    assert!(rule("\n.cd-failure {").contains("padding: var(--space-4) var(--space-12) 0;"));
+    assert!(rule("\n.pi {").contains("margin: var(--space-16) var(--space-12) 0;"));
+    // Delete takes a line of its own below the four other buttons.
+    assert!(rule("\n.ih-btn-danger {").contains("flex: 0 0 100%;"));
+    assert!(rule("\n.ih-buttons {").contains("flex-wrap: wrap;"));
+    // At 150 % the four buttons only fit one line if their padding gives a
+    // little (6 px at 100 %, 4 px at 150 %).
+    assert!(CONTAINER_DETAIL_CSS.contains(
+        ".ih-btn .btn { padding: 0 calc(var(--space-6) - (var(--text-scale, 1) - 1) * var(--space-4));"
+    ));
 }
 
 #[test]
