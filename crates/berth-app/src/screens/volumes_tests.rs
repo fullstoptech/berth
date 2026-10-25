@@ -406,7 +406,29 @@ fn volumes_a_volume_dialog_refuses_a_target_that_is_not_a_volume() {
         confirm::run(&mut state, &rig.service, &model, false)
     });
     assert!(launched.keys.is_empty());
-    assert_eq!(launched.refused, ["This is not a volume"]);
+    assert_eq!(launched.refused, ["This is not the volume to delete"]);
+}
+
+#[tokio::test]
+async fn volumes_a_dialog_for_one_volume_cannot_delete_another() {
+    let rig = rig();
+    let mut model = rig.model("old-uploads").expect("dialog");
+    model.targets = vec![Subject::Volume("tmp-export".to_string())];
+    let launched = rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        confirm::run(&mut state, &rig.service, &model, false)
+    });
+    assert!(launched.keys.is_empty(), "{:?}", launched.keys);
+    assert_eq!(launched.refused, ["This is not the volume to delete"]);
+    assert!(rig.dom.in_runtime(|| rig.state.pending.peek().is_empty()));
+    let names: Vec<String> = berth_engine::EngineClient::volumes(rig.engine.as_ref())
+        .await
+        .expect("list")
+        .into_iter()
+        .map(|v| v.name)
+        .collect();
+    assert!(names.contains(&"tmp-export".to_string()), "{names:?}");
+    assert!(names.contains(&"old-uploads".to_string()), "{names:?}");
 }
 
 #[test]

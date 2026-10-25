@@ -725,10 +725,18 @@ pub fn run(
 ) -> Launched {
     let mut out = Launched::default();
     match &model.action {
-        EngineAction::Container { action, .. } => {
+        EngineAction::Container { id, action, .. } => {
             let action = with_volumes(action, checked);
             // One container action per target, each with its own pending
-            // state and activity entry. The selection is not consulted.
+            // state and activity entry. The selection is not consulted. A
+            // bulk model's action names its first target (PLAN §6 has no
+            // multi-container action), so that one must be the container
+            // the action names.
+            if model.targets.first() != Some(&Subject::Container(id.clone())) {
+                out.refused
+                    .push("This is not the container to act on".to_string());
+                return out;
+            }
             for target in &model.targets {
                 match target {
                     Subject::Container(id) => {
@@ -745,6 +753,8 @@ pub fn run(
                 .iter()
                 .find(|e| crate::services::colima::profile_of(e) == Some(profile.as_str()))
                 .cloned();
+            // The one target is the engine the profile names.
+            let engine = engine.filter(|e| model.targets == [Subject::Engine(e.id.clone())]);
             match engine {
                 Some(engine) => match actions.engine(state, &engine, op.clone()) {
                     Ok(()) => out.keys.push(PendingKey {
@@ -753,7 +763,9 @@ pub fn run(
                     }),
                     Err(reason) => out.refused.push(reason),
                 },
-                None => out.refused.push(format!("Engine {profile} is gone")),
+                None => out.refused.push(format!(
+                    "Engine {profile} is gone, or is not the engine to act on"
+                )),
             }
         }
         // Edit and recreate, and recreate with the latest image (D18).
@@ -774,14 +786,16 @@ pub fn run(
             target: kind,
             force,
         } => {
+            // Exactly the resource the action names: same kind, same name
+            // or id. A dialog opened for one volume cannot delete another.
             for subject in &model.targets {
                 match ResourceRef::from_subject(subject) {
-                    Some(target) if target.action_id() == kind.action_id() => {
+                    Some(target) if target == *kind => {
                         launch_remove(state, actions, engine, &target, *force, &mut out);
                     }
                     _ => out
                         .refused
-                        .push(format!("This is not a {}", kind.noun_one())),
+                        .push(format!("This is not the {} to delete", kind.noun_one())),
                 }
             }
         }
