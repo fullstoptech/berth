@@ -1,7 +1,8 @@
 //! [`MockCompose`]: records every command it is asked to run and streams
 //! scripted progress ending in `Done { code: 0 }`. `config` returns the
 //! world's services object for the target project when the world knows it,
-//! else an empty services object.
+//! else an empty services object. `validate_text` records the text (never the env values) and fails with
+//! `Docker(..)` when the text is not a YAML mapping, so a mock screen can show an invalid-file error.
 
 use futures::StreamExt;
 
@@ -9,9 +10,19 @@ use super::MockWorld;
 use crate::compose::ComposeRunner;
 use crate::EngineError;
 
+/// One `validate_text` call as the mock saw it: the folder, the text and the names (not the values) of
+/// the env entries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedText {
+    pub folder: std::path::PathBuf,
+    pub text: String,
+    pub env_keys: Vec<String>,
+}
+
 #[derive(Default)]
 pub struct MockCompose {
     recorded: std::sync::Mutex<Vec<(berth_core::ComposeTarget, berth_core::ComposeCommand)>>,
+    validated: std::sync::Mutex<Vec<ValidatedText>>,
     compose_services: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
@@ -29,6 +40,7 @@ impl MockCompose {
     pub fn from_world(world: &MockWorld) -> Self {
         Self {
             recorded: std::sync::Mutex::new(Vec::new()),
+            validated: std::sync::Mutex::new(Vec::new()),
             compose_services: world.compose_services.clone(),
         }
     }
@@ -42,6 +54,12 @@ impl MockCompose {
     #[must_use]
     pub fn recorded(&self) -> Vec<(berth_core::ComposeTarget, berth_core::ComposeCommand)> {
         self.recorded.lock().map(|r| r.clone()).unwrap_or_default()
+    }
+
+    /// Every `validate_text` call, in order.
+    #[must_use]
+    pub fn validated_texts(&self) -> Vec<ValidatedText> {
+        self.validated.lock().map(|v| v.clone()).unwrap_or_default()
     }
 }
 
@@ -121,6 +139,28 @@ impl ComposeRunner for MockCompose {
     ) -> Result<(), EngineError> {
         Ok(())
     }
+
+    async fn validate_text(
+        &self,
+        folder: &std::path::Path,
+        compose_text: &str,
+        env: &[(String, String)],
+    ) -> Result<(), EngineError> {
+        if let Ok(mut validated) = self.validated.lock() {
+            validated.push(ValidatedText {
+                folder: folder.to_path_buf(),
+                text: compose_text.to_string(),
+                env_keys: env.iter().map(|(k, _)| k.clone()).collect(),
+            });
+        }
+        match serde_norway::from_str::<serde_norway::Value>(compose_text) {
+            Ok(value) if value.is_mapping() => Ok(()),
+            Ok(_) => Err(EngineError::Docker(
+                "yaml: the compose file must be a mapping".to_string(),
+            )),
+            Err(err) => Err(EngineError::Docker(format!("yaml: {err}"))),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -188,6 +228,29 @@ mod tests {
                 .and_then(serde_json::Value::as_object)
                 .is_some_and(|o| o.is_empty()),
             "{config}"
+        );
+    }
+
+    #[tokio::test]
+    async fn mock_validate_text_records_keys_not_values_and_rejects_broken_yaml() {
+        let mock = MockCompose::new();
+        let folder = std::path::Path::new("/work/shop");
+        let env = [("DB_PASSWORD".to_string(), "hunter2-not-real".to_string())];
+        mock.validate_text(folder, "services:\n  web:\n    image: x\n", &env)
+            .await
+            .expect("valid text");
+        let err = mock
+            .validate_text(folder, "services: [oops\n", &[])
+            .await
+            .expect_err("broken yaml");
+        assert!(matches!(err, EngineError::Docker(m) if m.starts_with("yaml:")));
+        let seen = mock.validated_texts();
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0].folder, folder);
+        assert_eq!(seen[0].env_keys, ["DB_PASSWORD"]);
+        assert!(
+            !format!("{seen:?}").contains("hunter2"),
+            "the mock keeps no env values"
         );
     }
 }

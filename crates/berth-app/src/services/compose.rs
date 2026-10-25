@@ -262,6 +262,14 @@ mod tests {
         ) -> Result<(), berth_engine::EngineError> {
             Ok(())
         }
+        async fn validate_text(
+            &self,
+            _folder: &std::path::Path,
+            _compose_text: &str,
+            _env: &[(String, String)],
+        ) -> Result<(), berth_engine::EngineError> {
+            Ok(())
+        }
     }
 
     fn target() -> berth_core::ComposeTarget {

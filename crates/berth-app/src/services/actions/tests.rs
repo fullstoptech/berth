@@ -298,6 +298,14 @@ impl berth_engine::ComposeRunner for FailingCompose {
     ) -> Result<(), EngineError> {
         Ok(())
     }
+    async fn validate_text(
+        &self,
+        _folder: &std::path::Path,
+        _compose_text: &str,
+        _env: &[(String, String)],
+    ) -> Result<(), EngineError> {
+        Ok(())
+    }
 }
 
 fn engine_id() -> berth_core::EngineId {

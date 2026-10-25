@@ -167,3 +167,75 @@ async fn compose_it_restart_stop_start_config_validate() {
         other => panic!("expected EngineError::Docker, got {other}"),
     }
 }
+
+/// `validate_text` runs the docker CLI only: no engine, no container. It is ignored with the other live
+/// tests because it needs the `docker` binary and its Compose plugin.
+#[tokio::test]
+#[ignore = "needs the docker CLI with the Compose plugin; run with BERTH_IT=1"]
+async fn compose_it_validate_text_stdin_env_and_missing_dotenv() {
+    if std::env::var("BERTH_IT").is_err() {
+        eprintln!("BERTH_IT not set, skipping");
+        return;
+    }
+    let search = berth_sys::SearchPath::from_process()
+        .with_login_shell()
+        .await;
+    let cli = CliCompose::new(search);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let folder = dir.path();
+    let pair = |k: &str, v: &str| (k.to_string(), v.to_string());
+
+    // The text comes from stdin: the folder holds no compose file.
+    let plain = "services:\n  web:\n    image: nginx\n";
+    cli.validate_text(folder, plain, &[])
+        .await
+        .expect("plain text validates");
+
+    // New `.env` lines reach Compose as process environment.
+    let needs_var =
+        "services:\n  web:\n    image: nginx\n    ports:\n      - \"${PORT:?set a port}:80\"\n";
+    let err = cli
+        .validate_text(folder, needs_var, &[])
+        .await
+        .expect_err("PORT is required");
+    assert!(
+        matches!(&err, EngineError::Docker(m) if m.contains("set a port")),
+        "{err}"
+    );
+    cli.validate_text(folder, needs_var, &[pair("PORT", "8080")])
+        .await
+        .expect("PORT in the process environment satisfies it");
+
+    // Broken YAML fails with Compose's own words.
+    let err = cli
+        .validate_text(folder, "services:\n  web:\n   image: [oops\n", &[])
+        .await
+        .expect_err("broken yaml");
+    assert!(matches!(err, EngineError::Docker(_)), "{err}");
+
+    // `env_file: .env` with no `.env` on disk passes when the plan adds `.env` lines, and only then.
+    let with_env_file = "services:\n  web:\n    image: nginx\n    env_file: .env\n";
+    cli.validate_text(folder, with_env_file, &[pair("DB_PASSWORD", "x")])
+        .await
+        .expect("the plan creates .env");
+    let err = cli
+        .validate_text(folder, with_env_file, &[])
+        .await
+        .expect_err("nothing creates .env");
+    assert!(
+        matches!(&err, EngineError::Docker(m) if m.contains("env file")),
+        "{err}"
+    );
+    // Another missing env file is the user's mistake, plan or not.
+    let other = "services:\n  web:\n    image: nginx\n    env_file: .other.env\n";
+    let err = cli
+        .validate_text(folder, other, &[pair("DB_PASSWORD", "x")])
+        .await
+        .expect_err("a plan that writes .env does not create .other.env");
+    assert!(
+        matches!(&err, EngineError::Docker(m) if m.contains(".other.env")),
+        "{err}"
+    );
+    // The folder was only read: no `.env` appeared.
+    assert_eq!(std::fs::read_dir(folder).expect("read dir").count(), 0);
+}

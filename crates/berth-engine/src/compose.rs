@@ -21,6 +21,21 @@ pub trait ComposeRunner: Send + Sync {
         folder: &std::path::Path,
         files: &[std::path::PathBuf],
     ) -> Result<(), EngineError>;
+    /// Validates compose text that is not on disk yet (`config -q -f -`, the text on stdin), so Review
+    /// changes can check a proposed file before Write (AD33, ADR 0012). `env` holds the `.env` lines the
+    /// plan adds; they reach the child as process environment, never as a file, and are not recorded.
+    /// Relative paths resolve against `folder`. A `Docker(message)` error carries Compose's own words.
+    ///
+    /// `env_file: .env` pointing at a `.env` that is not on disk passes when `env` is not empty: a plan
+    /// that adds `.env` lines creates that file. Any other missing `env_file` is an error.
+    /// There is no cancellation token (the trait has none for `validate`); dropping the future kills the
+    /// child, and the call gives up after 30 s.
+    async fn validate_text(
+        &self,
+        folder: &std::path::Path,
+        compose_text: &str,
+        env: &[(String, String)],
+    ) -> Result<(), EngineError>;
 }
 
 fn push_base(
@@ -40,6 +55,35 @@ fn push_base(
         args.push("-p".to_string());
         args.push(name.to_string());
     }
+}
+
+/// Arguments of `docker compose` that validate the compose text on stdin: `-f -` and `config -q`.
+pub fn validate_text_args(folder: &std::path::Path) -> Vec<String> {
+    let mut args = Vec::new();
+    push_base(&mut args, folder, &[std::path::PathBuf::from("-")], None);
+    args.push("config".to_string());
+    args.push("-q".to_string());
+    args
+}
+
+/// The file Compose names in `env file <path> not found: ...`, if that is what `stderr` says.
+fn missing_env_file(stderr: &str) -> Option<std::path::PathBuf> {
+    stderr.lines().find_map(|line| {
+        let rest = line.trim().strip_prefix("env file ")?;
+        let end = rest.find(" not found")?;
+        Some(std::path::PathBuf::from(&rest[..end]))
+    })
+}
+
+/// Whether `missing` is the project's own `.env`.
+fn is_project_dotenv(missing: &std::path::Path, folder: &std::path::Path) -> bool {
+    if missing.file_name().and_then(|n| n.to_str()) != Some(".env") {
+        return false;
+    }
+    let canon = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    missing
+        .parent()
+        .is_some_and(|parent| canon(parent) == canon(folder))
 }
 
 /// Pure argument builder for a Compose command (D27). The first item is the
@@ -169,6 +213,7 @@ impl CliCompose {
         &self,
         args: &[String],
         env: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+        stdin: Option<Vec<u8>>,
     ) -> Result<berth_sys::Output, EngineError> {
         let binary = self.binary().ok_or_else(Self::not_found)?;
         berth_sys::run_capture(
@@ -177,6 +222,7 @@ impl CliCompose {
             berth_sys::SpawnOpts {
                 env,
                 path: Some(self.search.path_var()),
+                stdin,
                 timeout: Some(CAPTURE_TIMEOUT),
                 ..Default::default()
             },
@@ -238,7 +284,9 @@ impl ComposeRunner for CliCompose {
         args.push("config".to_string());
         args.push("--format".to_string());
         args.push("json".to_string());
-        let output = self.capture(&args, vec![docker_host_env(target)]).await?;
+        let output = self
+            .capture(&args, vec![docker_host_env(target)], None)
+            .await?;
         if output.code != Some(0) {
             return Err(Self::output_err(&output));
         }
@@ -257,12 +305,83 @@ impl ComposeRunner for CliCompose {
         push_base(&mut args, folder, files, None);
         args.push("config".to_string());
         args.push("-q".to_string());
-        let output = self.capture(&args, Vec::new()).await?;
+        let output = self.capture(&args, Vec::new(), None).await?;
         if output.code == Some(0) {
             Ok(())
         } else {
             Err(Self::output_err(&output))
         }
+    }
+
+    async fn validate_text(
+        &self,
+        folder: &std::path::Path,
+        compose_text: &str,
+        env: &[(String, String)],
+    ) -> Result<(), EngineError> {
+        let process_env: Vec<_> = env
+            .iter()
+            .map(|(k, v)| (std::ffi::OsString::from(k), std::ffi::OsString::from(v)))
+            .collect();
+        let stdin = Some(compose_text.as_bytes().to_vec());
+        let args = validate_text_args(folder);
+        let output = self
+            .capture(&args, process_env.clone(), stdin.clone())
+            .await?;
+        if output.code == Some(0) {
+            return Ok(());
+        }
+        let excused = !env.is_empty()
+            && missing_env_file(&output.stderr)
+                .is_some_and(|missing| is_project_dotenv(&missing, folder));
+        if !excused {
+            return Err(Self::output_err(&output));
+        }
+        // The plan creates `.env`. Check the rest of the file against a mirror of the folder that has one.
+        let mirror = DotenvMirror::new(folder)?;
+        let args = validate_text_args(mirror.path());
+        let output = self.capture(&args, process_env, stdin).await?;
+        if output.code == Some(0) {
+            Ok(())
+        } else {
+            Err(Self::output_err(&output))
+        }
+    }
+}
+
+/// A temporary project directory that links to everything in the real folder and holds an empty `.env`,
+/// so Compose can resolve an `env_file` the plan has yet to create. Removed on drop.
+struct DotenvMirror {
+    dir: std::path::PathBuf,
+}
+
+impl DotenvMirror {
+    fn new(folder: &std::path::Path) -> Result<Self, EngineError> {
+        let io = |err: std::io::Error| EngineError::Docker(err.to_string());
+        let dir =
+            std::env::temp_dir().join(format!("berth-validate-{}", uuid::Uuid::now_v7().simple()));
+        std::fs::create_dir(&dir).map_err(io)?;
+        let mirror = Self { dir };
+        #[cfg(unix)]
+        for entry in std::fs::read_dir(folder).map_err(io)?.flatten() {
+            let name = entry.file_name();
+            if name != ".env" {
+                // A link that fails to appear only means a different error later; nothing to report here.
+                let _ = std::os::unix::fs::symlink(entry.path(), mirror.dir.join(&name));
+            }
+        }
+        std::fs::write(mirror.dir.join(".env"), "").map_err(io)?;
+        Ok(mirror)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.dir
+    }
+}
+
+impl Drop for DotenvMirror {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
@@ -555,5 +674,80 @@ mod tests {
         mock.validate(std::path::Path::new("/work/shop"), &target().files)
             .await
             .expect("mock validate");
+    }
+
+    #[test]
+    fn validate_text_args_read_the_file_from_stdin_and_only_check() {
+        assert_eq!(
+            validate_text_args(std::path::Path::new("/work/shop")),
+            strings(&[
+                "compose",
+                "--project-directory",
+                "/work/shop",
+                "-f",
+                "-",
+                "config",
+                "-q",
+            ])
+        );
+    }
+
+    #[test]
+    fn missing_env_file_reads_the_path_from_composes_message() {
+        let stderr = "level=warning msg=\"The PORT variable is not set.\"\n\
+            env file /work/my shop/.env not found: stat /work/my shop/.env: no such file or directory\n";
+        assert_eq!(
+            missing_env_file(stderr),
+            Some(std::path::PathBuf::from("/work/my shop/.env"))
+        );
+        assert_eq!(
+            missing_env_file("services.web.image must be a string"),
+            None
+        );
+        assert_eq!(missing_env_file(""), None);
+    }
+
+    #[test]
+    fn only_the_project_dotenv_counts_as_created_by_the_plan() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let folder = dir.path();
+        assert!(is_project_dotenv(&folder.join(".env"), folder));
+        // Another file in the folder, or a `.env` somewhere else, is the user's mistake.
+        assert!(!is_project_dotenv(&folder.join(".env.local"), folder));
+        assert!(!is_project_dotenv(&folder.join("api/.env"), folder));
+        assert!(!is_project_dotenv(
+            std::path::Path::new("/elsewhere/.env"),
+            folder
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dotenv_mirror_links_the_folder_adds_an_empty_dotenv_and_cleans_up() {
+        let folder = tempfile::tempdir().expect("tempdir");
+        std::fs::write(folder.path().join("compose.yaml"), "services: {}\n").expect("write");
+        std::fs::create_dir(folder.path().join("api")).expect("mkdir");
+        std::fs::write(folder.path().join("api/prod.env"), "A=1\n").expect("write");
+
+        let mirror = DotenvMirror::new(folder.path()).expect("mirror");
+        let dir = mirror.path().to_path_buf();
+        assert_eq!(std::fs::read_to_string(dir.join(".env")).expect(".env"), "");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("compose.yaml")).expect("linked file"),
+            "services: {}\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("api/prod.env")).expect("file in linked dir"),
+            "A=1\n"
+        );
+        // The real folder is untouched.
+        assert!(!folder.path().join(".env").exists());
+
+        drop(mirror);
+        assert!(!dir.exists(), "the mirror is removed");
+        assert!(
+            folder.path().join("api/prod.env").exists(),
+            "removing the mirror must not follow its links into the real folder"
+        );
     }
 }

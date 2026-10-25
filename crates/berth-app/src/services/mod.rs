@@ -186,6 +186,18 @@ mod lazy {
                 .validate(folder, files)
                 .await
         }
+
+        async fn validate_text(
+            &self,
+            folder: &std::path::Path,
+            compose_text: &str,
+            env: &[(String, String)],
+        ) -> Result<(), EngineError> {
+            Self::resolve(&self.inner)
+                .await
+                .validate_text(folder, compose_text, env)
+                .await
+        }
     }
 
     #[derive(Default)]
