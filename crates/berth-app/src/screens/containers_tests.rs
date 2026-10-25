@@ -849,6 +849,39 @@ fn containers_row_buttons_carry_tooltips_toggle_and_disabled_reasons() {
 }
 
 #[test]
+fn containers_row_lists_ports_only_while_the_container_is_bound() {
+    let world = world();
+    let pending = BTreeMap::new();
+    let view = view_for(&world, &pending);
+    let ports_of = |c: &Container| {
+        let data = row_data(c, &view, "default", chrono::Utc::now(), false);
+        (data.ports.len(), data.extra_ports)
+    };
+    // The frames' exited rows (shop-api-db-1, analytics-grafana-1) show a
+    // dash although the container is configured with a host port.
+    for name in ["shop-api-db-1", "analytics-grafana-1"] {
+        let c = container(&world, name);
+        assert_eq!(c.state, ContainerState::Exited, "{name}");
+        assert!(!c.ports.is_empty(), "{name} is configured with a port");
+        assert_eq!(ports_of(c), (0, 0), "{name}");
+    }
+    // The same container shows its port in every bound state, and none
+    // in the others.
+    let mut probe = container(&world, "berth-site-proxy-1").clone();
+    assert_eq!(ports_of(&probe), (1, 0));
+    for (state, shown) in [
+        (ContainerState::Running, true),
+        (ContainerState::Paused, true),
+        (ContainerState::Restarting, false),
+        (ContainerState::Created, false),
+        (ContainerState::Exited, false),
+    ] {
+        probe.state = state;
+        assert_eq!(ports_of(&probe).0, usize::from(shown), "{state:?}");
+    }
+}
+
+#[test]
 fn containers_row_shows_the_pending_label_and_blocks_other_actions() {
     let world = world();
     let api = container(&world, "shop-api-api-1");

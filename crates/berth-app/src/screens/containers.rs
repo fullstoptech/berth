@@ -888,8 +888,15 @@ pub fn row_data(
     let status = status_of(c);
     let status_text = running_pending(view.pending, &c.id)
         .map_or_else(|| status.label(), |(_, label)| label.to_string());
-    let published: Vec<&PortMapping> = c.ports.iter().filter(|p| p.host_port.is_some()).collect();
-    let unpublished = c.ports.len() - published.len();
+    // Ports are bound only while the container runs or is paused; an
+    // exited, created or restarting row shows "—" like the frames.
+    let bound = matches!(c.state, ContainerState::Running | ContainerState::Paused);
+    let shown_ports: &[PortMapping] = if bound { &c.ports } else { &[] };
+    let published: Vec<&PortMapping> = shown_ports
+        .iter()
+        .filter(|p| p.host_port.is_some())
+        .collect();
+    let unpublished = shown_ports.len() - published.len();
     let ports: Vec<PortLink> = published
         .iter()
         .take(MAX_PORT_LINKS)
