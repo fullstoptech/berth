@@ -737,7 +737,8 @@ pub enum SysError {
 #[derive(Debug, Clone)]
 pub struct SearchPath { dirs: Vec<std::path::PathBuf> }
 impl SearchPath {
-    pub fn from_process() -> Self;                                   // PATH + ~/.local/bin, /opt/homebrew/bin, /usr/local/bin + BERTH_EXTRA_PATH
+    pub fn from_process() -> Self;                                   // PATH + ~/.local/bin, /opt/homebrew/bin, /usr/local/bin + BERTH_EXTRA_PATH; BERTH_SEARCH_PATH (exact dirs) replaces all of it (AD34)
+    pub fn from_dirs(dirs: Vec<std::path::PathBuf>) -> Self;         // AD34: a fake path for app tests
     pub async fn with_login_shell(self) -> Self;                     // D30; no-op when BERTH_SHELL_PATH=0 or not unix
     pub fn find(&self, program: &str) -> Option<std::path::PathBuf>;
     pub fn path_var(&self) -> std::ffi::OsString;
@@ -803,6 +804,7 @@ pub struct Settings {
     pub terminal_app: Option<String>, pub editor: Option<String>,
     pub favourites: Vec<std::path::PathBuf>,
     pub show_dock_icon: bool, pub update_check: bool,
+    #[serde(default)] pub update_last_checked: Option<chrono::DateTime<chrono::Utc>>,   // AD34: D62 "once a day" survives a relaunch
     pub log_buffer_lines: u32,                       // default 100_000
     pub owner: berth_core::OwnerId,
 }
@@ -820,6 +822,7 @@ impl Store {
     pub fn open(path: &std::path::Path) -> Result<Self, StoreError>;          // runs migrations
     pub fn open_in_memory() -> Result<Self, StoreError>;
     pub fn settings(&self) -> Result<Settings, StoreError>;
+    pub fn snapshots(&self) -> Result<Vec<EngineSnapshot>, StoreError>;          // AD34: cold start paints from these before discovery
     pub fn set_settings(&self, s: &Settings) -> Result<(), StoreError>;
     pub fn pins(&self) -> Result<Vec<berth_core::PinnedFolder>, StoreError>;
     pub fn pin(&self, p: &berth_core::PinnedFolder) -> Result<(), StoreError>;
@@ -1384,13 +1387,16 @@ pub enum ToastTone { Neutral, Success, Danger }
 pub struct Toast { pub id: uuid::Uuid, pub text: String, pub tone: ToastTone, pub action: Option<(String, &'static str)> }  // (label, ActionDef id)
 pub enum ActionScope { Global, Container, Project, Image, Volume, Network, Engine, Logs, Assistant }
 
-// services/menubar.rs (D38): pure, unit-tested
-pub struct AppSnapshot { pub engines: Vec<berth_core::Engine>, pub projects: Vec<berth_core::Project>, pub failing: Vec<berth_core::Container> }
-pub enum MenuIcon { AllGood, Failing, EngineStopped }
-pub enum MenuItem { Header(String), Engine { id: berth_core::EngineId, label: String, running: bool }, Project { id: berth_core::ProjectId, label: String, running: bool },
-                    Failing { id: berth_core::ContainerId, label: String }, Separator, OpenBerth, Quit }
-pub struct MenuModel { pub icon: MenuIcon, pub items: Vec<MenuItem> }
-pub fn menu_model(s: &AppSnapshot) -> MenuModel;
+// services/menubar.rs (D38; reshaped AD34, 2026-10-25, to carry the frame: summary, unreachable engines with Retry, "N of M running", failing containers nested under their project)
+#[derive(Debug, Clone, PartialEq)] pub struct AppSnapshot { pub engines: Vec<berth_core::Engine>, pub projects: Vec<berth_core::Project>, pub containers: Vec<berth_core::Container> }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)] pub enum MenuIcon { AllGood, Failing, EngineStopped }
+#[derive(Debug, Clone, PartialEq, Eq)] pub enum MenuCommand { EngineStart(berth_core::EngineId), EngineAskStop(berth_core::EngineId), EngineRetry(berth_core::EngineId), ProjectStart(berth_core::ProjectId), ProjectStop(berth_core::ProjectId), ProjectOpen(berth_core::ProjectId), ShowLogs(berth_core::ContainerId), Restart(berth_core::ContainerId), OpenBerth, Quit }
+#[derive(Debug, Clone, PartialEq, Eq)] pub enum MenuItem { Summary { text: String, tone: berth_core::Tone }, Header(&'static str), Row { label: String, detail: String, tone: berth_core::Tone, nested: bool, commands: Vec<(String, MenuCommand)> }, Separator, Command { label: &'static str, command: MenuCommand } }
+#[derive(Debug, Clone, PartialEq, Eq)] pub struct MenuModel { pub icon: MenuIcon, pub items: Vec<MenuItem> }   // PartialEq: the tray rebuilds only on change
+pub fn menu_model(s: &AppSnapshot) -> MenuModel;     // order: summary, engines, projects (failing containers nested); a Row becomes a native submenu (muda rows hold no buttons)
+pub fn command_id(c: &MenuCommand) -> String;        // "tray:project.stop:<id>"
+pub fn parse_command_id(id: &str) -> Option<MenuCommand>;   // commands run through ActionsService with an explicit subject (not keys::dispatch, which acts on the selection)
+// platform (AD34): pub fn use_tray(model: ReadSignal<MenuModel>); pub fn set_dock_icon_visible(visible: bool); pub fn quit() /* sets WindowCloses, saves the snapshot, exits */; pub fn show_window();
 
 // actions.rs: one table drives buttons, shortcuts, palette and menus (brief §7.2 "every button has a shortcut and a palette command")
 pub struct ActionDef { pub id: &'static str, pub label: &'static str, pub shortcut: Option<&'static str>, pub scope: ActionScope, pub danger: bool }
