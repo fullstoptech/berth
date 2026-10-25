@@ -228,21 +228,12 @@ fn containers_scene_selected_1024_drops_uptime_and_engine_below_1200() {
     );
 }
 
-/// The pixel width a track list entry asks for at least, at the default
-/// text size: `76px`, `minmax(120px, 1.3fr)` or
-/// `calc(76px * var(--text-scale, 1))` (the data columns grow with the text).
-fn track_min_px(track: &str) -> f32 {
-    let inner = track
-        .strip_prefix("minmax(")
-        .map_or(track, |t| t.split(',').next().unwrap_or(t));
-    let inner = inner
-        .trim()
-        .strip_prefix("calc(")
-        .map_or(inner.trim(), |c| c.split(" * ").next().unwrap_or(c));
-    inner
-        .trim_end_matches("px")
-        .parse()
-        .unwrap_or_else(|_| panic!("a px track, got {track}"))
+use super::super::css_tracks as css;
+use crate::text_scale::STEPS;
+
+/// The body of the table's block for the viewports under 1200 px.
+fn narrow_viewport_block() -> &'static str {
+    css::block(CONTAINERS_CSS, "@media (max-width: 1199px) {\n  .ct-table,")
 }
 
 #[test]
@@ -250,38 +241,9 @@ fn containers_1024_columns_measure_what_the_frame_measures() {
     // "Containers / selected / 1024": main is 1024 - 220 wide, rows pad 16
     // on each side and columns sit 12 apart. The frame's Name, Image, Ports
     // and Status measure 120, 134, 112 and 138 px, which fills the row.
-    let media = CONTAINERS_CSS
-        .split("@media (max-width: 1199px)")
-        .nth(2)
-        .expect("a narrow-width block for the table");
-    let line = media
-        .lines()
-        .find(|l| l.trim_start().starts_with("--ct-cols:"))
-        .expect("a column list");
-    let list = line
-        .trim()
-        .trim_start_matches("--ct-cols:")
-        .trim_end_matches(';')
-        .trim();
-    // Split on spaces outside parentheses.
-    let mut tracks = Vec::new();
-    let mut depth = 0;
-    let mut current = String::new();
-    for ch in list.chars() {
-        match ch {
-            '(' => depth += 1,
-            ')' => depth -= 1,
-            _ => {}
-        }
-        if ch == ' ' && depth == 0 {
-            tracks.push(std::mem::take(&mut current));
-        } else {
-            current.push(ch);
-        }
-    }
-    tracks.push(current);
+    let tracks = css::tracks(&css::declaration(narrow_viewport_block(), "--ct-cols"));
     assert_eq!(tracks.len(), 8, "{tracks:?}");
-    let mins: Vec<f32> = tracks.iter().map(|t| track_min_px(t)).collect();
+    let mins: Vec<f32> = tracks.iter().map(|t| css::min_px(t, 1.0)).collect();
     // Name, image, ports, status are the flexible tracks.
     assert_eq!(
         [mins[2], mins[3], mins[4], mins[7]],
@@ -291,6 +253,151 @@ fn containers_1024_columns_measure_what_the_frame_measures() {
     assert!(
         (mins.iter().sum::<f32>() - available).abs() < 0.5,
         "minimums {mins:?} fill {available} px exactly"
+    );
+    // CPU, Memory and Status hold numbers, bars and the row buttons: they
+    // grow with the text size (the others truncate).
+    for i in [5, 6, 7] {
+        assert!(
+            css::has_scale(&tracks[i]),
+            "track {i} `{}` needs a scale term",
+            tracks[i]
+        );
+    }
+}
+
+#[test]
+fn containers_every_column_list_scales_its_data_tracks() {
+    // Each list is: dot, dot, name, [image], ports, CPU, memory, [uptime],
+    // [engine], status. CPU, memory, uptime, engine and status hold numbers,
+    // bars or the row buttons, so they need a scale term; so does Ports once
+    // Image is gone and it is the column that takes the room.
+    let narrow = narrow_viewport_block();
+    let mut lists = vec![
+        (
+            "--ct-cols-noimage",
+            css::declaration(narrow, "--ct-cols-noimage"),
+        ),
+        ("--ct-cols", css::declaration(narrow, "--ct-cols")),
+    ];
+    for selector in [
+        "\n.ct-table {",
+        "\n.ct-table.ct-has-uptime {",
+        "\n.ct-table.ct-has-engine {",
+        "\n.ct-table.ct-has-uptime.ct-has-engine {",
+    ] {
+        let body = css::block(CONTAINERS_CSS, selector);
+        for name in ["--ct-cols", "--ct-cols-noimage"] {
+            lists.push((name, css::declaration(body, name)));
+        }
+    }
+    for (name, list) in lists {
+        let tracks = css::tracks(&list);
+        let first_scaled = if name == "--ct-cols" { 5 } else { 3 };
+        for (i, t) in tracks.iter().enumerate().skip(first_scaled) {
+            assert!(
+                css::has_scale(t),
+                "track {i} `{t}` of {name} needs a scale term in `{list}`"
+            );
+        }
+    }
+}
+
+/// The list in force for a table `width` px wide at `scale`, for a
+/// viewport under (`narrow`) or over 1200 px with the given column classes.
+fn containers_tracks_at(
+    width: f32,
+    scale: f32,
+    narrow: bool,
+    uptime: bool,
+    engine: bool,
+) -> (bool, Vec<String>) {
+    let em = width / (13.0 * scale);
+    let (selector, limit) = if narrow {
+        ("narrow", 61.5)
+    } else if uptime {
+        ("uptime", 68.0)
+    } else if engine {
+        ("engine", 63.0)
+    } else {
+        ("plain", 57.0)
+    };
+    let body = match selector {
+        "narrow" => narrow_viewport_block(),
+        "uptime" if engine => {
+            css::block(CONTAINERS_CSS, "\n.ct-table.ct-has-uptime.ct-has-engine {")
+        }
+        "uptime" => css::block(CONTAINERS_CSS, "\n.ct-table.ct-has-uptime {"),
+        "engine" => css::block(CONTAINERS_CSS, "\n.ct-table.ct-has-engine {"),
+        _ => css::block(CONTAINERS_CSS, "\n.ct-table {"),
+    };
+    let no_image = em <= limit;
+    // Engine goes too below 55 em when there is no Uptime: the plain list.
+    let body = if selector == "engine" && em <= 55.0 {
+        css::block(CONTAINERS_CSS, "\n.ct-table {")
+    } else {
+        body
+    };
+    let name = if no_image {
+        "--ct-cols-noimage"
+    } else {
+        "--ct-cols"
+    };
+    (no_image, css::tracks(&css::declaration(body, name)))
+}
+
+#[test]
+fn containers_table_fits_at_1024_and_1440_for_every_text_size() {
+    // (table width, narrow viewport, uptime, engine): 1024 has the inspector
+    // as an overlay; at 1440 a selection docks it (860 px, no Uptime) and
+    // without one Uptime shows (1220 px); Engine shows with all engines.
+    let cases = [
+        (1024.0 - 220.0, true, false, false),
+        (1440.0 - 220.0 - 360.0, false, false, false),
+        (1440.0 - 220.0 - 360.0, false, false, true),
+        (1440.0 - 220.0, false, true, false),
+        (1440.0 - 220.0, false, true, true),
+    ];
+    for (width, narrow, uptime, engine) in cases {
+        for scale in STEPS {
+            let (_, tracks) = containers_tracks_at(width, scale, narrow, uptime, engine);
+            let used = css::min_sum(&tracks, scale) + 12.0 * (tracks.len() as f32 - 1.0) + 32.0;
+            assert!(
+                used <= width + 0.5,
+                "{width} px at {scale} (uptime {uptime}, engine {engine}): needs {used} ({tracks:?})"
+            );
+        }
+    }
+}
+
+#[test]
+fn containers_tables_keep_image_at_100_percent_and_drop_it_at_150() {
+    // The frames at 100 % show Image everywhere; a bigger text size drops it.
+    for (width, narrow, uptime, engine) in [
+        (1024.0 - 220.0, true, false, false),
+        (1440.0 - 220.0 - 360.0, false, false, false),
+        (1440.0 - 220.0 - 360.0, false, false, true),
+        (1440.0 - 220.0, false, true, false),
+        (1440.0 - 220.0, false, true, true),
+    ] {
+        let (dropped, _) = containers_tracks_at(width, 1.0, narrow, uptime, engine);
+        assert!(!dropped, "{width} px at 100 % keeps Image");
+        let (dropped, _) = containers_tracks_at(width, 1.5, narrow, uptime, engine);
+        assert!(dropped, "{width} px at 150 % drops Image");
+    }
+    // The thresholds the sweeps above assume are the stylesheet's own.
+    for em in ["61.5", "57", "63", "55", "68"] {
+        assert!(
+            CONTAINERS_CSS.contains(&format!("@container containers (max-width: {em}em)")),
+            "a {em} em block"
+        );
+    }
+    // Cells and header cell both go with the track.
+    assert!(CONTAINERS_CSS.contains(".ct-table .ct-image-head {\n      display: none;"));
+    assert!(CONTAINERS_CSS.contains(".ct-table .ct-image,"));
+    let html = markup("Containers / selected / 1440");
+    assert!(
+        html.contains("class=\"ct-image-head\""),
+        "the header cell is wrapped"
     );
 }
 

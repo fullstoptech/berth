@@ -515,15 +515,17 @@ fn projects_attention_orders_errors_first_newest_first_and_names_the_subject() {
 
 // --- Narrow main area (D78): the table drops Engine and Branch ---
 
-/// The body of the screen's narrow-width container block.
+use super::super::css_tracks as css;
+use crate::text_scale::STEPS;
+
+/// The body of the container block that drops Engine and Branch.
 fn narrow_block() -> &'static str {
-    let (_, after) = PROJECTS_CSS
-        .split_once("@container projects (max-width: 1199px) {")
-        .expect("a narrow-width block for the table");
-    after
-        .split_once("\n}\n")
-        .map(|(block, _)| block)
-        .expect("the block ends")
+    css::block(PROJECTS_CSS, "@container projects (max-width: 92.3em) {")
+}
+
+/// The body of the container block that also drops Ports.
+fn narrowest_block() -> &'static str {
+    css::block(PROJECTS_CSS, "@container projects (max-width: 61.5em) {")
 }
 
 #[test]
@@ -559,26 +561,96 @@ fn projects_table_columns_at_1024_leave_room_for_the_buttons() {
     // Main at 1024 is 1024 - 220 wide; the table has 16 px margins and rows
     // pad 8 px each side. The last track must keep the labelled buttons
     // (Restart 65 + Start project 95 + two 24 px icons + 3 gaps of 4 = 216).
-    let cols = narrow_block()
-        .lines()
-        .find(|l| l.trim_start().starts_with("--projects-cols:"))
-        .expect("a column list")
-        .trim()
-        .trim_start_matches("--projects-cols:")
-        .trim_end_matches(';')
-        .trim()
-        .to_string();
-    let tracks: Vec<&str> = cols.split(' ').collect();
-    assert_eq!(tracks.len(), 7, "{cols}");
-    assert_eq!(tracks[6], "1fr");
-    let fixed: f32 = tracks[..6]
-        .iter()
-        .map(|t| t.trim_end_matches("px").parse::<f32>().expect("px track"))
-        .sum();
+    let tracks = css::tracks(&css::declaration(narrow_block(), "--projects-cols"));
+    assert_eq!(tracks.len(), 7, "{tracks:?}");
+    // Name, Ports, CPU, Memory and the buttons grow with the text size;
+    // Path and Services share what is left.
+    for i in [0, 3, 4, 5, 6] {
+        assert!(
+            css::has_scale(&tracks[i]),
+            "track {i} `{}` needs a scale term",
+            tracks[i]
+        );
+    }
+    assert_eq!(tracks[1], "minmax(0, 104fr)");
+    assert_eq!(tracks[2], "minmax(0, 112fr)");
+    let fixed = css::min_sum(&tracks, 1.0);
     let available = 1024.0 - 220.0 - 32.0 - 16.0;
-    let buttons = available - fixed;
+    assert!(
+        (available - fixed - (104.0 + 112.0)).abs() < 0.5,
+        "at 100 % Path and Services get 104 and 112 px: fixed {fixed}"
+    );
+    let buttons = css::min_px(&tracks[6], 1.0);
     assert!(
         (216.0..=232.0).contains(&buttons),
-        "{buttons} px left for the buttons, fixed tracks {fixed}"
+        "{buttons} px for the buttons"
     );
+}
+
+#[test]
+fn projects_table_wide_tracks_grow_with_the_text() {
+    let cols = css::declaration(
+        css::block(PROJECTS_CSS, ".projects-screen {"),
+        "--projects-cols",
+    );
+    let tracks = css::tracks(&cols);
+    assert_eq!(tracks.len(), 9, "{cols}");
+    for (i, t) in tracks[..8].iter().enumerate() {
+        assert!(css::has_scale(t), "track {i} `{t}` needs a scale term");
+    }
+    assert_eq!(tracks[8], "1fr");
+}
+
+#[test]
+fn projects_table_ports_track_closes_in_the_narrowest_tier() {
+    let tracks = css::tracks(&css::declaration(narrowest_block(), "--projects-cols"));
+    assert_eq!(tracks.len(), 7, "{tracks:?}");
+    assert_eq!(tracks[3], "0px", "the Ports track");
+    for i in [0, 4, 5, 6] {
+        assert!(
+            css::has_scale(&tracks[i]),
+            "track {i} `{}` needs a scale term",
+            tracks[i]
+        );
+    }
+}
+
+/// The column list in force for a screen `width` px wide at `scale`, and
+/// the number of px beside the tracks (table margins and row padding).
+fn projects_tracks_at(width: f32, scale: f32) -> Vec<String> {
+    // Container-query ems resolve against the 13 px body size times the scale.
+    let em = width / (13.0 * scale);
+    let list = if em <= 61.5 {
+        css::declaration(narrowest_block(), "--projects-cols")
+    } else if em <= 92.3 {
+        css::declaration(narrow_block(), "--projects-cols")
+    } else {
+        css::declaration(
+            css::block(PROJECTS_CSS, ".projects-screen {"),
+            "--projects-cols",
+        )
+    };
+    css::tracks(&list)
+}
+
+#[test]
+fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
+    for width in [1024.0 - 220.0, 1440.0 - 220.0] {
+        for scale in STEPS {
+            let tracks = projects_tracks_at(width, scale);
+            let room = width - 32.0 - 16.0 - css::min_sum(&tracks, scale);
+            // The buttons are a track of their own in the narrow lists and
+            // the `1fr` in the wide one; Path and Services keep some room.
+            let buttons = 160.0 * scale + 56.0;
+            let (need, what) = if tracks.len() == 9 {
+                (buttons, "the buttons")
+            } else {
+                (120.0, "Path and Services")
+            };
+            assert!(
+                room >= need,
+                "{width} px at {scale}: {room} px left for {what}, needs {need} ({tracks:?})"
+            );
+        }
+    }
 }

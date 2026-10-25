@@ -1621,7 +1621,7 @@ pub fn ContainersScreen() -> Element {
             span {}
             span {}
             {header_cell(SortColumn::Name, "Name", CellAlign::Left)}
-            {header_cell(SortColumn::Image, "Image", CellAlign::Left)}
+            span { class: "ct-image-head", {header_cell(SortColumn::Image, "Image", CellAlign::Left)} }
             {header_cell(SortColumn::Ports, "Ports", CellAlign::Left)}
             {header_cell(SortColumn::Cpu, "CPU", CellAlign::Right)}
             {header_cell(SortColumn::Memory, "Memory", CellAlign::Right)}

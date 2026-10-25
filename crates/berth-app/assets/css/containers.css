@@ -7,6 +7,11 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  /* The table's column-dropping rules key on this screen's width measured in
+     text-size units: container-query ems resolve against this font size, so a
+     threshold of N em means N x 13 px at 100 % and grows with the text size. */
+  font-size: var(--text-body-size);
+  container: containers / inline-size;
 }
 .main:has(> .containers-screen) {
   overflow: hidden;
@@ -38,9 +43,10 @@
 .ct-spacer {
   flex: 1;
 }
+/* The filter field gives way first when the header outgrows the width. */
 .ct-filter {
-  width: 240px;
-  flex: none;
+  flex: 0 1 240px;
+  min-width: calc(120px * var(--text-scale, 1));
 }
 .ct-group {
   width: 200px;
@@ -54,9 +60,6 @@
 @media (max-width: 1199px) {
   .ct-inspector-toggle {
     display: block;
-  }
-  .ct-filter {
-    width: 240px;
   }
 }
 /* Space hides the docked inspector at 1200 px and wider. */
@@ -158,7 +161,8 @@
 }
 
 /* Table: header and rows share one grid. Columns after the dot:
-   name, image, ports, CPU, memory, [uptime], [engine], status. */
+   name, image, ports, CPU, memory, [uptime], [engine], status.
+   Every track that holds a number, a bar or a button grows with the text size. */
 .ct-table {
   display: flex;
   flex-direction: column;
@@ -166,18 +170,25 @@
   min-height: 0;
   margin-top: var(--space-8);
   --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(144px * var(--text-scale, 1)), 1fr);
+  --ct-cols-noimage: 16px 8px minmax(110px, 1.6fr) minmax(calc(88px * var(--text-scale, 1)), 1fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(144px * var(--text-scale, 1)), 1fr);
+  /* The same, for a table that has also lost Engine (every variant below
+     inherits it from here). */
+  --ct-cols-bare: var(--ct-cols-noimage);
 }
 /* With Uptime and no inspector (frames "Containers / loading", "confirm
    delete", "Palette") Name, Image, Ports and Status measure 244, 204, 121
    and 276 px at 1440, so Status starts at x = 1148. */
 .ct-table.ct-has-uptime {
   --ct-cols: 16px 8px minmax(110px, 2fr) minmax(90px, 1.7fr) minmax(88px, 1fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) minmax(calc(144px * var(--text-scale, 1)), 2.3fr);
+  --ct-cols-noimage: 16px 8px minmax(110px, 2fr) minmax(calc(88px * var(--text-scale, 1)), 1fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) minmax(calc(144px * var(--text-scale, 1)), 2.3fr);
 }
 .ct-table.ct-has-engine {
   --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(70px * var(--text-scale, 1)), 0.6fr) minmax(calc(144px * var(--text-scale, 1)), 1fr);
+  --ct-cols-noimage: 16px 8px minmax(110px, 1.6fr) minmax(calc(88px * var(--text-scale, 1)), 1fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(70px * var(--text-scale, 1)), 0.6fr) minmax(calc(144px * var(--text-scale, 1)), 1fr);
 }
 .ct-table.ct-has-uptime.ct-has-engine {
   --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) minmax(calc(70px * var(--text-scale, 1)), 0.6fr) minmax(calc(144px * var(--text-scale, 1)), 1fr);
+  --ct-cols-noimage: 16px 8px minmax(110px, 1.6fr) minmax(calc(88px * var(--text-scale, 1)), 1fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) minmax(calc(70px * var(--text-scale, 1)), 0.6fr) minmax(calc(144px * var(--text-scale, 1)), 1fr);
 }
 /* D78: below 1200 px the table drops Uptime and Engine. */
 @media (max-width: 1199px) {
@@ -188,10 +199,65 @@
     /* "Containers / selected / 1024": the four flexible columns measure
        120, 134, 112 and 138 px at 1024, which is their sum of minimums. */
     --ct-cols: 16px 8px minmax(120px, 1.3fr) minmax(134px, 1fr) minmax(112px, 0.9fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(138px * var(--text-scale, 1)), 1fr);
+    --ct-cols-noimage: 16px 8px minmax(100px, 1.6fr) minmax(calc(76px * var(--text-scale, 1)), 1fr) calc(76px * var(--text-scale, 1)) calc(84px * var(--text-scale, 1)) minmax(calc(138px * var(--text-scale, 1)), 1fr);
   }
   .ct-table .ct-uptime,
   .ct-table .ct-engine {
     display: none;
+  }
+  /* Image is dropped next when the data columns have outgrown the width
+     (text size above 100 %): 61.5 em is 800 px at 100 %, just under the
+     804 px the 1024 frame gives the table. */
+  @container containers (max-width: 61.5em) {
+    .ct-table {
+      --ct-cols: var(--ct-cols-noimage);
+    }
+    .ct-table .ct-image,
+    .ct-table .ct-image-head {
+      display: none;
+    }
+  }
+}
+/* From 1200 px the table keeps Image until it no longer fits next to the
+   data columns. The thresholds are the widths the column lists need at 100 %
+   (732, 814 and 884 px) in em, so a bigger text size drops Image sooner.
+   A table with Engine but no Uptime (inspector docked, all engines) drops
+   Engine as well below 55 em. */
+@media (min-width: 1200px) {
+  @container containers (max-width: 57em) {
+    .ct-table:not(.ct-has-uptime):not(.ct-has-engine) {
+      --ct-cols: var(--ct-cols-noimage);
+    }
+    .ct-table:not(.ct-has-uptime):not(.ct-has-engine) .ct-image,
+    .ct-table:not(.ct-has-uptime):not(.ct-has-engine) .ct-image-head {
+      display: none;
+    }
+  }
+  @container containers (max-width: 63em) {
+    .ct-table.ct-has-engine:not(.ct-has-uptime) {
+      --ct-cols: var(--ct-cols-noimage);
+    }
+    .ct-table.ct-has-engine:not(.ct-has-uptime) .ct-image,
+    .ct-table.ct-has-engine:not(.ct-has-uptime) .ct-image-head {
+      display: none;
+    }
+  }
+  @container containers (max-width: 55em) {
+    .ct-table.ct-has-engine:not(.ct-has-uptime) {
+      --ct-cols: var(--ct-cols-bare);
+    }
+    .ct-table.ct-has-engine:not(.ct-has-uptime) .ct-engine {
+      display: none;
+    }
+  }
+  @container containers (max-width: 68em) {
+    .ct-table.ct-has-uptime {
+      --ct-cols: var(--ct-cols-noimage);
+    }
+    .ct-table.ct-has-uptime .ct-image,
+    .ct-table.ct-has-uptime .ct-image-head {
+      display: none;
+    }
   }
 }
 

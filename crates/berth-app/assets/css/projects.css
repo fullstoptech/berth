@@ -4,14 +4,19 @@
 .projects-screen {
   /* A step taller than the global row, for this screen only. */
   --projects-row: calc(var(--size-row) + var(--space-4));
-  --projects-cols: 162px 138px 72px 98px minmax(140px, 218px) 138px 53px 60px 1fr;
+  /* Every track that holds text, numbers or buttons grows with the text size
+     (--text-scale), so the wide layout is the 100 % layout zoomed. */
+  --projects-cols: calc(162px * var(--text-scale, 1)) calc(138px * var(--text-scale, 1)) calc(72px * var(--text-scale, 1)) calc(98px * var(--text-scale, 1)) minmax(calc(140px * var(--text-scale, 1)), calc(218px * var(--text-scale, 1))) calc(138px * var(--text-scale, 1)) calc(53px * var(--text-scale, 1)) calc(60px * var(--text-scale, 1)) 1fr;
   display: flex;
   flex-direction: column;
   min-height: 100%;
   min-width: 0;
   box-sizing: border-box;
   padding-bottom: var(--space-24);
-  /* The narrow-layout rules below key on this screen's own width. */
+  /* The narrow-layout rules below key on this screen's own width, in text
+     size units: container-query ems resolve against this font size, so N em
+     is N x 13 px at 100 % and grows with the text size. */
+  font-size: var(--text-body-size);
   container: projects / inline-size;
 }
 
@@ -37,9 +42,13 @@
   align-items: center;
   gap: var(--space-12);
   margin-left: auto;
+  min-width: 0;
 }
+/* The search field gives way first when the controls outgrow the header. */
 .projects-search {
   width: 240px;
+  flex-shrink: 1;
+  min-width: calc(120px * var(--text-scale, 1));
 }
 .projects-banners {
   display: flex;
@@ -213,6 +222,9 @@
   color: var(--color-danger);
 }
 .ports-hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--font-text);
   font-size: var(--text-body-size);
   color: var(--color-ink-muted);
@@ -225,15 +237,21 @@
   grid-column: span 3;
 }
 
-/* Narrow main area (D78, as the Containers table): below 1200 px the table
-   drops Engine and Branch, the tracks are fixed so every row lines up, and
-   the last track keeps 224 px for the labelled buttons. At 1024 px the main
-   area is 804 px: 804 - 32 margin - 16 padding = 756 = 532 + 224. Services
-   text and the path truncate; the dots stay. The problem count moves to the
-   summary line under the row. */
-@container projects (max-width: 1199px) {
+/* Narrower main area (D78, as the Containers table). The thresholds are in
+   em of the screen's font size, so they are the 100 % widths of 1200 and 800
+   px and move out as the text grows (at 150 % the first is 1800 px).
+
+   Up to 92.3 em the table drops Engine and Branch. Only the numeric, Ports
+   and button tracks are sized; Path and Services share what is left in the
+   ratio 104:112, and the last track keeps the labelled buttons (text 112 +
+   padding 48 + two 24 px icons + 3 gaps of 4, so 160 x scale + 56 px). At
+   1024 px at 100 % the main area is 804 px: 804 - 32 margin - 16 padding =
+   756 = 116 + 104 + 112 + 104 + 48 + 56 + 216. Services text and the path
+   truncate; the dots stay. The problem count moves to the summary line
+   under the row. */
+@container projects (max-width: 92.3em) {
   .projects-table {
-    --projects-cols: 116px 104px 112px 104px 48px 56px 1fr;
+    --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 56px);
   }
   .projects-head > :nth-child(3),
   .projects-head > :nth-child(4),
@@ -246,6 +264,44 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+}
+/* Up to 61.5 em (the 100 % width needs 804 px, so 1024 px at 100 % stays in
+   the layout above) Ports gets a zero-width track: the cells stay in the grid
+   so every later cell keeps its track, and are clipped away. Name keeps its
+   room, Path and Services give way. An unreachable engine's message and the
+   not-set-up hint use the Ports, CPU and Memory tracks together instead. */
+@container projects (max-width: 61.5em) {
+  .projects-table {
+    --projects-cols: minmax(calc(96px * var(--text-scale, 1)), 116fr) minmax(0, 104fr) minmax(0, 112fr) 0px calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 56px);
+  }
+  .projects-head > :nth-child(6),
+  .project-cell-ports {
+    padding: 0;
+    overflow: hidden;
+  }
+  .project-cell-ports > * {
+    visibility: hidden;
+  }
+  .project-row:has(.ports-unreachable) .project-cell-ports,
+  .project-cell-ports.project-cell-span {
+    grid-column: span 3;
+    padding-right: var(--space-8);
+  }
+  .project-row:has(.ports-unreachable) .project-cell-ports > *,
+  .project-cell-ports.project-cell-span > * {
+    visibility: visible;
+  }
+  .project-row:has(.ports-unreachable) .project-cell-num {
+    display: none;
+  }
+  /* The controls drop under the title when they no longer fit beside it. */
+  .projects-header {
+    flex-wrap: wrap;
+  }
+  .projects-controls {
+    flex: 1 1 auto;
+    justify-content: flex-end;
   }
 }
 
