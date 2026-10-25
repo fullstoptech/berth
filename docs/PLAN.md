@@ -732,10 +732,6 @@ pub enum SysError {
     #[error("{program} timed out after {secs} s")] Timeout { program: String, secs: u64 },
     #[error("cancelled")] Cancelled,
     #[error(transparent)] Io(#[from] std::io::Error),
-    #[error("cannot read the docker run command: {0}")] RunParse(String),
-    #[error("service {0} is not in the compose file")] NoService(String),
-    #[error("service {0} already exists")] ServiceExists(String),
-    #[error("service {service} does not publish port {port}")] NoPort { service: String, port: u16 },
 }
 
 #[derive(Debug, Clone)]
@@ -1070,6 +1066,10 @@ pub enum RulesError {
     #[error("compose file is not valid YAML at line {line}: {message}")] Yaml { line: usize, message: String },
     #[error("cannot read {0}: {1}")] Read(std::path::PathBuf, String),
     #[error(transparent)] Io(#[from] std::io::Error),
+    #[error("cannot read the docker run command: {0}")] RunParse(String),
+    #[error("service {0} is not in the compose file")] NoService(String),
+    #[error("service {0} already exists")] ServiceExists(String),
+    #[error("service {service} does not publish port {port}")] NoPort { service: String, port: u16 },
 }
 
 pub mod detect {
