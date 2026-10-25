@@ -23,7 +23,8 @@ use crate::state::AppState;
 
 /// The sidebar's width (`--size-sidebar`), which the main area gives up.
 pub const SIDEBAR_PX: f64 = 220.0;
-/// The main area never drops below this next to a docked inspector.
+/// The main area never drops below this at 100 % text next to a docked
+/// inspector; it grows and shrinks with the text size (D24).
 pub const MAIN_MIN_PX: f64 = 640.0;
 /// A window narrower than this never docks the inspector at the right.
 pub const DOCK_MIN_WINDOW_PX: f64 = 1200.0;
@@ -45,12 +46,33 @@ pub fn clamp_stored_width(px: u32) -> u32 {
     px.clamp(INSPECTOR_WIDTH_MIN, INSPECTOR_WIDTH_MAX)
 }
 
-/// Does the inspector dock at the right: the window is 1200 px or wider and
-/// the main area keeps 640 px at this width.
+/// The least main area a docked inspector leaves (D24): 640 px at 100 %
+/// text, 544 at 85 %, 960 at 150 %. The tables' narrowest column lists fit
+/// it at every text size (the sweep in `containers_tests.rs`).
 #[must_use]
-pub fn right_docks(window_w: f64, stored: u32) -> bool {
-    window_w >= DOCK_MIN_WINDOW_PX
-        && window_w - SIDEBAR_PX - f64::from(clamp_stored_width(stored)) >= MAIN_MIN_PX
+pub fn main_min_px(text_scale: f32) -> f64 {
+    // The steps are whole percents: round the f32 noise away (0.85 is not
+    // exactly 85/100) so 544 px is 544.
+    MAIN_MIN_PX * (f64::from(text_scale) * 100.0).round() / 100.0
+}
+
+/// The widest a docked inspector may be: the window less the sidebar and the
+/// main area's floor, at most 560. `None` when the window is under 1200 px
+/// or not even 320 px fit (at 1440 px and 150 % text): then it overlays.
+#[must_use]
+pub fn docked_max(window_w: f64, text_scale: f32) -> Option<u32> {
+    if window_w < DOCK_MIN_WINDOW_PX {
+        return None;
+    }
+    let room = floor_px(window_w - SIDEBAR_PX - main_min_px(text_scale));
+    (room >= INSPECTOR_WIDTH_MIN).then_some(room.min(INSPECTOR_WIDTH_MAX))
+}
+
+/// The docked inspector's width: the stored one clamped to keep the floor,
+/// or `None` when the window cannot dock it.
+#[must_use]
+pub fn docked_width(window_w: f64, stored: u32, text_scale: f32) -> Option<u32> {
+    docked_max(window_w, text_scale).map(|max| clamp_stored_width(stored).min(max))
 }
 
 /// The overlay's width: the stored width, at most half the window.
@@ -60,25 +82,20 @@ pub fn overlay_width(window_w: f64, stored: u32) -> u32 {
 }
 
 /// What a drag or a key may reach for the right column: 320..=560, and
-/// while docked never so wide that the main area drops below 640 px; as an
-/// overlay never more than half the window.
+/// while it can dock never so wide that the main area drops below its floor;
+/// as an overlay never more than half the window.
 #[must_use]
-pub fn right_range(window_w: f64, stored: u32) -> (u32, u32) {
-    let max = if right_docks(window_w, stored) {
-        floor_px(window_w - SIDEBAR_PX - MAIN_MIN_PX)
-    } else {
-        floor_px(window_w * 0.5)
-    };
-    (
-        INSPECTOR_WIDTH_MIN,
-        max.clamp(INSPECTOR_WIDTH_MIN, INSPECTOR_WIDTH_MAX),
-    )
+pub fn right_range(window_w: f64, text_scale: f32) -> (u32, u32) {
+    let max = docked_max(window_w, text_scale).unwrap_or_else(|| {
+        floor_px(window_w * 0.5).clamp(INSPECTOR_WIDTH_MIN, INSPECTOR_WIDTH_MAX)
+    });
+    (INSPECTOR_WIDTH_MIN, max)
 }
 
 /// `value` forced into the range a drag may reach.
 #[must_use]
-pub fn clamp_right_width(value: i64, window_w: f64, stored: u32) -> u32 {
-    let (min, max) = right_range(window_w, stored);
+pub fn clamp_right_width(value: i64, window_w: f64, text_scale: f32) -> u32 {
+    let (min, max) = right_range(window_w, text_scale);
     u32::try_from(value.clamp(i64::from(min), i64::from(max))).unwrap_or(min)
 }
 
@@ -104,6 +121,7 @@ pub fn inspector_slot(
     dock: InspectorDock,
     stored: u32,
     window_w: f64,
+    text_scale: f32,
 ) -> InspectorSlot {
     if !visible {
         return InspectorSlot::Hidden;
@@ -111,15 +129,12 @@ pub fn inspector_slot(
     match dock {
         InspectorDock::Bottom if toggled => InspectorSlot::Hidden,
         InspectorDock::Bottom => InspectorSlot::Bottom,
-        InspectorDock::Right if right_docks(window_w, stored) => {
-            if toggled {
-                InspectorSlot::Hidden
-            } else {
-                InspectorSlot::Docked(clamp_stored_width(stored))
-            }
-        }
-        InspectorDock::Right if toggled => InspectorSlot::Overlay(overlay_width(window_w, stored)),
-        InspectorDock::Right => InspectorSlot::Hidden,
+        InspectorDock::Right => match docked_width(window_w, stored, text_scale) {
+            Some(_) if toggled => InspectorSlot::Hidden,
+            Some(width) => InspectorSlot::Docked(width),
+            None if toggled => InspectorSlot::Overlay(overlay_width(window_w, stored)),
+            None => InspectorSlot::Hidden,
+        },
     }
 }
 
@@ -224,6 +239,7 @@ pub struct LayoutInput {
     /// The divider's live width during a drag.
     pub split_live: Option<u32>,
     pub window_w: f64,
+    pub text_scale: f32,
     pub panel_open: bool,
 }
 
@@ -235,6 +251,7 @@ pub fn layout(input: &LayoutInput) -> DockLayout {
         input.dock,
         input.stored_width,
         input.window_w,
+        input.text_scale,
     );
     let region = region_mode(slot == InspectorSlot::Bottom, input.panel_open);
     let region_w = region_width(input.window_w);
@@ -361,6 +378,7 @@ pub fn use_dock_view(state: AppState) -> DockView {
             split_pct: settings.inspector_split_pct,
             split_live: split_live(),
             window_w: window_w(),
+            text_scale: settings.text_scale,
             panel_open: state.bottom.read().open,
         }
     };
@@ -369,10 +387,7 @@ pub fn use_dock_view(state: AppState) -> DockView {
     let overlay = use_memo(move || {
         let settings = state.settings.read();
         settings.inspector_dock == InspectorDock::Right
-            && !right_docks(
-                window_w(),
-                width_live().unwrap_or(settings.inspector_width_px),
-            )
+            && docked_max(window_w(), settings.text_scale).is_none()
     });
     use_hook(move || {
         existing.unwrap_or_else(|| {
@@ -580,7 +595,7 @@ pub fn InspectorWidthHandle() -> Element {
     let stored = state.settings.read().inspector_width_px;
     let window_w = *view.window_w.read();
     let value = (*view.width_live.read()).unwrap_or(stored);
-    let (min, max) = right_range(window_w, stored);
+    let (min, max) = right_range(window_w, state.settings.read().text_scale);
     rsx! {
         SplitHandle {
             class: "split-handle-width",
@@ -647,45 +662,65 @@ pub fn InspectorSplitHandle() -> Element {
 mod tests {
     use super::*;
 
-    const W: u32 = INSPECTOR_WIDTH_DEFAULT;
-
     #[test]
-    fn dock_width_clamps_to_320_560_and_leaves_the_main_area_640() {
-        // 1440: 1440 - 220 - 640 = 580, so the 560 cap is what binds.
-        assert_eq!(clamp_right_width(100, 1440.0, W), 320);
-        assert_eq!(clamp_right_width(450, 1440.0, W), 450);
-        assert_eq!(clamp_right_width(900, 1440.0, W), 560);
+    fn dock_width_clamps_to_320_560_and_leaves_the_main_area_its_floor() {
+        // 1440 at 100 %: 1440 - 220 - 640 = 580, so the 560 cap binds.
+        assert_eq!(clamp_right_width(100, 1440.0, 1.0), 320);
+        assert_eq!(clamp_right_width(450, 1440.0, 1.0), 450);
+        assert_eq!(clamp_right_width(900, 1440.0, 1.0), 560);
         // 1300: the main area binds, 1300 - 220 - 640 = 440.
-        assert_eq!(clamp_right_width(560, 1300.0, W), 440);
+        assert_eq!(clamp_right_width(560, 1300.0, 1.0), 440);
         // 1200: 340 is all that fits next to 640 px of main area.
-        assert_eq!(clamp_right_width(560, 1200.0, 320), 340);
-        // Whatever the width, the main area keeps 640 px once docked.
-        for window in [1200.0, 1250.0, 1300.0, 1440.0, 1920.0] {
-            let width = clamp_right_width(10_000, window, 320);
-            assert!(
-                window - SIDEBAR_PX - f64::from(width) >= MAIN_MIN_PX,
-                "{window}"
-            );
+        assert_eq!(clamp_right_width(560, 1200.0, 1.0), 340);
+        // The floor is 640 px x text size (D24): 544 at 85 %, 960 at 150 %.
+        assert_eq!(main_min_px(0.85), 544.0);
+        assert_eq!(main_min_px(1.0), 640.0);
+        assert_eq!(main_min_px(1.5), 960.0);
+        assert_eq!(clamp_right_width(560, 1440.0, 0.85), 560);
+        assert_eq!(clamp_right_width(560, 1300.0, 0.85), 536);
+        assert_eq!(clamp_right_width(560, 1440.0, 1.3), 388);
+        // Whatever the width, the main area keeps its floor once docked.
+        for scale in crate::text_scale::STEPS {
+            for window in [1200.0, 1250.0, 1300.0, 1440.0, 1920.0] {
+                let Some(width) = docked_width(window, 10_000, scale) else {
+                    continue;
+                };
+                assert!(
+                    window - SIDEBAR_PX - f64::from(width) >= main_min_px(scale),
+                    "{window} at {scale}"
+                );
+            }
         }
     }
 
     #[test]
-    fn dock_rule_docks_at_1200_when_the_main_area_keeps_640() {
-        // (window, stored width, docked)
-        for (window, width, docked) in [
-            (1199.0, 320, false),
-            (1199.0, 360, false),
-            (1200.0, 360, false), // 1200 - 220 - 360 = 620 < 640
-            (1200.0, 320, true),  // 660
-            (1219.0, 360, false), // 639
-            (1220.0, 360, true),  // 640
-            (1440.0, 360, true),
-            (1440.0, 560, true),  // 660
-            (1419.0, 560, false), // 639
-            (1420.0, 560, true),  // 640
-            (1200.0, 560, false),
+    fn dock_rule_docks_from_1200_when_320_px_leave_the_floor_and_clamps_to_it() {
+        // (window, text scale, stored width, docked width): the width is the
+        // stored one clamped to what keeps the main area at 640 px x scale.
+        for (window, scale, stored, docked) in [
+            (1199.0, 1.0, 320, None),
+            (1199.0, 0.85, 360, None),
+            (1200.0, 1.0, 360, Some(340)), // 1200 - 220 - 640
+            (1200.0, 1.0, 320, Some(320)),
+            (1219.0, 1.0, 360, Some(359)),
+            (1220.0, 1.0, 360, Some(360)),
+            (1440.0, 1.0, 360, Some(360)),
+            (1440.0, 1.0, 560, Some(560)),
+            (1440.0, 1.0, 480, Some(480)),
+            (1200.0, 1.0, 560, Some(340)),
+            // 150 %: 1440 - 220 - 960 = 260 < 320, so it overlays.
+            (1440.0, 1.5, 360, None),
+            (1440.0, 1.5, 320, None),
+            (1440.0, 1.3, 480, Some(388)),
+            (1220.0, 1.3, 320, None), // 1220 - 220 - 832 = 168
+            (1220.0, 0.85, 480, Some(456)),
+            (1920.0, 1.5, 560, Some(560)),
         ] {
-            assert_eq!(right_docks(window, width), docked, "{window} px, {width}");
+            assert_eq!(
+                docked_width(window, stored, scale),
+                docked,
+                "{window} px at {scale}, stored {stored}"
+            );
         }
     }
 
@@ -698,8 +733,9 @@ mod tests {
 
     #[test]
     fn dock_slot_follows_the_rule_and_space_flips_the_default() {
-        let slot =
-            |toggled, dock, stored, window| inspector_slot(true, toggled, dock, stored, window);
+        let slot = |toggled, dock, stored, window| {
+            inspector_slot(true, toggled, dock, stored, window, 1.0)
+        };
         let right = InspectorDock::Right;
         // Docked by default, Space hides it.
         assert_eq!(slot(false, right, 360, 1440.0), InspectorSlot::Docked(360));
@@ -708,6 +744,12 @@ mod tests {
         assert_eq!(slot(false, right, 360, 1024.0), InspectorSlot::Hidden);
         assert_eq!(slot(true, right, 360, 1024.0), InspectorSlot::Overlay(360));
         assert_eq!(slot(true, right, 560, 1024.0), InspectorSlot::Overlay(512));
+        // 150 % text at 1440 overlays too, and Space opens it.
+        let big = |toggled| inspector_slot(true, toggled, right, 360, 1440.0, 1.5);
+        assert_eq!(big(false), InspectorSlot::Hidden);
+        assert_eq!(big(true), InspectorSlot::Overlay(360));
+        // A wide stored width docks clamped, not as an overlay.
+        assert_eq!(slot(false, right, 560, 1300.0), InspectorSlot::Docked(440));
         // At the bottom the window width does not matter.
         assert_eq!(
             slot(false, InspectorDock::Bottom, 360, 1024.0),
@@ -719,7 +761,7 @@ mod tests {
         );
         // Nothing to inspect, nothing drawn.
         assert_eq!(
-            inspector_slot(false, false, right, 360, 1440.0),
+            inspector_slot(false, false, right, 360, 1440.0, 1.0),
             InspectorSlot::Hidden
         );
     }
@@ -741,6 +783,7 @@ mod tests {
             split_pct: 40,
             split_live: None,
             window_w,
+            text_scale: 1.0,
             panel_open,
         }
     }
