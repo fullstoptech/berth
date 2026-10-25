@@ -394,7 +394,10 @@
   justify-content: center;
   padding: var(--space-24);
 }
+/* The frame sets the column left of centre: its right half is the First-run
+   checks card (P6). Until the card lands the column keeps that slot free. */
 .projects-empty-column {
+  margin-right: 40%;
   display: flex;
   flex-direction: column;
   align-items: center;

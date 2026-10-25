@@ -165,6 +165,37 @@ fn shell_sidebar_counts_follow_the_engine_scope() {
     );
 }
 
+fn empty_projects(state: &mut AppState) {
+    let world = mock_world();
+    state.engines.set(world.engines.clone());
+    state.containers.set(world.containers);
+    state.engine_scope.set(EngineScope::All);
+    state.projects.set(Vec::new());
+}
+
+#[test]
+fn shell_sidebar_without_projects_has_no_group_label_or_badge() {
+    let html = render_shell(empty_projects);
+    assert!(
+        !html.contains("class=\"sidebar-group-label\""),
+        "no PROJECTS label over an empty list: {html}"
+    );
+    // The Projects item carries no badge either (frame "Projects / empty");
+    // Containers still does.
+    let projects = html
+        .find("class=\"sidebar-label\">Projects<")
+        .expect("Projects item");
+    let containers = html
+        .find("class=\"sidebar-label\">Containers<")
+        .expect("Containers item");
+    assert!(
+        !html[projects..containers].contains("sidebar-count"),
+        "{html}"
+    );
+    // With projects the label is back.
+    assert!(scene_html().contains("class=\"sidebar-group-label\""));
+}
+
 #[test]
 fn shell_sidebar_hides_the_unassigned_bucket() {
     let mut world = mock_world();

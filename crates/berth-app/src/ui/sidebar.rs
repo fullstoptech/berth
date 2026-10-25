@@ -106,9 +106,12 @@ pub fn Sidebar() -> Element {
                 icon: "folder",
                 label: "Projects",
                 target: Section::Projects,
-                count: model.projects_total,
+                count: (model.projects_total > 0).then_some(model.projects_total),
             }
-            div { class: "sidebar-group-label", "Projects" }
+            // No projects: no label over an empty list (frame "Projects / empty").
+            if !model.projects.is_empty() {
+                div { class: "sidebar-group-label", "Projects" }
+            }
             for project in model.projects.iter() {
                 {
                     let id = project.id.clone();
