@@ -16,3 +16,6 @@
 - 2026-10-24 skills/design/references/visual-craft/finishing-details.md#Before showing
 - 2026-10-24 skills/design/references/visual-craft/hierarchy.md#Tests
 - 2026-10-24 skills/design/references/visual-craft/finishing-details.md#Before showing: amateur tells and their fix
+- 2026-10-25 skills/design/references/visual-craft/finishing-details.md#Before showing
+- 2026-10-25 skills/design/references/visual-craft/hierarchy.md#Tests
+- 2026-10-25 skills/design/references/data-display/tables.md
