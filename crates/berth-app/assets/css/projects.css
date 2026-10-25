@@ -329,6 +329,63 @@
   white-space: nowrap;
 }
 
+/* Recent activity: one line per entry; errors and warnings are tinted with a
+   bar on the left, the rest are plain (frame "Projects / default / 1440"). */
+.projects-recent {
+  padding: var(--space-12) var(--space-16) 0;
+}
+.recent-row {
+  display: grid;
+  grid-template-columns: var(--space-2) 96px 168px minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--space-12);
+  height: calc(var(--size-row) - var(--space-4));
+  padding: 0 var(--space-12) 0 var(--space-16);
+  box-sizing: border-box;
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+}
+.recent-bar {
+  align-self: stretch;
+  margin: var(--space-2) 0;
+}
+.recent-time,
+.recent-message {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.recent-time,
+.recent-source {
+  color: var(--color-ink-muted);
+}
+.recent-source,
+.recent-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-danger {
+  background: var(--color-danger-subtle);
+}
+.recent-danger .recent-bar {
+  background: var(--color-danger-dot);
+}
+.recent-danger .recent-time,
+.recent-danger .recent-message {
+  color: var(--color-danger);
+}
+.recent-warning {
+  background: var(--color-warning-subtle);
+}
+.recent-warning .recent-bar {
+  background: var(--color-warning-dot);
+}
+.recent-warning .recent-time,
+.recent-warning .recent-message {
+  color: var(--color-warning);
+}
+
 /* Empty and loading bodies */
 .projects-empty {
   flex: 1;

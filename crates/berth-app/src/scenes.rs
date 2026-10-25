@@ -49,6 +49,10 @@ fn load_projects_world(state: &mut AppState, theme: berth_store::Theme) {
         })
         .collect();
     state.problems.set(problems);
+    crate::screens::recent_activity::seed_recent(crate::screens::recent_activity::mock_entries(
+        &berth_engine::MockWorld::bundled(),
+        now,
+    ));
 }
 
 fn projects_default(state: &mut AppState) {

@@ -572,6 +572,7 @@ pub fn ProjectsScreen() -> Element {
                             }
                         }
                     }
+                    crate::screens::recent_activity::RecentActivity {}
                 },
             }
         }
