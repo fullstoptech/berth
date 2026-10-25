@@ -189,6 +189,14 @@ fn activity_paused(state: &mut AppState) {
     activity_scene(state, true);
 }
 
+/// Dark; the worker selected as in "Containers / selected", the palette
+/// open on the query "rest".
+fn palette_open(state: &mut AppState) {
+    containers_selected(state);
+    crate::screens::palette::set_initial_query("rest");
+    state.overlays.write().push(crate::state::Overlay::Palette);
+}
+
 const SCENES: &[Scene] = &[
     Scene {
         frame: "Projects / empty / 1440",
@@ -217,6 +225,10 @@ const SCENES: &[Scene] = &[
     Scene {
         frame: "Activity / paused / 1440",
         setup: activity_paused,
+    },
+    Scene {
+        frame: "Palette / open / 1440",
+        setup: palette_open,
     },
 ];
 

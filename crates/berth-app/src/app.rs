@@ -180,14 +180,18 @@ fn OverlayStack() -> Element {
                         state.overlays.write().pop();
                     }
                 },
-                div {
-                    class: "overlay-card",
-                    role: "dialog",
-                    "aria-modal": "true",
-                    "aria-label": overlay_title(overlay),
-                    onclick: move |e| e.stop_propagation(),
-                    h2 { "{overlay_title(overlay)}" }
-                    p { "This screen is not built yet. Press Esc to close." }
+                if matches!(overlay, Overlay::Palette) {
+                    crate::screens::palette::PaletteScreen {}
+                } else {
+                    div {
+                        class: "overlay-card",
+                        role: "dialog",
+                        "aria-modal": "true",
+                        "aria-label": overlay_title(overlay),
+                        onclick: move |e| e.stop_propagation(),
+                        h2 { "{overlay_title(overlay)}" }
+                        p { "This screen is not built yet. Press Esc to close." }
+                    }
                 }
             }
         }

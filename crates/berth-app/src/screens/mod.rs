@@ -3,4 +3,5 @@
 
 pub mod activity;
 pub mod activity_scene;
+pub mod palette;
 pub mod projects;

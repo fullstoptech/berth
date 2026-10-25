@@ -6,6 +6,7 @@ pub mod activity;
 pub mod colima;
 pub mod compose;
 pub mod engines;
+pub mod search;
 
 /// Everything a later service or screen needs from the substrate P2-T1
 /// wires up: the store, the live client map and the root cancellation

@@ -1,0 +1,93 @@
+/* Command palette (P2-T9). Colours and sizes come only from tokens.css variables (D4). */
+
+/* The scrim is shared with every overlay (96 px from the top); the palette
+   card sits a little lower (frame: card top at 110 px of 900). */
+.palette {
+  margin-top: calc(var(--space-12) + var(--space-2));
+  width: calc(var(--space-40) * 16);
+  max-width: calc(100vw - var(--space-48));
+  display: flex; flex-direction: column;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-dialog);
+  overflow: hidden;
+}
+.palette-head { padding: var(--space-12); border-bottom: 1px solid var(--color-line); }
+.palette-field { width: 100%; }
+.palette-field .search-input { height: 100%; }
+/* The field is always focused while the palette is open; the frame draws
+   its plain border, not the focus ring. */
+.palette-field:focus-within, .palette-field .search-input:focus-visible { outline: none; }
+
+.palette-body {
+  padding: var(--space-12) var(--space-8) var(--space-12) var(--space-8);
+  max-height: calc(var(--space-48) * 8);
+  overflow-y: auto;
+}
+.palette-group + .palette-group { margin-top: var(--space-8); }
+.palette-group-title {
+  display: flex; align-items: center; height: var(--space-32);
+  padding: 0 var(--space-12);
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size); line-height: var(--text-caption-line);
+  font-weight: var(--text-caption-weight);
+}
+
+.palette-item {
+  display: flex; align-items: center; gap: var(--space-8);
+  height: var(--size-row);
+  padding: 0 var(--space-12);
+  border-radius: var(--radius-md);
+  color: var(--color-ink);
+  font-size: var(--text-body-size); line-height: var(--text-body-line);
+  cursor: pointer;
+}
+.palette-item-active { background: var(--color-surface-hover); }
+.palette-item-icon { display: inline-flex; flex: none; color: var(--color-ink-muted); }
+.palette-item-active .palette-item-icon { color: var(--color-ink); }
+.palette-item-title { flex: none; white-space: nowrap; }
+.palette-item-meta {
+  flex: 1; min-width: 0; margin-left: calc(var(--space-4) * -1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size); line-height: var(--text-caption-line);
+}
+.palette-item-hint {
+  flex: none; margin-left: auto; color: var(--color-ink-muted);
+  font-size: var(--text-caption-size); line-height: var(--text-caption-line);
+  white-space: nowrap;
+}
+.palette-item-danger .palette-item-icon { color: var(--color-danger); }
+.palette-item-disabled { cursor: default; color: var(--color-ink-disabled); }
+.palette-item-disabled .palette-item-icon,
+.palette-item-disabled .palette-item-meta,
+.palette-item-disabled .palette-item-hint { color: var(--color-ink-disabled); }
+
+.palette-foot {
+  display: flex; align-items: center; gap: calc(var(--space-12) + var(--space-2));
+  height: calc(var(--space-32) + var(--space-4) + var(--space-2));
+  padding: 0 var(--space-12);
+  background: var(--color-surface-sunken);
+  border-top: 1px solid var(--color-line);
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size); line-height: var(--text-caption-line);
+}
+.palette-hint { display: inline-flex; align-items: center; gap: var(--space-6); }
+.palette-foot .kbd {
+  min-width: var(--space-20); height: calc(var(--space-20) + var(--space-2));
+  font-weight: var(--text-body-weight);
+  background: var(--color-surface);
+}
+.palette-hint .kbd + .kbd { margin-left: calc(var(--space-2) * -1); }
+
+/* Same sprite compensation as the shell chrome (see shell.css): the glyph is
+   drawn at about 0.6 of the frame size, so the box grows and the margin cancels it. */
+.palette .icon-md {
+  width: calc(var(--size-icon-md) * 7 / 5); height: calc(var(--size-icon-md) * 7 / 5);
+  margin: calc(var(--size-icon-md) * -1 / 5);
+}
+.palette .icon-sm {
+  width: calc(var(--size-icon-sm) * 7 / 5); height: calc(var(--size-icon-sm) * 7 / 5);
+  margin: calc(var(--size-icon-sm) * -1 / 5);
+}
