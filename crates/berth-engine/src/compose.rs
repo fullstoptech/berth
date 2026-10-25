@@ -166,6 +166,49 @@ pub fn parse_progress_json(line: &str) -> Option<berth_core::ComposeEvent> {
     Some(berth_core::ComposeEvent::Progress { id, status, text })
 }
 
+/// The containers the engine's classic builder is running for a Compose build, read from its own
+/// output (`---> Running in 45f1f3e9c4cd`, then `Removing intermediate container 45f1f3e9c4cd` once
+/// the step passes).
+///
+/// A step that fails is not removed: the engine keeps it, stopped, under a random name
+/// (`eager_satoshi`) and nothing marks it as a build's. Compose offers no `--force-rm` and the
+/// BuildKit route needs the `buildx` plugin, which Colima setups often lack, so Berth removes
+/// exactly the containers its own build named and never failed to clean up.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct BuildLeftovers {
+    open: Vec<String>,
+}
+
+fn container_id_after<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
+    let rest = line.trim().split_once(marker)?.1;
+    let id = rest.split_whitespace().next()?;
+    ((12..=64).contains(&id.len()) && id.chars().all(|c| c.is_ascii_hexdigit())).then_some(id)
+}
+
+impl BuildLeftovers {
+    /// Learn from one output line.
+    pub fn feed(&mut self, line: &str) {
+        if let Some(id) = container_id_after(line, "---> Running in ") {
+            self.open.push(id.to_string());
+        } else if let Some(id) = container_id_after(line, "Removing intermediate container ") {
+            self.open.retain(|open| open != id);
+        }
+    }
+
+    /// The containers a failed step left, and forget them.
+    pub fn take(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.open)
+    }
+}
+
+/// `docker rm <ids>`: without `-f`, so a container that is still running is refused, not killed.
+#[must_use]
+pub fn remove_leftovers_args(ids: &[String]) -> Vec<String> {
+    std::iter::once("rm".to_string())
+        .chain(ids.iter().cloned())
+        .collect()
+}
+
 fn line_event(stream: berth_core::Stream, text: String) -> berth_core::ComposeEvent {
     parse_progress_json(&text).unwrap_or(berth_core::ComposeEvent::Line { stream, text })
 }
@@ -179,6 +222,33 @@ fn docker_host_env(target: &berth_core::ComposeTarget) -> (std::ffi::OsString, s
         std::ffi::OsString::from("DOCKER_HOST"),
         std::ffi::OsString::from(&target.docker_host),
     )
+}
+
+fn note_build_line(leftovers: &std::sync::Mutex<BuildLeftovers>, text: &str) {
+    if let Ok(mut l) = leftovers.lock() {
+        l.feed(text);
+    }
+}
+
+/// Best effort: a container that is already gone, or an engine that went away, changes nothing.
+async fn remove_leftovers(
+    binary: &std::path::Path,
+    env: &[(std::ffi::OsString, std::ffi::OsString)],
+    path_var: std::ffi::OsString,
+    ids: &[String],
+) {
+    let _ = berth_sys::run_capture(
+        binary,
+        &os_args(&remove_leftovers_args(ids)),
+        berth_sys::SpawnOpts {
+            env: env.to_vec(),
+            path: Some(path_var),
+            timeout: Some(CAPTURE_TIMEOUT),
+            ..Default::default()
+        },
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
 }
 
 pub struct CliCompose {
@@ -245,27 +315,56 @@ impl ComposeRunner for CliCompose {
             return futures::stream::once(async { Err(Self::not_found()) }).boxed();
         };
         let args = compose_args(target, &cmd);
+        let builds = matches!(
+            cmd,
+            berth_core::ComposeCommand::Up { build: true, .. }
+                | berth_core::ComposeCommand::Build { .. }
+        );
+        let leftovers = std::sync::Arc::new(std::sync::Mutex::new(BuildLeftovers::default()));
+        let rm_env = vec![docker_host_env(target)];
+        let path_var = self.search.path_var();
+        let rm_binary = binary.clone();
         berth_sys::spawn_lines(
             &binary,
             &os_args(&args),
             berth_sys::SpawnOpts {
                 env: vec![docker_host_env(target)],
-                path: Some(self.search.path_var()),
+                path: Some(path_var.clone()),
                 ..Default::default()
             },
             cancel,
         )
-        .map(|item| match item {
-            Ok(berth_sys::ProcessLine::Stdout(text)) => {
-                Ok(line_event(berth_core::Stream::Stdout, text))
+        .then(move |item| {
+            let leftovers = std::sync::Arc::clone(&leftovers);
+            let (rm_binary, rm_env, path_var) =
+                (rm_binary.clone(), rm_env.clone(), path_var.clone());
+            async move {
+                let event = match item {
+                    Ok(berth_sys::ProcessLine::Stdout(text)) => {
+                        if builds {
+                            note_build_line(&leftovers, &text);
+                        }
+                        Ok(line_event(berth_core::Stream::Stdout, text))
+                    }
+                    Ok(berth_sys::ProcessLine::Stderr(text)) => {
+                        if builds {
+                            note_build_line(&leftovers, &text);
+                        }
+                        Ok(line_event(berth_core::Stream::Stderr, text))
+                    }
+                    Ok(berth_sys::ProcessLine::Exit(code)) => {
+                        let left = leftovers.lock().map(|mut l| l.take()).unwrap_or_default();
+                        if !left.is_empty() {
+                            remove_leftovers(&rm_binary, &rm_env, path_var, &left).await;
+                        }
+                        Ok(berth_core::ComposeEvent::Done {
+                            code: code.unwrap_or(-1),
+                        })
+                    }
+                    Err(err) => Err(EngineError::from(err)),
+                };
+                event
             }
-            Ok(berth_sys::ProcessLine::Stderr(text)) => {
-                Ok(line_event(berth_core::Stream::Stderr, text))
-            }
-            Ok(berth_sys::ProcessLine::Exit(code)) => Ok(berth_core::ComposeEvent::Done {
-                code: code.unwrap_or(-1),
-            }),
-            Err(err) => Err(EngineError::from(err)),
         })
         .boxed()
     }
@@ -749,5 +848,53 @@ mod tests {
             folder.path().join("api/prod.env").exists(),
             "removing the mirror must not follow its links into the real folder"
         );
+    }
+
+    // --- Classic-builder leftovers ---
+
+    const FAILED_BUILD: &[&str] = &[
+        "Step 2/4 : RUN echo layer1 > /a",
+        " ---> Running in 11aa22bb33cc",
+        "Removing intermediate container 11aa22bb33cc",
+        " ---> 73b62c093331",
+        "Step 3/4 : RUN echo failing && exit 3",
+        " ---> Running in 45f1f3e9c4cd",
+        "failing",
+    ];
+
+    #[test]
+    fn compose_build_leftovers_are_the_containers_of_steps_that_did_not_finish() {
+        let mut left = BuildLeftovers::default();
+        for line in FAILED_BUILD {
+            left.feed(line);
+        }
+        assert_eq!(left.take(), ["45f1f3e9c4cd"]);
+        assert!(left.take().is_empty(), "taken once");
+    }
+
+    #[test]
+    fn compose_build_leftovers_are_none_when_every_step_passed() {
+        let mut left = BuildLeftovers::default();
+        for line in &FAILED_BUILD[..4] {
+            left.feed(line);
+        }
+        assert!(left.take().is_empty());
+    }
+
+    #[test]
+    fn compose_build_leftovers_ignore_lines_that_only_look_like_the_marker() {
+        let mut left = BuildLeftovers::default();
+        left.feed("Running in production mode");
+        left.feed(" ---> Running in not-a-container");
+        left.feed(" ---> Running in abc");
+        left.feed("#7 [app 3/4] RUN pnpm install");
+        assert!(left.take().is_empty());
+    }
+
+    #[test]
+    fn compose_leftovers_are_removed_without_force() {
+        let args = remove_leftovers_args(&["45f1f3e9c4cd".to_string(), "aa00bb11cc22".to_string()]);
+        assert_eq!(args, ["rm", "45f1f3e9c4cd", "aa00bb11cc22"]);
+        assert!(!args.iter().any(|a| a.starts_with('-')));
     }
 }
