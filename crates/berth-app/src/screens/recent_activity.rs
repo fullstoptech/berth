@@ -88,6 +88,7 @@ pub fn message(entry: &ActivityEntry, engines: &[berth_core::Engine]) -> String 
         }
         Some(("image", "pull")) => format!("Pulled {name}"),
         Some(("image", "prune")) => "Cleaned up unused images".to_string(),
+        Some(("engine", "clean_up")) => format!("Cleaned up {name}"),
         _ => format!("{} {name}", capitalise(&action_label(&action))),
     }
 }

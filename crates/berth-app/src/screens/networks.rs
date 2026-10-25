@@ -201,6 +201,7 @@ pub fn build_rows(input: &Input<'_>) -> ListModel {
         volumes: &[],
         networks: input.networks,
         pending: input.pending,
+        backing: crate::services::backing::Backing::default(),
     };
     let running = input
         .engines

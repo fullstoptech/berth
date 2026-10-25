@@ -233,7 +233,8 @@ fn containers_scene_selected_1024_drops_uptime_and_engine_below_1200() {
 }
 
 use super::super::css_tracks as css;
-use super::super::table_tiers::{containers_state_at, Col, View};
+use super::super::table_tiers::containers::{containers_state_at, Col};
+use super::super::table_tiers::View;
 use crate::text_scale::STEPS;
 
 /// The body of the table's block for the viewports under 1200 px.
@@ -730,7 +731,7 @@ fn containers_model_state_and_project_chips_filter() {
     );
     assert_eq!(
         names(&project, &world.containers),
-        ["berth-site-web-1", "berth-site-proxy-1"]
+        ["berth-site-proxy-1", "berth-site-web-1"]
     );
 }
 
@@ -1082,6 +1083,7 @@ fn view_for<'a>(
         volumes: &[],
         networks: &[],
         pending,
+        backing: crate::services::backing::Backing::default(),
     }
 }
 
@@ -1091,6 +1093,46 @@ fn container<'a>(world: &'a berth_engine::MockWorld, name: &str) -> &'a Containe
         .iter()
         .find(|c| c.name == name)
         .unwrap_or_else(|| panic!("{name} in the mock world"))
+}
+
+/// Under mock data the row's Terminal button is disabled and says why;
+/// under a real engine it is not. The other buttons are untouched.
+#[test]
+fn containers_row_terminal_button_is_disabled_with_a_reason_under_mock_data_only() {
+    let world = world();
+    let pending = BTreeMap::new();
+    let terminal_of = |backing: crate::services::backing::Backing| {
+        let view = StateView {
+            backing,
+            ..view_for(&world, &pending)
+        };
+        let data = row_data(
+            container(&world, "shop-api-api-1"),
+            &view,
+            "default",
+            chrono::Utc::now(),
+            false,
+        );
+        let button = |action: RowAction| {
+            data.buttons
+                .iter()
+                .find(|b| b.action == action)
+                .map(|b| (b.disabled, b.tooltip.clone()))
+                .expect("button")
+        };
+        (button(RowAction::Terminal), button(RowAction::Restart))
+    };
+    let (live_terminal, _) = terminal_of(crate::services::backing::Backing::Live);
+    assert!(!live_terminal.0, "{live_terminal:?}");
+    let (mock_terminal, mock_restart) = terminal_of(crate::services::backing::Backing::Mock);
+    assert_eq!(
+        mock_terminal,
+        (
+            true,
+            "Terminals need a real Docker engine. You're viewing mock data.".to_string()
+        )
+    );
+    assert!(!mock_restart.0, "Restart still works on the mock engine");
 }
 
 #[test]
@@ -1356,7 +1398,8 @@ fn containers_keys_j_and_k_walk_the_visible_rows_through_the_root_handler() {
     key("j");
     assert_eq!(selected_names(&dom, state), ["shop-api-api-1"]);
     key("j");
-    assert_eq!(selected_names(&dom, state), ["shop-api-worker-1"]);
+    // Rows inside a group run by name, not by the engine's listing.
+    assert_eq!(selected_names(&dom, state), ["shop-api-db-1"]);
     key("k");
     assert_eq!(selected_names(&dom, state), ["shop-api-api-1"]);
     // K at the top stays on the first row.
@@ -1380,7 +1423,7 @@ fn containers_keys_j_and_k_walk_the_visible_rows_through_the_root_handler() {
     let landed = selected_names(&dom, state);
     assert_eq!(
         landed,
-        ["pg-scratch"],
+        ["api-worker-7f9c4d8b6-xk2lp"],
         "collapsed groups are not stepped into"
     );
     // A filter changes what J can reach.
@@ -1388,21 +1431,21 @@ fn containers_keys_j_and_k_walk_the_visible_rows_through_the_root_handler() {
         let mut handle = state;
         let mut filters = view.filters;
         filters.write().text = "berth-site".to_string();
-        let web = state
+        let proxy = state
             .containers
             .peek()
             .iter()
-            .find(|c| c.name == "berth-site-web-1")
+            .find(|c| c.name == "berth-site-proxy-1")
             .map(|c| c.id.clone())
-            .expect("web");
-        select_only(&mut handle, &web);
+            .expect("proxy");
+        select_only(&mut handle, &proxy);
     });
     key("j");
-    assert_eq!(selected_names(&dom, state), ["berth-site-proxy-1"]);
+    assert_eq!(selected_names(&dom, state), ["berth-site-web-1"]);
     key("j");
     assert_eq!(
         selected_names(&dom, state),
-        ["berth-site-proxy-1"],
+        ["berth-site-web-1"],
         "the filtered list ends here"
     );
 }

@@ -16,6 +16,7 @@ use dioxus::prelude::*;
 
 use berth_core::{Arch, ContainerId, Engine, EngineId, EngineState, Image};
 
+use crate::screens::find_images::FindImages;
 use crate::services::images::{
     ImageFilter, ImageStore, ImagesTab, PullPhase, PullState, Sort, SortColumn, SortDirection,
 };
@@ -284,6 +285,22 @@ fn filter_id(filter: ImageFilter) -> &'static str {
     }
 }
 
+/// How many pulls run: the "1 pulling" beside the first tab. One pending
+/// entry per reference, keyed `Subject::Image(reference)` / `image.pull`.
+#[must_use]
+pub fn pulling_count(
+    pending: &std::collections::BTreeMap<crate::state::PendingKey, crate::state::PendingState>,
+) -> usize {
+    pending
+        .iter()
+        .filter(|(key, value)| {
+            key.action == crate::services::images::PULL_ACTION
+                && matches!(key.subject, berth_core::Subject::Image(_))
+                && matches!(value, crate::state::PendingState::Running { .. })
+        })
+        .count()
+}
+
 /// What the main area shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScreenState {
@@ -476,7 +493,7 @@ fn Controls(counts: [usize; 2], matched: usize, total: usize, can_pull: bool) ->
 /// One pull as a card: the title and percent, the bytes, one thin bar per
 /// layer, and Cancel pull while it runs (frame "Images / find / pulling").
 #[component]
-pub fn PullCard(pull: PullState) -> Element {
+pub fn PullCard(pull: PullState, #[props(default)] compact: bool) -> Element {
     let store = use_hook(|| try_consume_context::<ImageStore>().unwrap_or_default());
     let key = pull.key();
     let cancel_key = key.clone();
@@ -494,7 +511,13 @@ pub fn PullCard(pull: PullState) -> Element {
     };
     let detail = if pull.is_running() {
         let bytes = pull.bytes_label();
-        if seen > 0 && !bytes.is_empty() {
+        if compact {
+            // The panel of Find images: the time left, not the layer count.
+            match pull.eta_label() {
+                Some(eta) if !bytes.is_empty() => format!("{bytes} \u{b7} {eta}"),
+                _ => bytes,
+            }
+        } else if seen > 0 && !bytes.is_empty() {
             format!("{bytes} \u{b7} {done} of {seen} layers")
         } else {
             bytes
@@ -651,7 +674,7 @@ fn PullPanel(engine: Option<Engine>) -> Element {
 /// from `AppState`.
 #[component]
 pub fn ImagesScreen() -> Element {
-    let state = use_context::<AppState>();
+    let mut state = use_context::<AppState>();
     let store = use_hook(|| try_consume_context::<ImageStore>().unwrap_or_default());
     let services = try_consume_context::<Services>();
 
@@ -686,10 +709,13 @@ pub fn ImagesScreen() -> Element {
     let pull_engine = pull_target(&engines, &scope);
     let total = rows.len();
     let matched = list_rows(&rows, &query, ImageFilter::All, sort).len();
-    let tab_items = vec![
-        TabItem::new("engine", "On this engine"),
-        TabItem::new("find", "Find images"),
-    ];
+    let pulling = pulling_count(&state.pending.read());
+    let engine_tab = if pulling > 0 {
+        TabItem::new("engine", "On this engine").with_note(format!("{pulling} pulling"))
+    } else {
+        TabItem::new("engine", "On this engine")
+    };
+    let tab_items = vec![engine_tab, TabItem::new("find", "Find images")];
     let tab_id = match tab {
         ImagesTab::OnThisEngine => "engine",
         ImagesTab::Find => "find",
@@ -725,19 +751,17 @@ pub fn ImagesScreen() -> Element {
                     selected: tab_id.to_string(),
                     aria_label: "Images".to_string(),
                     on_select: move |id: String| {
+                        if id == "find" {
+                            // The Find tab has its own panel; an image of the
+                            // other tab must not keep the inspector open.
+                            state.selection.set(Selection::None);
+                        }
                         tab_signal.set(if id == "find" { ImagesTab::Find } else { ImagesTab::OnThisEngine });
                     },
                 }
             }
             if tab == ImagesTab::Find {
-                div { class: "im-find-soon",
-                    EmptyState {
-                        title: "Find images".to_string(),
-                        body: "Search Docker Hub and your registries. This tab is built in the next task."
-                            .to_string(),
-                        icon: "search",
-                    }
-                }
+                FindImages {}
             } else {
                 Controls { counts, matched, total, can_pull: pull_engine.is_some() }
                 PullPanel { engine: pull_engine.clone() }

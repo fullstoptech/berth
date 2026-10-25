@@ -121,8 +121,10 @@ impl DashboardStore {
             .push(at, cpu_pct, mem_bytes);
     }
 
-    /// Read the engine's `disk_usage` and store it. Replaces nothing until
-    /// the answer is in, so the bar does not flash.
+    /// Read the engine's `disk_usage` (the client's own 60 s budget, D29) and
+    /// store it. Replaces nothing until the answer is in, so the bar does not
+    /// flash. The store's task outlives the caller: Clean up asks for a
+    /// fresh reading and closes its sheet in the same breath.
     pub fn refresh_usage(&self, services: &Services, engine: &EngineId) {
         let mut usage = self.usage;
         let Some(client) = services.client(engine) else {
@@ -138,7 +140,7 @@ impl DashboardStore {
             let _ = tx.send(result);
         });
         let id = engine.clone();
-        spawn(async move {
+        dioxus::core::spawn_forever(async move {
             let Ok(result) = rx.await else { return };
             let entry = match result {
                 Ok(found) => UsageEntry::Ready(found),

@@ -23,5 +23,23 @@ expression: disk_usage(&df())
     "size": "0 B",
     "reclaimable": "0 B"
   },
-  "disk_total": null
+  "disk_total": null,
+  "container_sizes": [
+    [
+      "2ee92ddaa19b6f08ec9c847b094dac8b66a22519284283476a55111d49b9cd04",
+      "20.0 KiB"
+    ],
+    [
+      "c1540b181e90c40b8d579a68e5a0371182891eb1699381964c8cd63647934c15",
+      "4.0 KiB"
+    ],
+    [
+      "0daa91e1ac35edb98aea2466350d04cd05b6f569a16c60103ac74830399046d9",
+      "80.0 KiB"
+    ],
+    [
+      "84787cf0d6850135c22536ebf9033bc7c249ed0c906ef6cb1b653598ae7d1727",
+      "4.0 KiB"
+    ]
+  ]
 }

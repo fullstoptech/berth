@@ -17,11 +17,14 @@
 
 use std::fmt::Write as _;
 
-use super::css_tracks as css;
-use super::table_tiers::{scoped, threshold, write_or_check, View};
+use crate::screens::css_tracks as css;
+
+use super::{scoped, threshold, write_or_check, Table, View};
+
 use crate::text_scale::STEPS;
 
-const HAND: &str = include_str!("../../assets/css/volumes.css");
+const HAND: &str = include_str!("../../../assets/css/volumes.css");
+
 const FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/css/volumes_tiers.css");
 
 /// A column a tier hides, in the order they go.
@@ -265,4 +268,15 @@ fn volumes_tiers_attribute_values_are_the_ones_the_page_sets() {
             assert!(css_text.contains(":root:not([data-text-scale])"));
         }
     }
+}
+
+pub(super) const TABLE: Table = Table {
+    name: "volumes",
+    file: FILE,
+    css: volumes_css,
+    needs: volumes_needs,
+};
+
+fn volumes_needs(view: View, scale: f32) -> Vec<Vec<f32>> {
+    vec![(0..TIERS.len()).map(|t| need(t, scale, view)).collect()]
 }

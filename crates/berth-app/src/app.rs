@@ -6,7 +6,7 @@ use crate::scenes;
 use crate::services::actions::ActionsService;
 use crate::services::stats::{use_window_visibility, StatsService};
 use crate::services::{action_runners, activity, engines, Services};
-use crate::state::{theme_script, use_app_state, AppState, Overlay, Selection};
+use crate::state::{theme_script, use_app_state, AppState};
 use crate::ui::dock::{InspectorSlot, InspectorSplitHandle, InspectorWidthHandle, RegionMode};
 use crate::ui::{BottomPanel, Inspector, InspectorFrame, Sidebar, StatusBar, TitleBar};
 
@@ -24,7 +24,7 @@ struct Boot {
 /// `BERTH_DATA_DIR` wins through `berth_sys::paths::data_dir`;
 /// `BERTH_MOCK=1` selects the mock world; a `BERTH_SCENE` frame is
 /// authoritative, so no live service runs under it (shots stay exact).
-fn boot_services(state: AppState) -> Boot {
+fn boot_services(mut state: AppState) -> Boot {
     let data_dir = berth_sys::paths::data_dir();
     if let Err(err) = std::fs::create_dir_all(&data_dir) {
         tracing::warn!(%err, dir = %data_dir.display(), "data dir create failed");
@@ -70,6 +70,9 @@ fn boot_services(state: AppState) -> Boot {
     };
     let scene = std::env::var_os("BERTH_SCENE").is_some();
     let mock = std::env::var("BERTH_MOCK").is_ok_and(|v| v == "1");
+    state
+        .backing
+        .set(crate::services::backing::Backing::at_boot(mock, scene));
     // A scene runs no live service, so its actions never reach a real binary.
     let (compose, colima) = action_runners(mock || scene);
     let actions = ActionsService::start(
@@ -109,13 +112,8 @@ pub fn App() -> Element {
     platform::use_traffic_lights();
     let mut state = use_app_state();
     use_context_provider(|| state);
-    crate::screens::containers::provide_containers_view();
-    crate::screens::volumes::provide_volumes_view();
-    let dock = crate::ui::dock::use_dock_view(state);
-    crate::ui::dock::use_window_width(dock);
-    let details = crate::services::detail::provide_detail_store();
-    let images = crate::services::images::provide_image_store();
-    crate::services::engine_dashboard::provide_dashboard_store();
+    let views = crate::providers::provide_screen_views(state);
+    crate::ui::dock::use_window_width(views.dock);
     platform::use_menu_events(state);
 
     // Services spawn once, before scene/theme forcing below (D23).
@@ -149,8 +147,7 @@ pub fn App() -> Element {
         if let Ok(frame) = std::env::var("BERTH_SCENE") {
             if let Some(scene) = scenes::find(&frame) {
                 (scene.setup)(&mut state);
-                scenes::seed_details(&state, details);
-                scenes::seed_images(&state, images);
+                scenes::seed_stores(&state, &views);
             } else if frame != crate::bridge::dev::FRAME {
                 tracing::warn!(%frame, "unknown BERTH_SCENE frame");
             }
@@ -238,31 +235,6 @@ pub fn App() -> Element {
     }
 }
 
-/// What an overlay is called until its own screen exists (P2-T8, P2-T9,
-/// P4 and P5 each replace the placeholder body for their variants).
-fn overlay_title(overlay: &Overlay) -> &'static str {
-    match overlay {
-        Overlay::Palette => "Command palette",
-        Overlay::Confirm(_) => "Confirm",
-        Overlay::ReviewChanges(_) => "Review changes",
-        Overlay::Generate(_) => "Generate",
-        Overlay::Detected(_) => "Detected",
-        Overlay::OpenFolder => "Open folder",
-        Overlay::DropFolder(_) => "Add folders",
-        Overlay::NewProject => "New project",
-        Overlay::EditRecreate(_) => "Edit and recreate",
-        Overlay::Run(_) => "Run image",
-        Overlay::CleanUp(_) => "Clean up",
-        Overlay::CreateVolume => "Create volume",
-        Overlay::CreateNetwork => "Create network",
-        Overlay::EditResources(_) => "Edit resources",
-        Overlay::AddEngine => "Add engine",
-        Overlay::AddRegistry => "Add registry",
-        Overlay::BuildImage => "Build image",
-        Overlay::AddService(_) => "Add service",
-    }
-}
-
 /// The overlay stack (PLAN 6.11): every entry dims what is below it, and
 /// Esc (keys.rs `overlay.close`) or a click on the dimmed area closes the
 /// top one only.
@@ -282,34 +254,7 @@ fn OverlayStack() -> Element {
                         state.overlays.write().pop();
                     }
                 },
-                if matches!(overlay, Overlay::Palette) {
-                    crate::screens::palette::PaletteScreen {}
-                } else if let Overlay::Confirm(model) = overlay {
-                    crate::ui::ConfirmOverlay { key: "{model.title}", model: model.clone() }
-                } else if matches!(overlay, Overlay::CreateVolume) {
-                    crate::sheets::create_volume::CreateVolumeSheet {}
-                } else if let Overlay::Run(id) = overlay {
-                    crate::sheets::run::RunSheet { key: "{id}", id: id.clone() }
-                } else if let Overlay::EditResources(engine) = overlay {
-                    crate::sheets::edit_resources::EditResourcesSheet {
-                        key: "{engine}",
-                        engine: berth_core::EngineId(engine.clone()),
-                    }
-                } else if let Overlay::EditRecreate(id) = overlay {
-                    crate::sheets::edit_recreate::EditRecreateSheet { key: "{id.0}", id: id.clone() }
-                } else if matches!(overlay, Overlay::CreateNetwork) {
-                    crate::sheets::create_network::CreateNetworkSheet {}
-                } else {
-                    div {
-                        class: "overlay-card",
-                        role: "dialog",
-                        "aria-modal": "true",
-                        "aria-label": overlay_title(overlay),
-                        onclick: move |e| e.stop_propagation(),
-                        h2 { "{overlay_title(overlay)}" }
-                        p { "This screen is not built yet. Press Esc to close." }
-                    }
-                }
+                {crate::routes::overlay(overlay)}
             }
         }
     }
@@ -327,33 +272,11 @@ pub fn Shell() -> Element {
     let layout = *dock.layout.read();
     // One body, drawn in the right column, as an overlay or at the bottom.
     let hide_stream_tabs = layout.region == Some(RegionMode::Split);
-    let body = rsx! {
-        // Keyed per container: a new selection remounts the panel.
-        if let Selection::Containers(ids) = &*state.selection.read() {
-            for id in ids.iter().take(1) {
-                crate::screens::container_detail::ContainerDetailPanel {
-                    key: "{id.0}",
-                    id: id.clone(),
-                    pane_px: layout.pane_px,
-                    hide_stream_tabs,
-                }
-            }
-        }
-        if let Selection::Network(id) = &*state.selection.read() {
-            crate::screens::network_detail::NetworkDetailPanel { key: "{id}", id: id.clone() }
-        }
-        if *state.section.read() == crate::state::Section::Volumes {
-            if let Selection::Volume(name) = &*state.selection.read() {
-                crate::screens::volume_browser::VolumeDetailPanel {
-                    key: "{name}",
-                    name: name.clone(),
-                }
-            }
-        }
-        if let Selection::Image(id) = &*state.selection.read() {
-            crate::screens::image_detail::ImageDetailPanel { key: "{id}", id: id.clone() }
-        }
+    let pane = crate::routes::InspectorPane {
+        pane_px: layout.pane_px,
+        hide_stream_tabs,
     };
+    let body = crate::routes::inspector_body(&state, pane);
     let right = match layout.slot {
         InspectorSlot::Docked(width) => Some((InspectorFrame::Docked, width)),
         InspectorSlot::Overlay(width) => Some((InspectorFrame::Overlay, width)),
@@ -400,30 +323,7 @@ pub fn Shell() -> Element {
                             if let Some(dev) = try_consume_context::<crate::scenes::DevFilesPanel>() {
                                 crate::ui::files_panel::FilesPanelScene { id: dev.0 }
                             }
-                            if *state.section.read() == crate::state::Section::Activity {
-                                crate::screens::activity::ActivityScreen {}
-                            }
-                            if !*state.dev_gallery.read() && *state.section.read() == crate::state::Section::Projects {
-                                crate::screens::projects::ProjectsScreen {}
-                            }
-                            if *state.section.read() == crate::state::Section::Containers {
-                                crate::screens::containers::ContainersScreen {}
-                            }
-                            if *state.section.read() == crate::state::Section::Logs {
-                                crate::screens::logs::LogsScreen {}
-                            }
-                            if *state.section.read() == crate::state::Section::Networks {
-                                crate::screens::networks::NetworksScreen {}
-                            }
-                            if *state.section.read() == crate::state::Section::Volumes {
-                                crate::screens::volumes::VolumesScreen {}
-                            }
-                            if *state.section.read() == crate::state::Section::Images {
-                                crate::screens::images::ImagesScreen {}
-                            }
-                            if *state.section.read() == crate::state::Section::Engines {
-                                crate::screens::engines::EnginesScreen {}
-                            }
+                            {crate::routes::screen(*state.section.read(), *state.dev_gallery.read())}
                         }
                         if let Some((frame, width)) = right {
                             Inspector {
@@ -439,6 +339,7 @@ pub fn Shell() -> Element {
             }
             StatusBar {}
             OverlayStack {}
+            crate::ui::ToastStack {}
         }
     }
 }

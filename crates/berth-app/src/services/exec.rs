@@ -155,10 +155,17 @@ pub fn service_label(project: Option<&str>, name: &str) -> String {
 }
 
 /// Why a container cannot get a terminal, or `None`. A stopped container
-/// can: it is started first.
+/// can: it is started first. A mock engine cannot exec at all.
 #[must_use]
-pub fn terminal_disabled_reason(state: berth_core::ContainerState) -> Option<String> {
+pub fn terminal_disabled_reason(
+    state: berth_core::ContainerState,
+    backing: crate::services::backing::Backing,
+) -> Option<String> {
+    use crate::services::backing::Capability;
     use berth_core::ContainerState as S;
+    if let Some(reason) = backing.unsupported(Capability::Terminals) {
+        return Some(reason);
+    }
     match state {
         S::Running | S::Created | S::Exited | S::Restarting => None,
         S::Paused => Some("Resume the container to open a terminal".to_string()),
@@ -1219,7 +1226,7 @@ pub fn open_container_terminal(
     actions: Option<&ActionsService>,
     container: &berth_core::Container,
 ) -> Result<Uuid, String> {
-    if let Some(reason) = terminal_disabled_reason(container.state) {
+    if let Some(reason) = terminal_disabled_reason(container.state, *state.backing.peek()) {
         return Err(reason);
     }
     if matches!(
@@ -1313,8 +1320,12 @@ pub fn open_project_terminals(
             .collect(),
         None => Vec::new(),
     };
-    if members.is_empty() {
-        return Err("Nothing is running in this project".to_string());
+    if let Some(reason) = project_terminals_reason(
+        &state.containers.peek(),
+        found.as_ref().ok_or("This project no longer exists")?,
+        *state.backing.peek(),
+    ) {
+        return Err(reason);
     }
     for container in &members {
         let spec = spec_in_project(state, container, None);
@@ -1328,7 +1339,11 @@ pub fn open_project_terminals(
 pub fn project_terminals_reason(
     containers: &[berth_core::Container],
     project: &berth_core::Project,
+    backing: crate::services::backing::Backing,
 ) -> Option<String> {
+    if let Some(reason) = backing.unsupported(crate::services::backing::Capability::Terminals) {
+        return Some(reason);
+    }
     let any = running_members(containers, project).next().is_some();
     (!any).then(|| "Nothing is running in this project".to_string())
 }
@@ -1406,6 +1421,20 @@ pub fn dispatch_open(state: &mut AppState) {
     };
     if let Err(reason) = result {
         tracing::debug!(%reason, "terminal refused");
+        // ⌘T has no button to show the reason on: under mock data, say it.
+        if state
+            .backing
+            .peek()
+            .unsupported(crate::services::backing::Capability::Terminals)
+            .is_some()
+        {
+            state.toasts.write().push(crate::state::Toast {
+                id: Uuid::now_v7(),
+                text: reason,
+                tone: crate::state::ToastTone::Neutral,
+                action: None,
+            });
+        }
     }
 }
 

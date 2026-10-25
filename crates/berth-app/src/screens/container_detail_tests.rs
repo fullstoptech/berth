@@ -22,6 +22,7 @@ use super::model::{
 };
 use super::*;
 use crate::services::actions::StateView;
+use crate::services::backing::Backing;
 use crate::services::detail::{mask_inspect, provide_detail_store, DetailEntry, Loaded};
 use crate::state::{use_app_state, PendingKey, PendingState};
 
@@ -615,7 +616,7 @@ fn inspector_stats_tab_mounts_the_stats_panel() {
 fn inspector_header_menu_works_for_the_edit_items_and_defers_save_as_image() {
     let mut loose = container("shop-api-worker-1");
     loose.labels.clear();
-    let menu = header_menu(&loose);
+    let menu = header_menu(&loose, Backing::Live);
     let by_id = |id: &str| menu.iter().find(|e| e.id == id).expect(id).clone();
     for id in ["edit", "duplicate", "recreate", "rename", "copy-id"] {
         assert!(by_id(id).disabled_reason.is_none(), "{id} works");
@@ -626,10 +627,25 @@ fn inspector_header_menu_works_for_the_edit_items_and_defers_save_as_image() {
 }
 
 #[test]
+fn inspector_header_menu_disables_what_a_mock_engine_cannot_create_and_says_why() {
+    let mut loose = container("shop-api-worker-1");
+    loose.labels.clear();
+    let reason = "Creating containers need a real Docker engine. You're viewing mock data.";
+    let menu = header_menu(&loose, Backing::Mock);
+    for id in ["edit", "duplicate", "recreate"] {
+        let entry = menu.iter().find(|e| e.id == id).expect(id);
+        assert_eq!(entry.disabled_reason.as_deref(), Some(reason), "{id}");
+    }
+    // Rename is a plain engine call the mock answers.
+    let rename = menu.iter().find(|e| e.id == "rename").expect("rename");
+    assert!(rename.disabled_reason.is_none());
+}
+
+#[test]
 fn inspector_header_menu_never_offers_recreate_for_a_compose_container() {
     let worker = container("shop-api-worker-1");
     assert!(worker.labels.contains_key("com.docker.compose.project"));
-    let menu = header_menu(&worker);
+    let menu = header_menu(&worker, Backing::Live);
     let recreate = menu.iter().find(|e| e.id == "recreate").expect("recreate");
     assert_eq!(
         recreate.disabled_reason.as_deref(),
@@ -938,6 +954,7 @@ fn inspector_header_buttons_follow_the_state_and_carry_the_reasons() {
         volumes: &[],
         networks: &[],
         pending: &pending,
+        backing: crate::services::backing::Backing::default(),
     };
     let running = header_buttons(&container("shop-api-api-1"), &view);
     let ids: Vec<&str> = running.iter().map(|b| b.id).collect();

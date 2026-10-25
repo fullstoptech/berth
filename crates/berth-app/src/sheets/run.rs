@@ -431,9 +431,16 @@ pub fn RunSheet(id: String) -> Element {
                 RunStatus::Failed(message) => Some(message.clone()),
                 _ => None,
             };
-            let reason = built
-                .is_err()
-                .then(|| "Fix the fields marked in red first".to_string());
+            // A mock engine cannot create the container.
+            let reason = state
+                .backing
+                .peek()
+                .unsupported_action("image.run")
+                .or_else(|| {
+                    built
+                        .is_err()
+                        .then(|| "Fix the fields marked in red first".to_string())
+                });
             let run_id = id.clone();
             let run_engine = engine.clone();
             let run_services = services.clone();

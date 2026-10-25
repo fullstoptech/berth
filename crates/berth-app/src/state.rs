@@ -172,6 +172,8 @@ pub struct AppState {
     pub harnesses: Signal<Vec<berth_core::Harness>>,
     pub toasts: Signal<Vec<Toast>>,
     pub snapshot_stale: Signal<bool>,
+    /// What backs the engines (mock data or real Docker); set once at boot.
+    pub backing: Signal<crate::services::backing::Backing>,
     // P2-T2: dev-only primitives gallery ("Components / primitives" scene).
     // Not a PLAN 6.11 field — architect-accepted at integration (option a).
     pub dev_gallery: Signal<bool>,
@@ -198,6 +200,7 @@ pub fn use_app_state() -> AppState {
         harnesses: use_signal(Vec::new),
         toasts: use_signal(Vec::new),
         snapshot_stale: use_signal(|| false),
+        backing: use_signal(crate::services::backing::Backing::default),
         dev_gallery: use_signal(|| false),
     }
 }

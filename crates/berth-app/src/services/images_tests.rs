@@ -36,6 +36,35 @@ fn fresh() -> PullState {
 // ---------------------------------------------------------------------
 
 #[test]
+fn images_pull_time_left_follows_the_share_done_and_the_time_spent() {
+    let mut pull = fresh();
+    // No size yet, or too soon: no guess.
+    pull.apply(&event(Some("aaaaaaaaaaaa"), "Pulling fs layer", None, None));
+    assert_eq!(pull.eta_label(), None);
+    pull.apply(&event(
+        Some("aaaaaaaaaaaa"),
+        "Downloading",
+        Some(10_000_000),
+        Some(100_000_000),
+    ));
+    assert_eq!(pull.eta_label(), None, "under two seconds in");
+    // Ten seconds for a quarter: thirty to go.
+    pull.started = std::time::Instant::now() - std::time::Duration::from_secs(10);
+    pull.apply(&event(
+        Some("aaaaaaaaaaaa"),
+        "Downloading",
+        Some(25_000_000),
+        Some(100_000_000),
+    ));
+    let secs = pull.eta_secs.expect("an estimate");
+    assert!((29..=31).contains(&secs), "{secs}");
+    assert_eq!(pull.eta_label(), Some(format!("{secs} s left")));
+    // Minutes past a minute and a half.
+    pull.eta_secs = Some(150);
+    assert_eq!(pull.eta_label(), Some("3 min left".to_string()));
+}
+
+#[test]
 fn images_pull_events_fold_into_one_state_per_layer() {
     let mut pull = fresh();
     for e in [

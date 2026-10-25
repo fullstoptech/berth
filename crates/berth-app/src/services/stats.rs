@@ -569,17 +569,47 @@ async fn pump(inner: Arc<Inner>, key: StatsKey, generation: u64, cancel: Cancell
     inner.ended(&key, generation);
 }
 
-/// The UI side of D26's "closed when the window is hidden": the webview's
-/// visibility (minimised, occluded, another Space) drives the service.
+/// What the native window reports about itself. The webview's own
+/// `document.visibilityState` is deliberately not an input: WebKit turns it
+/// to `hidden` when another window merely covers this one, and a covered
+/// window still shows the table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowFacts {
+    /// Minimised to the Dock.
+    pub minimized: bool,
+    /// Ordered in: false once the app is hidden (Cmd-H).
+    pub shown: bool,
+}
+
+/// D26: streams run while the window is shown and not minimised. Another
+/// app being frontmost (inactive), or covering the window, changes
+/// neither.
+#[must_use]
+pub fn streams_allowed(facts: WindowFacts) -> bool {
+    facts.shown && !facts.minimized
+}
+
+/// How often the native window state is read; a hide or minimise closes
+/// the streams within this time.
+const WINDOW_POLL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// The UI side of D26's "closed when the window is hidden": the native
+/// window's state (minimised, hidden) drives the service.
 pub fn use_window_visibility(service: StatsService) {
+    let window = dioxus::desktop::use_window();
     use_hook(move || {
         spawn(async move {
-            let mut eval = document::eval(
-                "const send = () => dioxus.send(document.visibilityState === 'visible'); \
-                 document.addEventListener('visibilitychange', send); send();",
-            );
-            while let Ok(visible) = eval.recv::<bool>().await {
-                service.set_window_visible(visible);
+            let mut last = None;
+            loop {
+                let allowed = streams_allowed(WindowFacts {
+                    minimized: window.is_minimized(),
+                    shown: window.is_visible(),
+                });
+                if last != Some(allowed) {
+                    last = Some(allowed);
+                    service.set_window_visible(allowed);
+                }
+                tokio::time::sleep(WINDOW_POLL).await;
             }
         });
     });

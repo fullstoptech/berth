@@ -1,0 +1,393 @@
+/* Images screen, tab "Find images" (P4-T3). Frames "Images / find / 1440",
+   "... / pulling / 1440" and "... / rate limited / 1440". The header, tabs
+   and controls row reuse images.css. Colours and sizes come only from
+   tokens.css (D4). The column-drop tiers are in find_images_tiers.css,
+   generated from the track lists below by screens/table_tiers/find_images.rs. */
+
+.fi-banner {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-12) var(--gutter) 0;
+}
+.fi-banner-note {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+
+/* Controls: search, registry, the two switches, then the result count */
+.fi-controls .im-filter {
+  flex: 0 1 280px;
+}
+.fi-registry {
+  flex: 0 0 auto;
+  width: calc(180px * var(--text-scale, 1));
+}
+.fi-controls .search-input::-webkit-search-cancel-button {
+  display: none;
+  -webkit-appearance: none;
+}
+.fi-count {
+  margin-left: auto;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  white-space: nowrap;
+}
+
+/* The results table and the panel side by side. The panel is 420 px unless
+   the table would lose the room its narrowest column list needs. */
+.fi-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  container: findbody / inline-size;
+  border-top: 1px solid var(--color-line);
+}
+.fi-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container: findtable / inline-size;
+}
+.fi-detail {
+  flex: none;
+  width: clamp(300px, calc(100cqw - 150px - 168px * var(--text-scale, 1) - 52px), 420px);
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--color-line);
+  background: var(--color-bg);
+  box-sizing: border-box;
+}
+
+/* Table: one grid for the header and the rows */
+.fi-table {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  --fi-cols: minmax(150px, 2fr) calc(172px * var(--text-scale, 1)) calc(44px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(80px * var(--text-scale, 1)) minmax(calc(168px * var(--text-scale, 1)), 1.4fr);
+  --fi-cols-no-updated: minmax(150px, 2fr) calc(172px * var(--text-scale, 1)) calc(44px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) minmax(calc(168px * var(--text-scale, 1)), 1.4fr);
+  --fi-cols-no-pulls: minmax(150px, 2fr) calc(172px * var(--text-scale, 1)) calc(44px * var(--text-scale, 1)) minmax(calc(168px * var(--text-scale, 1)), 1.4fr);
+  --fi-cols-no-stars: minmax(150px, 2fr) calc(172px * var(--text-scale, 1)) minmax(calc(168px * var(--text-scale, 1)), 1.4fr);
+  --fi-cols-compact: minmax(150px, 2fr) minmax(calc(168px * var(--text-scale, 1)), 1.4fr);
+}
+.fi-head,
+.fi-row {
+  display: grid;
+  grid-template-columns: var(--fi-cols);
+  column-gap: var(--space-12);
+  align-items: center;
+  padding: 0 var(--gutter);
+  box-sizing: border-box;
+}
+.fi-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: var(--size-control-md);
+  min-height: var(--size-control-md);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg);
+  flex: none;
+}
+.fi-head .table-header-cell {
+  padding: 0;
+  border-bottom: none;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+}
+.fi-head .table-header-cell.align-right {
+  justify-content: flex-end;
+}
+.fi-row {
+  position: relative;
+  flex: none;
+  /* Two lines: the name and its description. */
+  height: calc(var(--size-row-lg) + var(--space-8));
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink);
+  white-space: nowrap;
+  cursor: default;
+}
+.fi-row:hover {
+  background: var(--color-surface-hover);
+}
+.fi-row.fi-selected {
+  background: var(--color-selection);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.fi-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fi-name {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-2);
+}
+.fi-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fi-desc {
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.fi-desc-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fi-desc > .progress {
+  flex: 0 0 calc(48px * var(--text-scale, 1));
+}
+.fi-publisher {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+.fi-publisher-icon {
+  flex: none;
+  display: inline-flex;
+}
+.fi-publisher-community {
+  color: var(--color-ink-muted);
+}
+.fi-stars,
+.fi-pulls,
+.fi-updated {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.fi-platforms {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--color-ink-muted);
+}
+.fi-platform-check {
+  flex: none;
+  display: inline-flex;
+}
+.fi-emulated {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+}
+.fi-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+  padding: var(--space-24) var(--gutter);
+}
+
+/* Suggestions: what to look for before anything is typed */
+.fi-suggest {
+  padding: var(--space-16) var(--gutter);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  overflow-y: auto;
+}
+.fi-suggest-title {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+}
+.fi-suggest-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fi-suggest-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  width: 100%;
+  min-height: var(--size-row);
+  padding: 0 var(--space-8);
+  border: none;
+  border-bottom: 1px solid var(--color-line);
+  background: none;
+  color: var(--color-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fi-suggest-item:hover {
+  background: var(--color-surface-hover);
+}
+.fi-suggest-reason {
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+}
+
+/* The detail panel */
+.fd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16) var(--space-16);
+}
+.fd-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+}
+.fd-name {
+  margin: 0;
+  font-size: var(--text-h3-size);
+  line-height: var(--text-h3-line);
+  font-weight: var(--text-body-weight);
+  overflow-wrap: anywhere;
+}
+.fd-publisher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.fd-desc {
+  margin: 0;
+  color: var(--color-ink-muted);
+  line-height: var(--text-body-line);
+}
+.fd-cached {
+  margin: calc(-1 * var(--space-4)) 0 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+}
+.fd .im-layers {
+  gap: var(--space-12);
+}
+.fd-heading {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+}
+.fd-note {
+  align-self: flex-start;
+}
+.fd-tags {
+  display: flex;
+  flex-direction: column;
+}
+.fd-tag-head,
+.fd-tag {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) calc(64px * var(--text-scale, 1)) minmax(0, 1.6fr) minmax(0, 1fr);
+  column-gap: var(--space-8);
+  align-items: center;
+  padding: 0 var(--space-8);
+  box-sizing: border-box;
+}
+.fd-tag-head {
+  height: var(--size-control-sm);
+  background: var(--color-surface-sunken);
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+}
+.fd-tag-head > :nth-child(2),
+.fd-tag > :nth-child(2) {
+  text-align: right;
+}
+.fd-tag {
+  height: var(--size-row);
+  border: none;
+  background: none;
+  color: var(--color-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.fd-tag:hover {
+  background: var(--color-surface-hover);
+}
+.fd-tag.fd-selected {
+  background: var(--color-selection);
+}
+.fd-tag-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fd-tag-size {
+  font-variant-numeric: tabular-nums;
+}
+.fd-tag-platforms {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--color-ink-muted);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.fd-tag-when {
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  white-space: nowrap;
+}
+.fd-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.fd-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-12);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+.fd-command-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.fd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+}
+.fd-footnote {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+}

@@ -10,6 +10,7 @@ pub mod containers;
 pub(crate) mod css_tracks;
 pub mod engine_dashboard;
 pub mod engines;
+pub mod find_images;
 pub mod image_detail;
 pub mod images;
 pub mod logs;
@@ -18,10 +19,9 @@ pub mod network_detail;
 pub mod networks;
 pub mod palette;
 pub mod projects;
+mod projects_order;
 pub mod recent_activity;
 #[cfg(test)]
 pub(crate) mod table_tiers;
 pub mod volume_browser;
 pub mod volumes;
-#[cfg(test)]
-pub(crate) mod volumes_tiers;

@@ -673,6 +673,11 @@ fn toast_danger(state: &mut AppState, text: String) {
 
 /// Open the sheet for a container, once.
 pub fn open_sheet(state: &mut AppState, id: &ContainerId) {
+    let backing = *state.backing.peek();
+    if let Some(reason) = backing.unsupported_action("container.edit") {
+        toast_danger(state, reason);
+        return;
+    }
     let open = Overlay::EditRecreate(id.clone());
     if !state.overlays.peek().contains(&open) {
         state.overlays.write().push(open);

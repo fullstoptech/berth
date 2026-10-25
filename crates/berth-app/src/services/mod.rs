@@ -3,6 +3,7 @@
 
 pub mod actions;
 pub mod activity;
+pub mod backing;
 pub mod colima;
 pub mod compose;
 pub mod confirm;
@@ -12,10 +13,12 @@ pub mod engine_dashboard;
 pub mod engines;
 pub mod exec;
 pub mod files;
+pub mod find_images;
 pub mod group_ops;
 pub mod images;
 pub mod logs;
 pub mod networks;
+pub mod prune;
 pub mod search;
 pub mod stats;
 pub mod volume_backup;

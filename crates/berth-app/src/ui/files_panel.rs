@@ -23,6 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::file_browser::{FileBrowser, Listing, FILE_BROWSER_CSS};
 use super::{ConfirmDialog, InlineMessage, InlineTone};
+use crate::services::backing::Capability;
 use crate::services::confirm;
 use crate::services::files::{self, EngineFiles, FileSource, FilesBackend, FilesError};
 use crate::services::Services;
@@ -111,6 +112,14 @@ pub fn FilesPanel(container: ContainerId) -> Element {
 #[component]
 pub fn TargetFiles(engine: EngineId, target: FileTarget, start: String) -> Element {
     let state = use_context::<AppState>();
+    // A mock engine lists nothing and moves nothing: say so, once, where
+    // the folder would be, rather than showing its raw error.
+    if let Some(reason) = state.backing.peek().unsupported(Capability::Files) {
+        return rsx! {
+            style { "{FILE_BROWSER_CSS}" }
+            InlineMessage { message: reason, tone: InlineTone::Warning }
+        };
+    }
     let backend = use_hook({
         move || Backend {
             over: try_consume_context::<FilesBackend>(),

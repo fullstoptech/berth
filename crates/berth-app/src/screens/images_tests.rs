@@ -6,7 +6,8 @@ use super::*;
 
 use crate::scenes;
 use crate::screens::css_tracks as css;
-use crate::screens::table_tiers::{images_least_need, images_state_at, ImageCol, View};
+use crate::screens::table_tiers::images::{images_least_need, images_state_at, ImageCol};
+use crate::screens::table_tiers::View;
 use crate::state::{AppState, Overlay, Selection};
 use crate::text_scale::STEPS;
 
@@ -503,6 +504,7 @@ fn images_delete_reason_uses_the_words_of_the_actions_service() {
         volumes: &[],
         networks: &[],
         pending: &pending,
+        backing: crate::services::backing::Backing::default(),
     };
     let from_service = crate::services::actions::disabled_reason(
         &berth_core::Subject::Image(used.id.clone()),

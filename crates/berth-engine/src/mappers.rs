@@ -701,7 +701,31 @@ pub fn disk_usage(d: &SystemDataUsageResponse) -> berth_core::DiskUsage {
                 usage_group(u.total_count, u.total_size, u.reclaimable)
             }),
         disk_total: None,
+        container_sizes: container_sizes(d),
     }
+}
+
+/// `(id, SizeRw)` of every container in the `ContainerUsage.Items` of a system df
+/// response; items without a non-negative `SizeRw` are left out.
+fn container_sizes(
+    d: &SystemDataUsageResponse,
+) -> Vec<(berth_core::ContainerId, bytesize::ByteSize)> {
+    let Some(items) = d.container_usage.as_ref().and_then(|u| u.items.as_ref()) else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| {
+            let id = item.get("Id").and_then(serde_json::Value::as_str)?;
+            let size = item.get("SizeRw").and_then(serde_json::Value::as_i64)?;
+            (size >= 0).then(|| {
+                (
+                    berth_core::ContainerId(id.to_string()),
+                    bytesize::ByteSize(to_u64(size)),
+                )
+            })
+        })
+        .collect()
 }
 
 /// Volume name -> size, from the `VolumeUsage.Items` of a system df response.
@@ -1009,6 +1033,22 @@ mod tests {
         assert_eq!(usage.volumes.count, 119);
         assert!(usage.volumes.size.0 > usage.volumes.reclaimable.0);
         assert_eq!(usage.disk_total, None);
+    }
+
+    #[test]
+    fn mappers_disk_usage_container_sizes_are_size_rw_per_container() {
+        let usage = disk_usage(&df());
+        let size_of = |prefix: &str| {
+            usage
+                .container_sizes
+                .iter()
+                .find(|(id, _)| id.0.starts_with(prefix))
+                .map(|(_, size)| size.0)
+        };
+        // The fixture's berthfx-db-1 and berthfx-cache-1 (SizeRw 20480 and 4096).
+        assert_eq!(size_of("2ee92ddaa19b"), Some(20_480));
+        assert_eq!(size_of("c1540b181e90"), Some(4_096));
+        assert_eq!(usage.container_sizes.len(), 4);
     }
 
     #[test]
