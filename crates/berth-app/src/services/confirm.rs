@@ -10,7 +10,7 @@
 
 use berth_core::{
     ColimaOp, Container, ContainerAction, ContainerId, ContainerState, EffectKind, EffectLine,
-    EffectSummary, EngineAction, PruneItem, PruneKind, PrunePlan, Subject, Volume,
+    EffectSummary, EngineAction, Subject, Volume,
 };
 use dioxus::prelude::{ReadableExt, WritableExt};
 
@@ -249,26 +249,19 @@ pub fn delete_model(state: &AppState, ids: &[ContainerId]) -> Option<ConfirmMode
             checkbox,
         });
     }
-    // PLAN §6 has no multi-container `EngineAction`: a bulk delete is a
-    // `Prune` plan of container items, each resolved to its own engine when
-    // it runs.
-    let items = found
-        .iter()
-        .map(|c| PruneItem {
-            kind: PruneKind::Container,
-            id: c.id.0.clone(),
-            name: c.name.clone(),
-            size: None,
-            selected: true,
-        })
-        .collect();
+    // PLAN §6 has no multi-container `EngineAction` and `ConfirmModel` has
+    // no target list, so a bulk model names the first container and `run`
+    // takes the rest from the selection the dialog was opened over (the
+    // dialog is modal: `containers::apply_nav` ignores J/K while it is up).
     Some(ConfirmModel {
         title: format!("Delete {}?", plural(found.len(), "container", "containers")),
         effect,
-        action: EngineAction::Prune {
-            plan: PrunePlan {
-                engine: first.engine.clone(),
-                items,
+        action: EngineAction::Container {
+            engine: first.engine.clone(),
+            id: first.id.clone(),
+            action: ContainerAction::Remove {
+                force: is_active(first.state),
+                volumes: false,
             },
         },
         checkbox: checkbox.map(|(_, on)| ("Also delete their anonymous volumes".to_string(), on)),
@@ -384,6 +377,27 @@ pub fn with_volumes(action: &ContainerAction, checked: bool) -> ContainerAction 
     }
 }
 
+/// The selected containers a bulk delete runs on: the ones `container.delete`
+/// is allowed on right now, in selection order.
+fn bulk_targets(state: &AppState) -> Vec<ContainerId> {
+    let ids = match &*state.selection.peek() {
+        crate::state::Selection::Containers(ids) => ids.clone(),
+        _ => return Vec::new(),
+    };
+    crate::services::actions::with_view(state, |view| {
+        ids.into_iter()
+            .filter(|id| {
+                crate::services::actions::disabled_reason(
+                    &Subject::Container(id.clone()),
+                    "container.delete",
+                    view,
+                )
+                .is_none()
+            })
+            .collect()
+    })
+}
+
 /// Send a confirmed model to the actions service. `checked` is the state
 /// of the dialog's checkbox (it means "also delete anonymous volumes" on a
 /// delete).
@@ -396,24 +410,15 @@ pub fn run(
     let mut out = Launched::default();
     match &model.action {
         EngineAction::Container { id, action, .. } => {
-            launch_container(state, actions, id, with_volumes(action, checked), &mut out);
-        }
-        EngineAction::Prune { plan } => {
-            for item in plan
-                .items
-                .iter()
-                .filter(|i| i.kind == PruneKind::Container && i.selected)
-            {
-                launch_container(
-                    state,
-                    actions,
-                    &ContainerId(item.id.clone()),
-                    ContainerAction::Remove {
-                        force: false,
-                        volumes: checked,
-                    },
-                    &mut out,
-                );
+            let action = with_volumes(action, checked);
+            if model.effect.count > 1 && matches!(action, ContainerAction::Remove { .. }) {
+                // Bulk delete: one container action per selected container,
+                // each with its own pending state and activity entry.
+                for id in bulk_targets(state) {
+                    launch_container(state, actions, &id, action.clone(), &mut out);
+                }
+            } else {
+                launch_container(state, actions, id, action, &mut out);
             }
         }
         EngineAction::Colima { profile, op } => {
@@ -486,7 +491,7 @@ pub async fn watch_result(mut state: AppState, effect: EffectSummary, launched: 
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     };
-    if done > 0 && matches!(effect.verb.as_str(), "Delete" | "Kill") {
+    if done > 0 {
         push_toast(&mut state, result_label(&effect, done), ToastTone::Success);
     }
 }

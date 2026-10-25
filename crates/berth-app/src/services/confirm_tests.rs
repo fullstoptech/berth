@@ -318,6 +318,8 @@ fn Harness() -> Element {
 struct Rig {
     dom: VirtualDom,
     state: AppState,
+    store: Arc<berth_store::Store>,
+    engine: Arc<berth_engine::MockEngine>,
     service: ActionsService,
     finished: tokio::sync::mpsc::UnboundedReceiver<crate::services::actions::Finished>,
 }
@@ -330,14 +332,15 @@ fn rig() -> Rig {
         .expect("harness captured AppState");
     let world = world();
     let clients = crate::services::engines::client_map();
+    let engine = Arc::new(berth_engine::MockEngine::bundled(&default_engine()));
     clients.lock().expect("clients").insert(
         default_engine(),
-        Arc::new(berth_engine::MockEngine::bundled(&default_engine()))
-            as Arc<dyn berth_engine::EngineClient>,
+        Arc::clone(&engine) as Arc<dyn berth_engine::EngineClient>,
     );
+    let store = Arc::new(berth_store::Store::open_in_memory().expect("store"));
     let (service, finished) = ActionsService::new(
         clients,
-        Arc::new(berth_store::Store::open_in_memory().expect("store")),
+        Arc::clone(&store),
         Arc::new(berth_engine::MockCompose::bundled()),
         Arc::new(berth_engine::MockColima::bundled()),
         tokio_util::sync::CancellationToken::new(),
@@ -354,6 +357,8 @@ fn rig() -> Rig {
     Rig {
         dom,
         state,
+        store,
+        engine,
         service,
         finished,
     }
@@ -428,14 +433,18 @@ fn confirm_backspace_with_several_selected_opens_one_bulk_dialog() {
         [Overlay::Confirm(model)] => {
             assert_eq!(model.title, "Delete 3 containers?");
             assert_eq!(model.effect.count, 3);
-            let EngineAction::Prune { plan } = &model.action else {
-                panic!(
-                    "bulk delete rides a container prune plan: {:?}",
-                    model.action
-                );
-            };
-            assert_eq!(plan.items.len(), 3);
-            assert!(plan.items.iter().all(|i| i.selected));
+            // No Prune: the model is a container action on the first one.
+            assert!(
+                matches!(
+                    &model.action,
+                    EngineAction::Container {
+                        action: ContainerAction::Remove { .. },
+                        ..
+                    }
+                ),
+                "{:?}",
+                model.action
+            );
         }
         other => panic!("expected one confirm overlay, got {other:?}"),
     }
@@ -512,14 +521,83 @@ async fn confirm_run_deletes_through_the_actions_service_and_the_result_repeats_
 }
 
 #[tokio::test]
-async fn confirm_run_refuses_what_the_service_refuses_and_counts_only_successes() {
+async fn confirm_bulk_delete_runs_one_container_action_per_selected_container() {
+    use berth_engine::EngineClient as _;
+    let mut rig = rig();
+    // A running one (needs force), an exited one and a third.
+    let names = ["shop-api-api-1", "shop-api-db-1", "old-builder-1"];
+    rig.select(&names);
+    rig.press_backspace();
+    let Some(Overlay::Confirm(model)) = rig.overlays().into_iter().next() else {
+        panic!("a confirm overlay");
+    };
+    assert_eq!(model.effect.count, 3);
+    let mut state = rig.state;
+    let launched = rig
+        .dom
+        .in_runtime(|| run(&mut state, &rig.service, &model, false));
+    assert_eq!(launched.refused, Vec::<String>::new());
+    // One pending key per container, all container.delete, all distinct.
+    assert_eq!(launched.keys.len(), 3);
+    assert!(launched.keys.iter().all(|k| k.action == "container.delete"));
+    let subjects: Vec<_> = launched.keys.iter().map(|k| k.subject.clone()).collect();
+    for name in names {
+        let id = rig.id(name);
+        assert!(
+            subjects.contains(&berth_core::Subject::Container(id)),
+            "{name} has its own pending key"
+        );
+    }
+    let pending = rig.dom.in_runtime(|| state.pending.peek().clone());
+    assert_eq!(finished_count(&pending, &launched.keys), None);
+    for _ in 0..3 {
+        let done = tokio::time::timeout(std::time::Duration::from_secs(5), rig.finished.recv())
+            .await
+            .expect("each delete finishes")
+            .expect("channel open");
+        assert_eq!(done.result, Ok(()));
+        rig.dom
+            .in_runtime(|| crate::services::actions::apply_finished(&mut state, done));
+    }
+    let pending = rig.dom.in_runtime(|| state.pending.peek().clone());
+    let done = finished_count(&pending, &launched.keys).expect("nothing runs now");
+    assert_eq!(done, 3);
+    assert_eq!(result_label(&model.effect, done), "Deleted 3 containers");
+    // The engine no longer has them, and each has its own activity entry.
+    let left: Vec<String> = rig
+        .engine
+        .containers()
+        .await
+        .expect("containers")
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    for name in names {
+        assert!(!left.iter().any(|n| n == name), "{name} still exists");
+    }
+    let entries = rig
+        .store
+        .activity_query(&berth_store::ActivityFilter::default(), None, 10)
+        .expect("activity");
+    let deleted: Vec<&str> = entries
+        .iter()
+        .filter(|e| e.action == "container.delete")
+        .map(|e| e.subject_name.as_str())
+        .collect();
+    assert_eq!(deleted.len(), 3, "{deleted:?}");
+    for name in names {
+        assert!(deleted.contains(&name), "{name} in {deleted:?}");
+    }
+}
+
+#[tokio::test]
+async fn confirm_bulk_delete_skips_a_container_that_vanished_behind_the_dialog() {
     let mut rig = rig();
     rig.select(&["old-builder-1", "shop-api-db-1"]);
     rig.press_backspace();
     let Some(Overlay::Confirm(model)) = rig.overlays().into_iter().next() else {
         panic!("a confirm overlay");
     };
-    // One of the two is removed behind the dialog's back.
     let gone = rig.id("shop-api-db-1");
     let mut state = rig.state;
     rig.dom.in_runtime(|| {
@@ -529,15 +607,27 @@ async fn confirm_run_refuses_what_the_service_refuses_and_counts_only_successes(
         .dom
         .in_runtime(|| run(&mut state, &rig.service, &model, false));
     assert_eq!(launched.keys.len(), 1);
-    assert_eq!(
-        launched.refused,
-        ["This container no longer exists".to_string()]
-    );
     let done = rig.finished.recv().await.expect("one result");
     rig.dom
         .in_runtime(|| crate::services::actions::apply_finished(&mut state, done));
     let pending = rig.dom.in_runtime(|| state.pending.peek().clone());
-    assert_eq!(finished_count(&pending, &launched.keys), Some(1));
+    // The result says what went through, not the dialog's 2.
+    let n = finished_count(&pending, &launched.keys).expect("done");
+    assert_eq!(result_label(&model.effect, n), "Deleted 1 container");
+}
+
+#[test]
+fn confirm_selection_cannot_move_while_a_dialog_is_up() {
+    let rig = rig();
+    rig.select(&["shop-api-api-1", "shop-api-db-1"]);
+    rig.press_backspace();
+    let before = rig.dom.in_runtime(|| rig.state.selection.peek().clone());
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        crate::keys::dispatch(&mut state, "global.select_next");
+    });
+    let after = rig.dom.in_runtime(|| rig.state.selection.peek().clone());
+    assert_eq!(before, after);
 }
 
 #[test]

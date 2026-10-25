@@ -26,10 +26,26 @@ pub struct EffectSummary {
     pub typed_name: Option<String>,
 }
 
+/// The past tense of the verbs an `EffectSummary` carries. Irregular and
+/// doubled-consonant verbs are listed; everything else follows the plain
+/// rules (`e` + d, consonant + `y` becomes `ied`, otherwise + ed).
 fn past_tense(verb: &str) -> String {
     match verb {
         "Write" => "Wrote".to_string(),
+        "Build" => "Built".to_string(),
+        "Stop" => "Stopped".to_string(),
+        "Drop" => "Dropped".to_string(),
+        "Tag" => "Tagged".to_string(),
+        "Pin" => "Pinned".to_string(),
+        "Unpin" => "Unpinned".to_string(),
         v if v.ends_with('e') => format!("{v}d"),
+        v if v
+            .strip_suffix('y')
+            .and_then(|stem| stem.chars().last())
+            .is_some_and(|c| !"aeiouAEIOU".contains(c)) =>
+        {
+            format!("{}ied", &v[..v.len() - 1])
+        }
         v => format!("{v}ed"),
     }
 }
@@ -154,6 +170,39 @@ mod tests {
         s.bytes = None;
         assert_eq!(s.button_label(), "Write 3 files");
         assert_eq!(s.result_label(), "Wrote 3 files");
+    }
+
+    #[test]
+    fn result_label_spells_the_past_tense_of_every_verb_in_use() {
+        let past = |verb: &str| {
+            let mut s = summary();
+            s.verb = verb.to_string();
+            s.count = 2;
+            s.bytes = None;
+            s.result_label()
+        };
+        let table = [
+            ("Start", "Started"),
+            ("Stop", "Stopped"),
+            ("Restart", "Restarted"),
+            ("Pause", "Paused"),
+            ("Unpause", "Unpaused"),
+            ("Kill", "Killed"),
+            ("Delete", "Deleted"),
+            ("Remove", "Removed"),
+            ("Pull", "Pulled"),
+            ("Prune", "Pruned"),
+            ("Write", "Wrote"),
+            ("Rename", "Renamed"),
+            ("Recreate", "Recreated"),
+            ("Apply", "Applied"),
+            ("Copy", "Copied"),
+            ("Play", "Played"),
+            ("Build", "Built"),
+        ];
+        for (verb, done) in table {
+            assert_eq!(past(verb), format!("{done} 2 items"), "{verb}");
+        }
     }
 
     fn item(name: &str, size: Option<ByteSize>, selected: bool) -> PruneItem {

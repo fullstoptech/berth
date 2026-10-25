@@ -1040,6 +1040,12 @@ fn copy_to_clipboard(text: &str) {
 /// rows, Space toggles the inspector. Called from `keys::dispatch`; a
 /// no-op without a provided `ContainersView`.
 pub fn dispatch(state: &mut AppState, action: ActionId) {
+    // A dialog over the table owns the selection (bulk delete reads it).
+    if matches!(action, "global.select_next" | "global.select_prev")
+        && !state.overlays.peek().is_empty()
+    {
+        return;
+    }
     let Some(view) = try_consume_context::<ContainersView>() else {
         return;
     };
