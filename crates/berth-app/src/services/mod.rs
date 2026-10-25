@@ -8,6 +8,7 @@ pub mod compose;
 pub mod confirm;
 pub mod detail;
 pub mod engines;
+pub mod files;
 pub mod group_ops;
 pub mod search;
 pub mod stats;

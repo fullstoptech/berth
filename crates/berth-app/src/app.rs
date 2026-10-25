@@ -283,6 +283,9 @@ pub fn Shell() -> Element {
                             if let Some(dev) = try_consume_context::<crate::scenes::DevStatsPanel>() {
                                 crate::ui::metric_tile::StatsPanelScene { id: dev.0 }
                             }
+                            if let Some(dev) = try_consume_context::<crate::scenes::DevFilesPanel>() {
+                                crate::ui::files_panel::FilesPanelScene { id: dev.0 }
+                            }
                             if *state.section.read() == crate::state::Section::Activity {
                                 crate::screens::activity::ActivityScreen {}
                             }

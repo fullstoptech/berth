@@ -167,6 +167,36 @@ pub fn kill_effect(container: &Container) -> EffectSummary {
     )
 }
 
+/// What uploading one file into a container folder does (Files tab,
+/// P3-T8). `replaces` says a file of that name is already there; the
+/// upload would overwrite it, which is why the dialog asks at all. The
+/// size is in the text because `bytes` means "removes" in the footer.
+#[must_use]
+pub fn upload_effect(
+    dir: &str,
+    name: &str,
+    size: bytesize::ByteSize,
+    replaces: bool,
+) -> EffectSummary {
+    let mut lines = vec![line(
+        EffectKind::Writes,
+        format!("{name} ({}) to {dir}", berth_core::fmt::bytes(size)),
+    )];
+    if replaces {
+        lines.push(line(
+            EffectKind::Changes,
+            format!("The {name} already in {dir} is overwritten"),
+        ));
+    }
+    summary("Upload", "file", "files", 1, lines)
+}
+
+/// The upload dialog's title: names the file and where it goes.
+#[must_use]
+pub fn upload_title(dir: &str, name: &str) -> String {
+    format!("Upload {name} to {dir}?")
+}
+
 /// What stopping or restarting a Colima engine does to its containers.
 #[must_use]
 pub fn engine_effect(stop: bool, running: usize) -> EffectSummary {

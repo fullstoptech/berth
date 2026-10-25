@@ -182,6 +182,56 @@ fn stats_panel(state: &mut AppState) {
     provide_context(DevStatsPanel(container.id));
 }
 
+/// Marks the "Files / panel" dev scene (context provided by its setup, read
+/// by the shell): one mock container's Files tab over an in-memory folder.
+#[derive(Clone)]
+pub(crate) struct DevFilesPanel(pub berth_core::ContainerId);
+
+/// "Files / panel": the Files tab of `shop-api-api-1`, opened on its `/app`
+/// mount, over a small in-memory Node project.
+fn files_panel(state: &mut AppState) {
+    use crate::services::files::{FilesBackend, MemoryFiles};
+    load_mock_world(state);
+    state.settings.write().theme = berth_store::Theme::Light;
+    state.section.set(Section::Settings);
+    let mut containers = state.containers.peek().clone();
+    let Some(container) = containers.iter_mut().find(|c| c.name == "shop-api-api-1") else {
+        return;
+    };
+    container.mounts.insert(
+        0,
+        berth_core::Mount {
+            kind: berth_core::MountKind::Bind,
+            source: "/Users/berth/Dev/clients/acme/shop-api".to_string(),
+            destination: "/app".to_string(),
+            read_only: false,
+            volume_name: None,
+        },
+    );
+    let id = container.id.clone();
+    state.containers.set(containers);
+    let now = chrono::Utc::now().timestamp();
+    let day = 86_400;
+    let files = MemoryFiles::new()
+        .with_dir("/app/node_modules", now - 3 * day)
+        .with_file(
+            "/app/node_modules/.package-lock.json",
+            &[b'x'; 41_000],
+            now - 3 * day,
+        )
+        .with_dir("/app/src", now - 3_600)
+        .with_file("/app/src/server.js", &[b'x'; 3_210], now - 3_600)
+        .with_dir("/app/public", now - 5 * day)
+        .with_file("/app/.env.example", &[b'x'; 212], now - 40 * day)
+        .with_file("/app/Dockerfile", &[b'x'; 418], now - 40 * day)
+        .with_file("/app/package.json", &[b'x'; 1_187], now - 2 * day)
+        .with_file("/app/package-lock.json", &[b'x'; 284_300], now - 2 * day)
+        .with_file("/app/README.md", &[b'x'; 5_940], now - 400 * day)
+        .with_file("/app/server.log", &[b'x'; 12_582_912], now - 90);
+    provide_context(FilesBackend(std::sync::Arc::new(files)));
+    provide_context(DevFilesPanel(id));
+}
+
 fn components_primitives(state: &mut AppState) {
     state.dev_gallery.set(true);
 }
@@ -549,6 +599,10 @@ const SCENES: &[Scene] = &[
         setup: stats_panel,
     },
     Scene {
+        frame: "Files / panel",
+        setup: files_panel,
+    },
+    Scene {
         frame: "Containers / selected / 1440",
         setup: containers_selected,
     },
@@ -637,7 +691,7 @@ mod tests {
         assert!(find("Projects / empty / 1440").is_some());
         assert!(find("Components / primitives").is_some());
         assert!(find("Containers / selected / 1440").is_some());
-        assert_eq!(scenes().len(), 16);
+        assert_eq!(scenes().len(), 17);
         assert!(find("No such frame").is_none());
     }
 
