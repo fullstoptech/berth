@@ -6,7 +6,7 @@ use crate::scenes;
 use crate::services::actions::ActionsService;
 use crate::services::stats::{use_window_visibility, StatsService};
 use crate::services::{action_runners, activity, engines, Services};
-use crate::state::{theme_script, use_app_state, AppState, Overlay};
+use crate::state::{theme_script, use_app_state, AppState, Overlay, Selection};
 use crate::ui::{inspector_visible, BottomPanel, Inspector, Sidebar, StatusBar, TitleBar};
 
 struct Boot {
@@ -98,6 +98,7 @@ pub fn App() -> Element {
     let mut state = use_app_state();
     use_context_provider(|| state);
     crate::screens::containers::provide_containers_view();
+    let details = crate::services::detail::provide_detail_store();
     platform::use_menu_events(state);
 
     // Services spawn once, before scene/theme forcing below (D23).
@@ -115,6 +116,7 @@ pub fn App() -> Element {
         if let Ok(frame) = std::env::var("BERTH_SCENE") {
             if let Some(scene) = scenes::find(&frame) {
                 (scene.setup)(&mut state);
+                scenes::seed_details(&state, details);
             } else if frame != crate::bridge::dev::FRAME {
                 tracing::warn!(%frame, "unknown BERTH_SCENE frame");
             }
@@ -292,7 +294,17 @@ pub fn Shell() -> Element {
                             }
                         }
                         if show_inspector {
-                            Inspector { overlay_open: crate::screens::containers::inspector_toggled() }
+                            Inspector { overlay_open: crate::screens::containers::inspector_toggled(),
+                                // Keyed per container: a new selection remounts the panel.
+                                if let Selection::Containers(ids) = &*state.selection.read() {
+                                    for id in ids.iter().take(1) {
+                                        crate::screens::container_detail::ContainerDetailPanel {
+                                            key: "{id.0}",
+                                            id: id.clone(),
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     BottomPanel {}

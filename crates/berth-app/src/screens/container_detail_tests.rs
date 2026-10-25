@@ -1,0 +1,988 @@
+//! P3-T3 tests: the inspector body in each state (running, exited, restart
+//! loop, paused, removed while open), the tabs and their placeholders, and
+//! the Env tab and Inspect tree showing no env value that was not revealed.
+//!
+//! The values below are made-up stand-ins. The fixture password lives in
+//! `fixtures/` and `scripts/` only (CLAUDE.md); where a test needs the
+//! fixture's real shape it reads it from the fixture file at run time.
+
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use berth_core::{
+    Container, ContainerState, EnvVar, Fix, FixEffect, FixSource, Problem, ProblemId, ProblemKind,
+    Severity,
+};
+use berth_engine::EngineClient;
+
+use super::model::{
+    env_rows, header_buttons, header_menu, mount_line, restart_label, short_id, state_note,
+    tab_strip, visible_tabs, DetailTab, EnvShown, Reveals, REVEAL_FOR,
+};
+use super::*;
+use crate::services::actions::StateView;
+use crate::services::detail::{mask_inspect, provide_detail_store, DetailEntry, Loaded};
+use crate::state::{use_app_state, PendingKey, PendingState};
+
+const SECRET_A: &str = "ex-secret-alpha-93f1";
+const SECRET_B: &str = "ex-secret-bravo-77c2";
+
+fn world() -> berth_engine::MockWorld {
+    berth_engine::MockWorld::bundled()
+}
+
+fn container(name: &str) -> Container {
+    world()
+        .containers
+        .into_iter()
+        .find(|c| c.name == name)
+        .unwrap_or_else(|| panic!("{name} in the mock world"))
+}
+
+/// A detail as the mock engine gives it, with the log lines the service
+/// would have read and the env this test wants.
+fn loaded(c: &Container, env: &[(&str, &str)], last_lines: &[&str]) -> Loaded {
+    let engine = berth_engine::MockEngine::bundled(&c.engine);
+    let mut detail =
+        futures::executor::block_on(engine.container(&c.id)).expect("the mock knows it");
+    detail.container = c.clone();
+    detail.env = env
+        .iter()
+        .map(|(key, value)| EnvVar {
+            key: (*key).to_string(),
+            value: (*value).to_string(),
+        })
+        .collect();
+    let raw_env: Vec<String> = env.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    detail.inspect = serde_json::json!({
+        "Config": { "Env": raw_env, "Image": c.image.reference },
+        "Name": format!("/{}", c.name),
+        "State": { "Status": "running" },
+    });
+    let inspect = mask_inspect(detail.inspect.clone());
+    Loaded {
+        detail,
+        inspect,
+        last_lines: last_lines.iter().map(|l| (*l).to_string()).collect(),
+    }
+}
+
+#[derive(Clone, PartialEq)]
+struct Panel {
+    containers: Vec<Container>,
+    id: berth_core::ContainerId,
+    entry: Option<DetailEntry>,
+    problems: Vec<Problem>,
+    pending: BTreeMap<PendingKey, PendingState>,
+    tab: DetailTab,
+}
+
+impl Panel {
+    fn of(c: &Container) -> Self {
+        Self {
+            containers: world().containers_for(&c.engine),
+            id: c.id.clone(),
+            entry: Some(DetailEntry::Ready(Box::new(loaded(c, &[], &[])))),
+            problems: Vec::new(),
+            pending: BTreeMap::new(),
+            tab: DetailTab::Overview,
+        }
+    }
+
+    fn with(mut self, c: &Container) -> Self {
+        for slot in &mut self.containers {
+            if slot.id == c.id {
+                *slot = c.clone();
+            }
+        }
+        self
+    }
+}
+
+thread_local! {
+    static SLOT: std::cell::RefCell<Option<AppState>> = const { std::cell::RefCell::new(None) };
+}
+
+#[component]
+fn PanelRoot(panel: Panel) -> Element {
+    let mut state = use_app_state();
+    use_context_provider(|| state);
+    let store = provide_detail_store();
+    let seeded = panel.clone();
+    use_hook(move || {
+        SLOT.with(|slot| *slot.borrow_mut() = Some(state));
+        state.containers.set(seeded.containers.clone());
+        state.engines.set(world().engines);
+        state.problems.set(seeded.problems.clone());
+        state.pending.set(seeded.pending.clone());
+        if let Some(entry) = &seeded.entry {
+            let mut entries = store.entries;
+            entries.write().insert(seeded.id.clone(), entry.clone());
+        }
+    });
+    rsx! {
+        ContainerDetailPanel { id: panel.id.clone(), initial_tab: panel.tab }
+    }
+}
+
+fn strip_styles(html: &str) -> String {
+    let mut out = html.to_string();
+    while let (Some(a), Some(b)) = (out.find("<style>"), out.find("</style>")) {
+        if b < a {
+            break;
+        }
+        out.replace_range(a..b + "</style>".len(), "");
+    }
+    out
+}
+
+fn render(panel: Panel) -> String {
+    let mut dom = VirtualDom::new_with_props(PanelRoot, PanelRootProps { panel });
+    let _ = dom.rebuild_to_vec();
+    strip_styles(&dioxus_ssr::render(&dom))
+}
+
+fn count(html: &str, needle: &str) -> usize {
+    html.matches(needle).count()
+}
+
+fn pending_of(
+    c: &Container,
+    action: &'static str,
+    label: &str,
+) -> BTreeMap<PendingKey, PendingState> {
+    BTreeMap::from([(
+        PendingKey {
+            subject: berth_core::Subject::Container(c.id.clone()),
+            action,
+        },
+        PendingState::Running {
+            label: label.to_string(),
+        },
+    )])
+}
+
+fn problem_for(c: &Container, fixes: Vec<Fix>) -> Problem {
+    let kind = ProblemKind::Unhealthy;
+    let subject = berth_core::Subject::Container(c.id.clone());
+    Problem {
+        id: ProblemId::new(&kind, &subject),
+        kind,
+        severity: Severity::Error,
+        subject,
+        title: "worker keeps restarting".to_string(),
+        explanation: "It cannot reach the database.".to_string(),
+        evidence: vec!["Error: connect ECONNREFUSED".to_string()],
+        fixes,
+        first_seen: chrono::Utc::now() - chrono::Duration::seconds(130),
+    }
+}
+
+fn stop_fix(c: &Container) -> Fix {
+    Fix {
+        label: "Stop the restart loop".to_string(),
+        source: FixSource::Rule,
+        effect: FixEffect::RunAction {
+            action: berth_core::EngineAction::Container {
+                engine: c.engine.clone(),
+                id: c.id.clone(),
+                action: ContainerAction::Stop { timeout_s: None },
+            },
+            effect: berth_core::EffectSummary {
+                verb: "Stop".to_string(),
+                noun_one: "container".to_string(),
+                noun_many: "containers".to_string(),
+                count: 1,
+                bytes: None,
+                lines: Vec::new(),
+                typed_name: None,
+            },
+        },
+    }
+}
+
+// ---------------------------------------------------------------------
+// States
+// ---------------------------------------------------------------------
+
+#[test]
+fn inspector_running_container_shows_its_buttons_note_and_overview_rows() {
+    let api = container("shop-api-api-1");
+    let html = render(Panel::of(&api));
+    for needle in [
+        "shop-api-api-1",
+        ">Stop<",
+        ">Restart<",
+        ">Pause<",
+        ">Kill<",
+        ">Delete…<",
+        "Image",
+        "Command",
+        "Ports",
+        "Mounts",
+        "Networks",
+        "Restart policy",
+        "role=\"tabpanel\"",
+    ] {
+        assert!(html.contains(needle), "missing {needle}: {html}");
+    }
+    assert!(html.contains("Up "), "the uptime note: {html}");
+    assert!(!html.contains("Exit code"), "a running container has none");
+    assert!(!html.contains("Last "), "no log tail while running");
+}
+
+#[test]
+fn inspector_exited_container_shows_exit_code_and_its_last_lines() {
+    let db = container("shop-api-db-1");
+    assert_eq!(db.state, ContainerState::Exited);
+    let mut panel = Panel::of(&db);
+    panel.entry = Some(DetailEntry::Ready(Box::new(loaded(
+        &db,
+        &[],
+        &["PostgreSQL init", "FATAL: port is already allocated"],
+    ))));
+    let html = render(panel);
+    assert!(html.contains("Exit code"), "{html}");
+    assert!(
+        html.contains("kv-danger"),
+        "a non-zero code is danger: {html}"
+    );
+    assert!(html.contains("Last 2 lines"), "{html}");
+    assert!(html.contains("FATAL: port is already allocated"), "{html}");
+    // Start replaces Stop; Pause and Kill say why they cannot run.
+    assert!(html.contains(">Start<"), "{html}");
+    assert!(
+        html.contains("data-tooltip=\"Only a running container can be paused\""),
+        "{html}"
+    );
+    assert!(html.contains("data-tooltip=\"Not running\""), "{html}");
+}
+
+#[test]
+fn inspector_exited_container_without_output_says_so() {
+    let db = container("shop-api-db-1");
+    let html = render(Panel::of(&db));
+    assert!(html.contains("No output."), "{html}");
+}
+
+#[test]
+fn inspector_restart_loop_shows_the_count_and_offers_to_stop_it() {
+    let worker = container("shop-api-worker-1");
+    assert_eq!(worker.state, ContainerState::Restarting);
+    let html = render(Panel::of(&worker));
+    assert!(html.contains("restarted 14 times"), "{html}");
+    assert!(html.contains("Restarting (1)"), "Docker's wording: {html}");
+    assert!(html.contains("keeps restarting"), "{html}");
+    assert_eq!(count(&html, "Stop the restart loop"), 1, "{html}");
+    assert!(html.contains("restarted 14 times."), "{html}");
+}
+
+#[test]
+fn inspector_restart_loop_with_a_problem_that_stops_it_shows_one_card_not_two() {
+    let worker = container("shop-api-worker-1");
+    let mut panel = Panel::of(&worker);
+    panel.problems = vec![problem_for(&worker, vec![stop_fix(&worker)])];
+    let html = render(panel);
+    assert_eq!(count(&html, "Stop the restart loop"), 1, "{html}");
+    assert!(
+        !html.contains("shop-api-worker-1 keeps restarting"),
+        "the built-in card: {html}"
+    );
+    assert!(html.contains("worker keeps restarting"), "{html}");
+    assert!(html.contains("ECONNREFUSED"), "{html}");
+    assert!(!html.contains("Go to "), "no dependency named: {html}");
+}
+
+#[test]
+fn inspector_problem_card_offers_the_dependency_it_names() {
+    let worker = container("shop-api-worker-1");
+    let mut problem = problem_for(&worker, vec![stop_fix(&worker)]);
+    problem.kind = ProblemKind::DependencyFailed {
+        service: "db".to_string(),
+    };
+    let mut panel = Panel::of(&worker);
+    panel.problems = vec![problem];
+    let html = render(panel);
+    assert!(html.contains("Go to shop-api-db-1"), "{html}");
+}
+
+#[test]
+fn inspector_a_harness_fix_is_disabled_until_a_harness_exists() {
+    let worker = container("shop-api-worker-1");
+    let ai = Fix {
+        label: "Fix with Claude Code".to_string(),
+        source: FixSource::Harness(berth_core::HarnessId("claude".to_string())),
+        effect: FixEffect::Explain,
+    };
+    let mut panel = Panel::of(&worker);
+    panel.problems = vec![problem_for(&worker, vec![stop_fix(&worker), ai])];
+    let html = render(panel);
+    assert!(html.contains("Fix with Claude Code"), "{html}");
+    assert!(
+        html.contains("data-tooltip=\"Needs a harness (P7-T6)\""),
+        "{html}"
+    );
+}
+
+#[test]
+fn inspector_paused_container_offers_resume_and_says_it_is_paused() {
+    let mut paused = container("shop-api-api-1");
+    paused.state = ContainerState::Paused;
+    let html = render(Panel::of(&paused).with(&paused));
+    assert!(html.contains(">Resume<"), "{html}");
+    assert!(!html.contains(">Pause<"), "{html}");
+    assert!(html.contains("Paused. Its processes are frozen"), "{html}");
+    assert!(html.contains("Paused, up"), "{html}");
+}
+
+#[test]
+fn inspector_pending_action_shows_its_label_and_disables_the_buttons() {
+    let api = container("shop-api-api-1");
+    let mut panel = Panel::of(&api);
+    panel.pending = pending_of(&api, "container.stop", "Stopping…");
+    let html = render(panel);
+    assert!(html.contains("Stopping…"), "{html}");
+    assert!(html.contains("aria-busy=\"true\""), "{html}");
+    assert!(
+        html.contains("data-tooltip=\"Stopping… is still in progress\""),
+        "{html}"
+    );
+}
+
+#[test]
+fn inspector_a_failed_action_shows_the_engines_message_and_a_dismiss() {
+    let api = container("shop-api-api-1");
+    let mut panel = Panel::of(&api);
+    panel.pending = BTreeMap::from([(
+        PendingKey {
+            subject: berth_core::Subject::Container(api.id.clone()),
+            action: "container.stop",
+        },
+        PendingState::Failed {
+            message: "permission denied".to_string(),
+        },
+    )]);
+    let html = render(panel);
+    assert!(html.contains("permission denied"), "{html}");
+    assert!(html.contains("Dismiss"), "{html}");
+}
+
+#[test]
+fn inspector_removed_while_open_keeps_the_name_and_says_it_was_removed() {
+    let worker = container("shop-api-worker-1");
+    let mut dom = VirtualDom::new_with_props(
+        PanelRoot,
+        PanelRootProps {
+            panel: Panel::of(&worker),
+        },
+    );
+    let _ = dom.rebuild_to_vec();
+    let state = SLOT
+        .with(|slot| slot.borrow_mut().take())
+        .expect("the panel captured the state");
+    let before = strip_styles(&dioxus_ssr::render(&dom));
+    assert!(before.contains("Stop the restart loop"), "{before}");
+
+    dom.in_runtime(|| {
+        let mut state = state;
+        state.containers.write().retain(|c| c.id != worker.id);
+    });
+    dom.render_immediate(&mut dioxus::core::NoOpMutations);
+    let after = strip_styles(&dioxus_ssr::render(&dom));
+    assert!(after.contains("shop-api-worker-1"), "{after}");
+    assert!(after.contains("This container was removed."), "{after}");
+    assert!(after.contains("Close"), "{after}");
+    assert!(!after.contains("Stop the restart loop"), "{after}");
+}
+
+#[test]
+fn inspector_loading_and_failed_details_say_so_instead_of_an_empty_body() {
+    let api = container("shop-api-api-1");
+    let mut panel = Panel::of(&api);
+    panel.entry = None;
+    let html = render(panel);
+    assert!(html.contains("Loading details…"), "{html}");
+    let mut failed = Panel::of(&api);
+    failed.entry = Some(DetailEntry::Failed {
+        message: "engine said no".to_string(),
+        gone: false,
+    });
+    let html = render(failed);
+    assert!(
+        html.contains("Could not read the details: engine said no"),
+        "{html}"
+    );
+    let mut gone = Panel::of(&api);
+    gone.entry = Some(DetailEntry::Failed {
+        message: "x".to_string(),
+        gone: true,
+    });
+    assert!(render(gone).contains("no longer exists"));
+    // The header stays usable while the body loads.
+    assert!(html.contains(">Stop<"), "{html}");
+}
+
+// ---------------------------------------------------------------------
+// Tabs
+// ---------------------------------------------------------------------
+
+#[test]
+fn inspector_tab_strip_shows_five_tabs_and_keeps_a_selected_overflow_tab_visible() {
+    let (items, overflow) = tab_strip(DetailTab::Overview);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert_eq!(labels, ["Overview", "Logs", "Terminal", "Stats", "Inspect"]);
+    let menu: Vec<&str> = overflow.iter().map(|e| e.label.as_str()).collect();
+    assert_eq!(menu, ["Env", "Mounts", "Files", "Limits"]);
+
+    let (items, overflow) = tab_strip(DetailTab::Env);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert_eq!(labels, ["Overview", "Logs", "Terminal", "Stats", "Env"]);
+    assert!(overflow.iter().any(|e| e.label == "Inspect"));
+    assert!(!overflow.iter().any(|e| e.label == "Env"));
+    assert_eq!(visible_tabs(DetailTab::Limits)[4], DetailTab::Limits);
+}
+
+#[test]
+fn inspector_tabs_another_task_builds_say_which_task() {
+    let api = container("shop-api-api-1");
+    for (tab, task) in [
+        (DetailTab::Logs, "P3-T2"),
+        (DetailTab::Terminal, "P3-T6"),
+        (DetailTab::Stats, "P3-T4"),
+        (DetailTab::Files, "P3-T8"),
+        (DetailTab::Limits, "P3-T7"),
+    ] {
+        let mut panel = Panel::of(&api);
+        panel.tab = tab;
+        let html = render(panel);
+        assert!(
+            html.contains(&format!("Built in {task}")),
+            "{tab:?}: {html}"
+        );
+    }
+}
+
+#[test]
+fn inspector_header_menu_lists_the_later_items_disabled_with_their_task() {
+    let menu = header_menu();
+    let by_id = |id: &str| menu.iter().find(|e| e.id == id).expect(id).clone();
+    for id in ["edit", "duplicate", "recreate", "rename", "save-image"] {
+        let reason = by_id(id).disabled_reason.expect("disabled");
+        assert!(reason.starts_with("Built in P"), "{id}: {reason}");
+    }
+    assert!(by_id("copy-id").disabled_reason.is_none());
+}
+
+#[test]
+fn inspector_mounts_tab_lists_each_mount_relative_to_the_compose_folder() {
+    let worker = container("shop-api-worker-1");
+    let mut panel = Panel::of(&worker);
+    panel.tab = DetailTab::Mounts;
+    let html = render(panel);
+    assert!(html.contains("./worker → /app (bind)"), "{html}");
+    let mut none = worker.clone();
+    none.mounts.clear();
+    let mut panel = Panel::of(&none).with(&none);
+    panel.tab = DetailTab::Mounts;
+    assert!(render(panel).contains("No mounts."));
+}
+
+// ---------------------------------------------------------------------
+// Env: nothing until revealed
+// ---------------------------------------------------------------------
+
+#[component]
+fn EnvHost(rows: Vec<model::EnvRow>) -> Element {
+    rsx! { EnvList { rows, onreveal: |_| {}, onhide: |_| {} } }
+}
+
+#[component]
+fn TreeHost(value: Arc<serde_json::Value>, open: std::collections::HashSet<String>) -> Element {
+    rsx! { JsonTree { value, open, ontoggle: |_| {} } }
+}
+
+fn env_panel(tab: DetailTab) -> Panel {
+    let api = container("shop-api-api-1");
+    let mut panel = Panel::of(&api);
+    panel.entry = Some(DetailEntry::Ready(Box::new(loaded(
+        &api,
+        &[("DB_PASSWORD", SECRET_A), ("API_TOKEN", SECRET_B)],
+        &[],
+    ))));
+    panel.tab = tab;
+    panel
+}
+
+#[test]
+fn inspector_env_tab_lists_keys_masked_and_no_value_before_a_reveal() {
+    let html = render(env_panel(DetailTab::Env));
+    assert!(html.contains("DB_PASSWORD"), "{html}");
+    assert!(html.contains("API_TOKEN"), "{html}");
+    assert_eq!(count(&html, "••••"), 2, "{html}");
+    assert!(!html.contains(SECRET_A), "value leaked: {html}");
+    assert!(!html.contains(SECRET_B), "value leaked: {html}");
+    assert!(html.contains("Show the value of DB_PASSWORD"), "{html}");
+    assert!(html.contains("30 seconds"), "{html}");
+}
+
+#[test]
+fn inspector_no_other_tab_shows_an_env_value() {
+    for tab in [
+        DetailTab::Overview,
+        DetailTab::Inspect,
+        DetailTab::Mounts,
+        DetailTab::Env,
+    ] {
+        let html = render(env_panel(tab));
+        assert!(!html.contains(SECRET_A), "{tab:?} leaked a value: {html}");
+        assert!(!html.contains(SECRET_B), "{tab:?} leaked a value: {html}");
+    }
+}
+
+#[test]
+fn inspector_env_list_after_a_reveal_shows_only_that_one_value() {
+    let env = vec![
+        EnvVar {
+            key: "DB_PASSWORD".to_string(),
+            value: SECRET_A.to_string(),
+        },
+        EnvVar {
+            key: "API_TOKEN".to_string(),
+            value: SECRET_B.to_string(),
+        },
+    ];
+    let now = Instant::now();
+    let mut reveals = Reveals::default();
+    reveals.reveal("DB_PASSWORD", now);
+    let rows = env_rows(&env, &reveals, now);
+    let mut dom = VirtualDom::new_with_props(EnvHost, EnvHostProps { rows });
+    let _ = dom.rebuild_to_vec();
+    let html = dioxus_ssr::render(&dom);
+    assert!(html.contains(SECRET_A), "{html}");
+    assert!(!html.contains(SECRET_B), "{html}");
+    assert!(html.contains("Hide the value of DB_PASSWORD"), "{html}");
+    assert!(html.contains("Show the value of API_TOKEN"), "{html}");
+    assert_eq!(count(&html, "••••"), 1, "{html}");
+}
+
+#[test]
+fn inspector_a_revealed_value_masks_again_after_thirty_seconds() {
+    let env = vec![EnvVar {
+        key: "DB_PASSWORD".to_string(),
+        value: SECRET_A.to_string(),
+    }];
+    let t0 = Instant::now();
+    let mut reveals = Reveals::default();
+    reveals.reveal("DB_PASSWORD", t0);
+    let shown = |now| env_rows(&env, &reveals, now)[0].shown.clone();
+    assert_eq!(
+        shown(t0 + Duration::from_secs(29)),
+        EnvShown::Revealed(SECRET_A.to_string())
+    );
+    assert_eq!(shown(t0 + REVEAL_FOR), EnvShown::Masked);
+    assert_eq!(REVEAL_FOR, Duration::from_secs(30));
+}
+
+#[test]
+fn inspector_reveals_are_per_key_and_expire_and_hide_independently() {
+    let t0 = Instant::now();
+    let mut reveals = Reveals::default();
+    reveals.reveal("A", t0);
+    reveals.reveal("B", t0 + Duration::from_secs(10));
+    assert!(!reveals.is_revealed("C", t0));
+    reveals.expire(t0 + Duration::from_secs(31));
+    assert!(!reveals.is_revealed("A", t0 + Duration::from_secs(31)));
+    assert!(reveals.is_revealed("B", t0 + Duration::from_secs(31)));
+    reveals.hide("B");
+    assert!(!reveals.is_revealed("B", t0 + Duration::from_secs(31)));
+}
+
+#[test]
+fn inspector_an_env_row_that_is_masked_carries_no_value_at_all() {
+    let env = vec![EnvVar {
+        key: "K".to_string(),
+        value: SECRET_A.to_string(),
+    }];
+    let rows = env_rows(&env, &Reveals::default(), Instant::now());
+    assert_eq!(rows[0].shown, EnvShown::Masked);
+    assert!(!format!("{rows:?}").contains(SECRET_A));
+    // A revealed one does not print its value either.
+    let mut reveals = Reveals::default();
+    let now = Instant::now();
+    reveals.reveal("K", now);
+    let rows = env_rows(&env, &reveals, now);
+    assert!(!format!("{rows:?}").contains(SECRET_A));
+}
+
+#[test]
+fn inspector_env_without_variables_says_so() {
+    let api = container("shop-api-api-1");
+    let mut panel = Panel::of(&api);
+    panel.tab = DetailTab::Env;
+    let html = render(panel);
+    assert!(html.contains("No environment variables."), "{html}");
+}
+
+// ---------------------------------------------------------------------
+// Inspect: the masked tree
+// ---------------------------------------------------------------------
+
+/// The real shape of a Docker inspect (the fixture captured from
+/// `berthfx-db-1`), with its real env: every value must be gone from the
+/// tree while every key stays.
+#[test]
+fn inspector_inspect_tree_of_the_fixture_shows_no_env_value() {
+    let raw: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../fixtures/docker/inspect-db.json"))
+            .expect("fixture parses");
+    let env: Vec<String> = raw["Config"]["Env"]
+        .as_array()
+        .expect("fixture has Config.Env")
+        .iter()
+        .filter_map(|e| e.as_str().map(ToString::to_string))
+        .collect();
+    assert!(env.iter().any(|e| e.starts_with("POSTGRES_PASSWORD=")));
+    let values: Vec<&str> = env
+        .iter()
+        .filter_map(|e| e.split_once('=').map(|(_, v)| v))
+        .filter(|v| v.len() > 3 && *v != "••••")
+        .collect();
+    assert!(!values.is_empty());
+
+    let masked = mask_inspect(raw);
+    let open: std::collections::HashSet<String> = ["", "/Config", "/Config/Env"]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    let mut dom = VirtualDom::new_with_props(
+        TreeHost,
+        TreeHostProps {
+            value: Arc::new(masked),
+            open,
+        },
+    );
+    let _ = dom.rebuild_to_vec();
+    let html = dioxus_ssr::render(&dom);
+    assert!(html.contains("POSTGRES_PASSWORD=••••"), "{html}");
+    for value in values {
+        assert!(
+            !html.contains(value),
+            "an env value reached the tree: {value}"
+        );
+    }
+}
+
+#[test]
+fn inspector_inspect_tab_starts_collapsed_and_has_a_search_field() {
+    let html = render(env_panel(DetailTab::Inspect));
+    assert!(html.contains("aria-label=\"Search the inspect\""), "{html}");
+    assert!(html.contains("role=\"tree\""), "{html}");
+    assert!(html.contains("Config"), "{html}");
+    // Collapsed: the env array's entries are not drawn yet.
+    assert!(!html.contains("DB_PASSWORD=••••"), "{html}");
+}
+
+// ---------------------------------------------------------------------
+// The view model
+// ---------------------------------------------------------------------
+
+#[test]
+fn inspector_state_note_reads_like_dockers_status() {
+    let now = chrono::Utc::now();
+    let mut c = container("shop-api-worker-1");
+    c.started = Some(now - chrono::Duration::seconds(3));
+    assert_eq!(
+        state_note(&c, now).as_deref(),
+        Some("Restarting (1) 3 seconds ago · restarted 14 times")
+    );
+    c.restart_count = 1;
+    assert!(state_note(&c, now)
+        .expect("a note")
+        .ends_with("restarted 1 time"));
+    c.restart_count = 0;
+    c.state = ContainerState::Running;
+    c.started = Some(now - chrono::Duration::hours(2));
+    assert_eq!(state_note(&c, now).as_deref(), Some("Up 2 h"));
+    c.state = ContainerState::Exited;
+    c.started = None;
+    assert_eq!(state_note(&c, now), None);
+}
+
+#[test]
+fn inspector_short_id_is_twelve_characters() {
+    assert_eq!(short_id("7b2e91c04f3a1d2c994f"), "7b2e91c04f3a");
+    assert_eq!(short_id("abc"), "abc");
+}
+
+#[test]
+fn inspector_restart_policy_and_mount_lines_read_like_docker() {
+    use berth_core::{Mount, MountKind, RestartPolicy};
+    assert_eq!(
+        restart_label(&RestartPolicy::UnlessStopped),
+        "unless-stopped"
+    );
+    assert_eq!(
+        restart_label(&RestartPolicy::OnFailure { max_retries: 3 }),
+        "on-failure:3"
+    );
+    assert_eq!(
+        restart_label(&RestartPolicy::OnFailure { max_retries: 0 }),
+        "on-failure"
+    );
+    let home = std::path::Path::new("/Users/someone");
+    let bind = |source: &str, ro: bool| Mount {
+        kind: MountKind::Bind,
+        source: source.to_string(),
+        destination: "/app".to_string(),
+        read_only: ro,
+        volume_name: None,
+    };
+    assert_eq!(
+        mount_line(&bind("/srv/shop/worker", false), Some("/srv/shop"), home),
+        "./worker → /app (bind)"
+    );
+    assert_eq!(
+        mount_line(&bind("/Users/someone/code", true), None, home),
+        "~/code → /app (bind, read-only)"
+    );
+    let volume = Mount {
+        kind: MountKind::Volume,
+        source: "/var/lib/docker/volumes/pg/_data".to_string(),
+        destination: "/data".to_string(),
+        read_only: false,
+        volume_name: Some("pg".to_string()),
+    };
+    assert_eq!(mount_line(&volume, None, home), "pg → /data (volume)");
+}
+
+#[test]
+fn inspector_header_buttons_follow_the_state_and_carry_the_reasons() {
+    let world = world();
+    let pending = BTreeMap::new();
+    let view = StateView {
+        engines: &world.engines,
+        containers: &world.containers,
+        projects: &world.projects,
+        images: &[],
+        volumes: &[],
+        networks: &[],
+        pending: &pending,
+    };
+    let running = header_buttons(&container("shop-api-api-1"), &view);
+    let ids: Vec<&str> = running.iter().map(|b| b.id).collect();
+    assert_eq!(
+        ids,
+        ["start-stop", "restart", "pause-resume", "kill", "delete"]
+    );
+    assert_eq!(running[0].label, "Stop");
+    assert!(running.iter().all(|b| b.disabled_reason.is_none()));
+
+    let stopped = header_buttons(&container("shop-api-db-1"), &view);
+    assert_eq!(stopped[0].label, "Start");
+    assert_eq!(
+        stopped[2].disabled_reason.as_deref(),
+        Some("Only a running container can be paused")
+    );
+    assert_eq!(stopped[3].disabled_reason.as_deref(), Some("Not running"));
+}
+
+// ---------------------------------------------------------------------
+// Clicks reach the actions service and the confirm dialogs
+// ---------------------------------------------------------------------
+
+struct Rig {
+    dom: VirtualDom,
+    state: AppState,
+    service: ActionsService,
+}
+
+thread_local! {
+    static RIG: std::cell::RefCell<Option<AppState>> = const { std::cell::RefCell::new(None) };
+}
+
+#[component]
+fn RigHarness() -> Element {
+    let state = use_app_state();
+    use_hook(move || RIG.with(|slot| *slot.borrow_mut() = Some(state)));
+    rsx! { div {} }
+}
+
+fn rig() -> Rig {
+    let mut dom = VirtualDom::new(RigHarness);
+    let _ = dom.rebuild_to_vec();
+    let state = RIG
+        .with(|slot| slot.borrow_mut().take())
+        .expect("harness captured the state");
+    let world = world();
+    let default = berth_core::EngineId("colima:default".to_string());
+    let clients = crate::services::engines::client_map();
+    clients.lock().expect("clients").insert(
+        default.clone(),
+        Arc::new(berth_engine::MockEngine::bundled(&default)) as Arc<dyn EngineClient>,
+    );
+    let (service, _finished) = ActionsService::new(
+        clients,
+        Arc::new(berth_store::Store::open_in_memory().expect("store")),
+        Arc::new(berth_engine::MockCompose::bundled()),
+        Arc::new(berth_engine::MockColima::bundled()),
+        tokio_util::sync::CancellationToken::new(),
+    );
+    dom.in_runtime(|| {
+        let mut state = state;
+        state.engines.set(world.engines.clone());
+        state.containers.set(world.containers_for(&default));
+    });
+    Rig {
+        dom,
+        state,
+        service,
+    }
+}
+
+impl Rig {
+    fn container(&self, name: &str) -> Container {
+        self.dom.in_runtime(|| {
+            self.state
+                .containers
+                .peek()
+                .iter()
+                .find(|c| c.name == name)
+                .cloned()
+                .expect(name)
+        })
+    }
+
+    fn pending_actions(&self) -> Vec<&'static str> {
+        self.dom
+            .in_runtime(|| self.state.pending.peek().keys().map(|k| k.action).collect())
+    }
+
+    fn overlays(&self) -> Vec<Overlay> {
+        self.dom.in_runtime(|| self.state.overlays.peek().clone())
+    }
+}
+
+#[tokio::test]
+async fn inspector_stop_button_on_a_running_container_stops_it() {
+    let rig = rig();
+    let api = rig.container("shop-api-api-1");
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        header_click(&mut state, Some(&rig.service), &api, "start-stop");
+    });
+    assert_eq!(rig.pending_actions(), ["container.stop"]);
+}
+
+#[tokio::test]
+async fn inspector_start_button_on_an_exited_container_starts_it() {
+    let rig = rig();
+    let grafana = rig.container("analytics-grafana-1");
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        header_click(&mut state, Some(&rig.service), &grafana, "start-stop");
+    });
+    assert_eq!(rig.pending_actions(), ["container.start"]);
+}
+
+#[tokio::test]
+async fn inspector_stop_the_restart_loop_stops_that_container() {
+    let rig = rig();
+    let worker = rig.container("shop-api-worker-1");
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        fix_click(
+            &mut state,
+            Some(&rig.service),
+            &format!("stop-loop:{}", worker.id.0),
+        );
+    });
+    assert_eq!(rig.pending_actions(), ["container.stop"]);
+}
+
+#[tokio::test]
+async fn inspector_a_problems_run_action_fix_runs_through_the_service() {
+    let rig = rig();
+    let worker = rig.container("shop-api-worker-1");
+    let problem = problem_for(&worker, vec![stop_fix(&worker)]);
+    let fix_id = format!("{}#0", problem.id.0);
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        state.problems.set(vec![problem]);
+        fix_click(&mut state, Some(&rig.service), &fix_id);
+    });
+    assert_eq!(rig.pending_actions(), ["container.stop"]);
+}
+
+#[tokio::test]
+async fn inspector_go_to_selects_the_dependency() {
+    let rig = rig();
+    let db = rig.container("shop-api-db-1");
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        fix_click(&mut state, Some(&rig.service), &format!("goto:{}", db.id.0));
+    });
+    let selection = rig.dom.in_runtime(|| rig.state.selection.peek().clone());
+    assert_eq!(selection, Selection::Containers(vec![db.id]));
+}
+
+#[tokio::test]
+async fn inspector_kill_and_delete_ask_first_with_their_own_targets() {
+    let rig = rig();
+    let api = rig.container("shop-api-api-1");
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        header_click(&mut state, Some(&rig.service), &api, "kill");
+    });
+    match rig.overlays().as_slice() {
+        [Overlay::Confirm(model)] => {
+            assert_eq!(model.title, "Kill shop-api-api-1?");
+            assert_eq!(
+                model.targets.len(),
+                usize::try_from(model.effect.count).unwrap_or(0)
+            );
+        }
+        other => panic!("one kill dialog, got {other:?}"),
+    }
+    assert!(
+        rig.pending_actions().is_empty(),
+        "nothing ran without a click"
+    );
+
+    let db = rig.container("shop-api-db-1");
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        state.overlays.write().clear();
+        header_click(&mut state, Some(&rig.service), &db, "delete");
+    });
+    match rig.overlays().as_slice() {
+        [Overlay::Confirm(model)] => assert_eq!(model.title, "Delete container shop-api-db-1?"),
+        other => panic!("one delete dialog, got {other:?}"),
+    }
+    assert!(rig.pending_actions().is_empty());
+}
+
+#[tokio::test]
+async fn inspector_pause_then_resume_pick_the_right_action() {
+    let rig = rig();
+    let api = rig.container("shop-api-api-1");
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        header_click(&mut state, Some(&rig.service), &api, "pause-resume");
+    });
+    assert_eq!(rig.pending_actions(), ["container.pause"]);
+
+    let rig = self::rig();
+    let mut paused = rig.container("shop-api-api-1");
+    paused.state = ContainerState::Paused;
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        state.containers.write().iter_mut().for_each(|c| {
+            if c.id == paused.id {
+                c.state = ContainerState::Paused;
+            }
+        });
+        header_click(&mut state, Some(&rig.service), &paused, "pause-resume");
+    });
+    assert_eq!(rig.pending_actions(), ["container.resume"]);
+}

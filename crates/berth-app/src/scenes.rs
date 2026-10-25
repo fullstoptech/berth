@@ -282,6 +282,113 @@ fn containers_selected(state: &mut AppState) {
             .set(Selection::Containers(vec![worker.id.clone()]));
     }
     state.problems.set(mock_problems(&containers));
+    frame_worker_state(state);
+}
+
+/// What the frame's inspector shows of the restarting worker: it last
+/// started 3 seconds ago, and its problem (2 min old) has the explanation,
+/// evidence and fixes of the card (P3-T3).
+fn frame_worker_state(state: &mut AppState) {
+    use berth_core::{
+        ContainerAction, ContainerId, EffectSummary, EngineAction, Fix, FixEffect, FixSource,
+        HarnessId,
+    };
+    let now = chrono::Utc::now();
+    let worker = {
+        let mut containers = state.containers.write();
+        containers
+            .iter_mut()
+            .find(|c| c.name == "shop-api-worker-1")
+            .map(|worker| {
+                worker.started = Some(now - chrono::Duration::seconds(3));
+                (worker.engine.clone(), worker.id.clone())
+            })
+    };
+    let Some((engine, id)) = worker else { return };
+    let mut problems = state.problems.peek().clone();
+    if let Some(problem) = problems.first_mut() {
+        problem.first_seen = now - chrono::Duration::seconds(130);
+        problem.explanation = "The worker exits with code 1 about 3 seconds after starting \
+            because it cannot reach the database. It has restarted 14 times."
+            .to_string();
+        problem.evidence = vec![
+            "Error: connect ECONNREFUSED 172.19.0.3:5432".to_string(),
+            "at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)".to_string(),
+        ];
+        problem.fixes = vec![
+            Fix {
+                label: "Stop the restart loop".to_string(),
+                source: FixSource::Rule,
+                effect: FixEffect::RunAction {
+                    action: EngineAction::Container {
+                        engine,
+                        id: ContainerId(id.0),
+                        action: ContainerAction::Stop { timeout_s: None },
+                    },
+                    effect: EffectSummary {
+                        verb: "Stop".to_string(),
+                        noun_one: "container".to_string(),
+                        noun_many: "containers".to_string(),
+                        count: 1,
+                        bytes: None,
+                        lines: Vec::new(),
+                        typed_name: None,
+                    },
+                },
+            },
+            Fix {
+                label: "Fix with Claude Code".to_string(),
+                source: FixSource::Harness(HarnessId("claude".to_string())),
+                effect: FixEffect::Explain,
+            },
+        ];
+    }
+    state.problems.set(problems);
+}
+
+/// Give the selected containers their detail from the mock engine, as the
+/// detail service would have loaded it. Scenes run no service (D58), so
+/// this is the one place a scene reads an engine, and the mock has no I/O.
+pub fn seed_details(state: &AppState, store: crate::services::detail::DetailStore) {
+    let Selection::Containers(ids) = state.selection.peek().clone() else {
+        return;
+    };
+    let world = crate::services::mock_world_at(chrono::Utc::now());
+    let containers = state.containers.peek().clone();
+    for container in ids
+        .iter()
+        .filter_map(|id| containers.iter().find(|c| c.id == *id))
+    {
+        let Ok(engine) = berth_engine::MockEngine::from_world(world.clone(), &container.engine)
+        else {
+            continue;
+        };
+        let target = container.clone();
+        // A short-lived thread with its own runtime: the log read has a
+        // timeout, and this may run inside another runtime already.
+        let loaded = std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_time()
+                        .build()
+                        .ok()?;
+                    runtime
+                        .block_on(crate::services::detail::load(
+                            &engine,
+                            &target,
+                            tokio_util::sync::CancellationToken::new(),
+                        ))
+                        .ok()
+                })
+                .join()
+                .ok()
+                .flatten()
+        });
+        if let Some(loaded) = loaded {
+            store.seed(container, loaded);
+        }
+    }
 }
 
 /// Activity has no frame; mock history on every engine (P2-T10).
@@ -497,10 +604,12 @@ fn SceneRoot(frame: String) -> Element {
     let mut state = use_app_state();
     use_context_provider(|| state);
     crate::screens::containers::provide_containers_view();
+    let details = crate::services::detail::provide_detail_store();
     let setup_frame = frame.clone();
     use_hook(move || {
         if let Some(scene) = find(&setup_frame) {
             (scene.setup)(&mut state);
+            seed_details(&state, details);
         }
     });
     rsx! { Shell {} }

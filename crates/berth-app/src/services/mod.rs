@@ -6,6 +6,7 @@ pub mod activity;
 pub mod colima;
 pub mod compose;
 pub mod confirm;
+pub mod detail;
 pub mod engines;
 pub mod group_ops;
 pub mod search;

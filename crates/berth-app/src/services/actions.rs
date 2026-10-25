@@ -553,7 +553,7 @@ impl Inner {
     }
 }
 
-fn spawn_io(future: impl std::future::Future<Output = ()> + Send + 'static) {
+pub(crate) fn spawn_io(future: impl std::future::Future<Output = ()> + Send + 'static) {
     if tokio::runtime::Handle::try_current().is_ok() {
         tokio::spawn(future);
     } else {
