@@ -1362,6 +1362,7 @@ fn confirm_model(state: &AppState, action: ActionId, subject: &Subject) -> Optio
                 .filter(|c| c.engine == engine.id && c.state == ContainerState::Running)
                 .count();
             Some(confirm::engine_model(
+                &engine.id,
                 &engine.name,
                 profile,
                 colima_op_of(action)?,

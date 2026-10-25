@@ -280,6 +280,7 @@ fn sample_model(effect: EffectSummary) -> ConfirmModel {
             },
         },
         checkbox: None,
+        targets: vec![berth_core::Subject::Container(ContainerId("x".to_string()))],
     }
 }
 
@@ -658,6 +659,11 @@ async fn confirm_bulk_delete_skips_a_container_that_vanished_behind_the_dialog()
         .dom
         .in_runtime(|| run(&mut state, &rig.service, &model, false));
     assert_eq!(launched.keys.len(), 1);
+    assert_eq!(
+        launched.refused,
+        ["This container no longer exists"],
+        "the vanished target is a refused line"
+    );
     let done = rig.finished.recv().await.expect("one result");
     rig.dom
         .in_runtime(|| crate::services::actions::apply_finished(&mut state, done));
@@ -665,6 +671,93 @@ async fn confirm_bulk_delete_skips_a_container_that_vanished_behind_the_dialog()
     // The result says what went through, not the dialog's 2.
     let n = finished_count(&pending, &launched.keys).expect("done");
     assert_eq!(result_label(&model.effect, n), "Deleted 1 container");
+}
+
+fn container_subjects(rig: &Rig, names: &[&str]) -> Vec<berth_core::Subject> {
+    names
+        .iter()
+        .map(|n| berth_core::Subject::Container(rig.id(n)))
+        .collect()
+}
+
+#[test]
+fn confirm_every_builder_fills_targets_that_match_its_count() {
+    let rig = rig();
+    // Delete, one and several.
+    for names in [
+        &["shop-api-db-1"][..],
+        &["shop-api-api-1", "shop-api-redis-1", "shop-api-db-1"][..],
+    ] {
+        let ids: Vec<ContainerId> = names.iter().map(|n| rig.id(n)).collect();
+        let model = rig
+            .dom
+            .in_runtime(|| delete_model(&rig.state, &ids).expect("delete model"));
+        assert_eq!(model.effect.count as usize, model.targets.len());
+        assert_eq!(model.targets, container_subjects(&rig, names));
+    }
+    // Kill.
+    let id = rig.id("shop-api-api-1");
+    let kill = rig
+        .dom
+        .in_runtime(|| kill_model(&rig.state, &id).expect("kill model"));
+    assert_eq!(kill.effect.count as usize, kill.targets.len());
+    assert_eq!(kill.targets, [berth_core::Subject::Container(id)]);
+    // Engine stop and restart.
+    for op in [berth_core::ColimaOp::Stop, berth_core::ColimaOp::Restart] {
+        let model = engine_model(&default_engine(), "default", "default".to_string(), op, 3);
+        assert_eq!(model.effect.count as usize, model.targets.len());
+        assert_eq!(
+            model.targets,
+            [berth_core::Subject::Engine(default_engine())]
+        );
+    }
+}
+
+#[tokio::test]
+async fn confirm_bulk_delete_acts_on_its_own_targets_when_the_selection_changes() {
+    let mut rig = rig();
+    rig.select(&["shop-api-api-1", "shop-api-db-1"]);
+    rig.press_backspace();
+    let Some(Overlay::Confirm(model)) = rig.overlays().into_iter().next() else {
+        panic!("a confirm overlay");
+    };
+    // After the dialog opened, the selection moves to something else.
+    rig.select(&["eager_hopper"]);
+    let mut state = rig.state;
+    let launched = rig
+        .dom
+        .in_runtime(|| run(&mut state, &rig.service, &model, false));
+    assert_eq!(launched.refused, Vec::<String>::new());
+    let subjects: Vec<_> = launched.keys.iter().map(|k| k.subject.clone()).collect();
+    assert_eq!(
+        subjects,
+        container_subjects(&rig, &["shop-api-api-1", "shop-api-db-1"]),
+        "the dialog acts on the containers it counted"
+    );
+    for _ in 0..2 {
+        let done = tokio::time::timeout(std::time::Duration::from_secs(5), rig.finished.recv())
+            .await
+            .expect("each delete finishes")
+            .expect("channel open");
+        assert_eq!(done.result, Ok(()));
+        rig.dom
+            .in_runtime(|| crate::services::actions::apply_finished(&mut state, done));
+    }
+    use berth_engine::EngineClient as _;
+    let left: Vec<String> = rig
+        .engine
+        .containers()
+        .await
+        .expect("containers")
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    assert!(!left.iter().any(|n| n == "shop-api-api-1"));
+    assert!(!left.iter().any(|n| n == "shop-api-db-1"));
+    assert!(
+        left.iter().any(|n| n == "eager_hopper"),
+        "the newly selected container is untouched"
+    );
 }
 
 #[test]
