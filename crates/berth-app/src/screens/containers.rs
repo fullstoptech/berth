@@ -1573,7 +1573,7 @@ pub fn ContainersScreen() -> Element {
     };
     let chip_list = chips(&engines, &scope, &filters);
     let banners = engine_banners(&engines, &scope);
-    // The inspector takes the table's room only docked at the right (D21);
+    // The inspector takes the table's room only docked at the right (AD21);
     // overlaid, hidden or at the bottom the table has the full width.
     let docked_inspector = crate::ui::dock::inspector_docked();
     let overlay_inspector = crate::ui::dock::inspector_is_overlay();

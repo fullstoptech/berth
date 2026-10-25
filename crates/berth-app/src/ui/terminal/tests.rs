@@ -153,7 +153,7 @@ mod tabs_tests;
 #[path = "launcher_tests.rs"]
 mod launcher_tests;
 
-// --- The toolbar gives buttons to a ⋯ menu as the pane narrows (D22) ---
+// --- The toolbar gives buttons to a ⋯ menu as the pane narrows (AD22) ---
 
 fn all_tools() -> Vec<Tool> {
     Tool::ALL.to_vec()

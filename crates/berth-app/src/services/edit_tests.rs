@@ -432,7 +432,7 @@ async fn edit_recreate_latest_image_dialog_counts_its_one_target_and_starts_the_
             )
         })
         .expect("a dialog for a known container");
-    // One action: pull, then recreate, with the spec in it (D18).
+    // One action: pull, then recreate, with the spec in it (AD18).
     assert!(matches!(
         &model.action,
         berth_core::EngineAction::Recreate { pull: true, spec, id, .. }

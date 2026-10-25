@@ -163,7 +163,7 @@ pub fn InspectorHeader(
 }
 
 /// The ⋯ menu's "Dock side" row: Right and Bottom, the current one marked
-/// (D22). The glyphs are drawn here: the icon sprite is generated from the
+/// (AD22). The glyphs are drawn here: the icon sprite is generated from the
 /// design file and has no panel icons yet.
 #[component]
 fn DockSide(

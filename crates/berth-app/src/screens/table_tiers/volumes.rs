@@ -190,7 +190,7 @@ fn volumes_tiers_drop_driver_then_created_then_project() {
 }
 
 /// The table's width next to the inspector at `stored` px in a `window` px
-/// wide window at `scale` text (D21, D24): docked (clamped to keep the main
+/// wide window at `scale` text (AD21, AD24): docked (clamped to keep the main
 /// area at 640 px x scale, from 1200 px up and when 320 px of it fit) or
 /// else the whole main area.
 fn table_width(window: f32, stored: u32, scale: f32) -> (f32, bool) {
@@ -213,7 +213,7 @@ fn assert_fits(width: f32, view: View, scale: f32) {
 
 #[test]
 fn volumes_table_fits_every_window_inspector_width_and_text_size() {
-    // The D24 sweep: windows 1024 / 1220 / 1440, inspector widths 320 / 360 /
+    // The AD24 sweep: windows 1024 / 1220 / 1440, inspector widths 320 / 360 /
     // 480 / 560, every text size.
     let mut docked_cases = 0;
     for window in [1024.0, 1220.0, 1440.0] {

@@ -458,7 +458,7 @@ fn apply(
     while !rest.is_empty() {
         let tail = rest.split_off(rest.len().min(MAX_BATCH_LINES));
         let chunk = std::mem::replace(&mut rest, tail);
-        // Classification, JSON parsing and fold facts run before the lock is taken (D23): the UI
+        // Classification, JSON parsing and fold facts run before the lock is taken (AD23): the UI
         // reads the view while this chunk is prepared, and waits only for the commit.
         let prepare_started = Instant::now();
         let prepared = PreparedBatch::new(chunk);

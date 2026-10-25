@@ -30,7 +30,7 @@ pub fn delete_image_effect(tags: &[String], size: bytesize::ByteSize) -> EffectS
     effect
 }
 
-/// The dialog of Delete on one image (D25a: `EngineAction::Remove`). An
+/// The dialog of Delete on one image (AD25a: `EngineAction::Remove`). An
 /// image with several tags needs `force`, which here means "all its names".
 #[must_use]
 pub fn delete_image_model(engine: &EngineId, image: &berth_core::Image) -> ConfirmModel {

@@ -1,4 +1,4 @@
-//! `EngineAction::Remove` (D25a): delete one image, volume or network
+//! `EngineAction::Remove` (AD25a): delete one image, volume or network
 //! through whichever client call fits the kind.
 //!
 //! `force` means what it means to Docker: for an image, remove it although

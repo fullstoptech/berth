@@ -152,7 +152,7 @@ fn fix_click(state: &mut AppState, actions: Option<&ActionsService>, fix_id: &st
 /// container so tab, menus and revealed values reset on a new selection.
 /// `pane_px` is the width the panel is drawn at, which sets how many tabs
 /// fit before ⋯; `hide_stream_tabs` drops Logs and Terminal while the bottom
-/// panel beside the inspector shows them (D22).
+/// panel beside the inspector shows them (AD22).
 #[component]
 pub fn ContainerDetailPanel(
     id: ContainerId,

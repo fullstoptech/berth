@@ -216,7 +216,7 @@ async fn volumes_it_pgdata_shows_a_size_browses_to_pg_version_and_backs_up() {
     assert_eq!(db_after.state, ContainerState::Running);
     assert_eq!(db_after.started, started, "it was not restarted");
     // Only helpers this test made are judged; one that was already on the
-    // engine before it started is none of its business (D28).
+    // engine before it started is none of its business (AD28).
     let helpers = |all: &[berth_core::Container]| -> Vec<String> {
         all.iter()
             .filter(|c| c.name.starts_with("berth-helper-"))

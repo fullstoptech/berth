@@ -20,7 +20,7 @@ pub struct SidebarProject {
 pub struct SidebarModel {
     pub projects: Vec<SidebarProject>,
     /// The badge on the Projects item: every real project the Projects
-    /// screen counts (not the Unassigned row, D5), across all engines,
+    /// screen counts (not the Unassigned row, AD5), across all engines,
     /// whatever the engine scope.
     pub projects_total: usize,
     pub containers: usize,

@@ -188,7 +188,7 @@ fn table_tiers_networks_every_width_gets_a_list_that_fits_it() {
 
 #[test]
 fn table_tiers_networks_table_fits_every_window_inspector_width_and_text_size() {
-    // The D24 sweep for the Networks table: windows 1024 / 1220 / 1440,
+    // The AD24 sweep for the Networks table: windows 1024 / 1220 / 1440,
     // inspector widths 320 / 360 / 480 / 560, every text size. A docked
     // inspector takes the table's room; an overlay leaves the whole area.
     let mut docked_cases = 0;

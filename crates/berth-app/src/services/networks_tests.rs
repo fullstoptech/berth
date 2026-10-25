@@ -892,7 +892,7 @@ fn networks_draft_carries_labels_into_the_spec_and_blames_the_field_for_a_bad_on
     assert!(!errors[0].blank);
 }
 
-// --- One remove action for every kind (D25a) ---
+// --- One remove action for every kind (AD25a) ---
 
 #[tokio::test]
 async fn networks_remove_runs_image_volume_and_network_through_the_one_action() {

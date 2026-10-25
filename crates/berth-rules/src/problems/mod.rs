@@ -50,7 +50,7 @@ pub struct ProjectFacts {
 #[derive(Debug, Clone)]
 pub struct ProblemInput {
     pub now: chrono::DateTime<chrono::Utc>,
-    /// One engine per call; the service calls evaluate per engine (D27).
+    /// One engine per call; the service calls evaluate per engine (AD27).
     pub engine: berth_core::Engine,
     /// The Mac's arch (exec_format compares it with the image's).
     pub host_arch: berth_core::Arch,
@@ -60,7 +60,7 @@ pub struct ProblemInput {
     pub taken_ports: Vec<u16>,
 }
 
-/// Runs the 15 rules over one engine's facts (D27: containers and projects of other engines are
+/// Runs the 15 rules over one engine's facts (AD27: containers and projects of other engines are
 /// ignored). One problem per `ProblemId`; a project-level problem is dropped when a container of
 /// that project already carries the same kind.
 #[must_use]

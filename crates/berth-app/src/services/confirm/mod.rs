@@ -10,7 +10,7 @@
 //!
 //! One file per resource builds its effects and models and starts its own
 //! kind of confirmed action; this file holds what every kind shares: the
-//! line and summary helpers, the labels, and the rule (D2, D25) that a
+//! line and summary helpers, the labels, and the rule (AD2, AD25) that a
 //! confirmed model only acts on the resources its action names. A new
 //! kind adds a file, a `pub use` line and an entry in `RUNNERS`.
 
@@ -127,7 +127,7 @@ pub(super) struct Run<'a> {
 }
 
 impl Run<'_> {
-    /// D2, D25: every target of the model must be a resource the action
+    /// AD2, AD25: every target of the model must be a resource the action
     /// names (`names` says so). A target that is not is refused with
     /// `refusal` and never started, so a dialog opened for one resource
     /// cannot act on another. `start` begins one accepted target.

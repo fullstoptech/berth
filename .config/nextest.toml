@@ -7,7 +7,7 @@ live-engine = { max-threads = 1 }
 filter = 'binary(/_it$/) | binary(engine_read) | binary(mutate) | binary(streams)'
 test-group = 'live-engine'
 
-# Timing tests (D26) are named `perf_*` and marked #[ignore]. The default
+# Timing tests (AD26) are named `perf_*` and marked #[ignore]. The default
 # suite counts work instead of timing it, so check.sh never runs them;
 # scripts/perf.sh runs only them, in --release, one at a time so they do not
 # compete for cores.

@@ -131,7 +131,7 @@ impl LogView {
 
     /// Adds a batch: [`PreparedBatch::new`] then [`commit_batch`](Self::commit_batch). A caller
     /// that shares the view behind a lock should make the two calls itself, so that only the
-    /// commit runs under the lock (D23).
+    /// commit runs under the lock (AD23).
     pub fn push_batch(&mut self, lines: Vec<LogLine>) -> ViewDelta {
         self.commit_batch(PreparedBatch::new(lines))
     }
@@ -643,7 +643,7 @@ mod tests {
 
     #[test]
     fn preparing_batches_ahead_of_committing_them_folds_like_push_batch() {
-        // D23: the prepare step has no view state, so both halves of a split trace may be prepared
+        // AD23: the prepare step has no view state, so both halves of a split trace may be prepared
         // (even on another thread) before either is committed. The fold link must be made at
         // commit, in order.
         let trace = stderr_trace();

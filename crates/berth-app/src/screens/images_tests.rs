@@ -611,7 +611,7 @@ fn images_pull_card_shows_its_four_phases() {
 // ---------------------------------------------------------------------
 
 /// The table's width next to the inspector at `stored` px in a `window` px
-/// wide window at `scale` text, as the dock gives it (D21, D24).
+/// wide window at `scale` text, as the dock gives it (AD21, AD24).
 fn table_width_with_inspector(window: f32, stored: u32, scale: f32) -> (f32, bool) {
     match crate::ui::dock::docked_width(f64::from(window), stored, scale) {
         Some(width) => (window - 220.0 - width as f32, true),
@@ -634,7 +634,7 @@ fn assert_table_fits(width: f32, narrow: bool, scale: f32) {
 
 #[test]
 fn images_table_fits_every_window_inspector_width_and_text_size() {
-    // The D24 sweep: windows 1024 / 1220 / 1440, inspector widths 320 to
+    // The AD24 sweep: windows 1024 / 1220 / 1440, inspector widths 320 to
     // 560, every text size; a docked inspector takes room from the table.
     let mut docked_cases = 0;
     for window in [1024.0, 1220.0, 1440.0] {

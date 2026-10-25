@@ -16,7 +16,7 @@ pub struct Image {
     pub os: String,
     pub used_by: Vec<ContainerId>,
     pub dangling: bool,
-    /// The engine this image is on (D27); the mapper fills it as for `Container`.
+    /// The engine this image is on (AD27); the mapper fills it as for `Container`.
     pub engine: EngineId,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

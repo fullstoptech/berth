@@ -1,7 +1,7 @@
 //! Volumes (P4-T4): what the Volumes table lists, the create work the
 //! actions service runs, the size fetch and the helper image check. Backup
 //! and restore are in [`super::volume_backup`]. A volume knows its engine
-//! (`Volume::engine`, D27).
+//! (`Volume::engine`, AD27).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -317,7 +317,7 @@ pub fn create_spec(name: &str, driver: &str, options: &str) -> Result<VolumeSpec
 }
 
 /// What the actions service does to one volume. Deleting is not here: it
-/// is `EngineAction::Remove` with `ResourceRef::Volume` (D25a), run by
+/// is `EngineAction::Remove` with `ResourceRef::Volume` (AD25a), run by
 /// `ActionsService::remove`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VolumeOp {

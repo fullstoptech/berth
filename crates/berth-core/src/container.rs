@@ -155,7 +155,7 @@ pub struct ContainerSpec {
     pub restart: RestartPolicy,
     pub limits: Limits,
     pub platform: Option<String>,
-    // D16: how the container runs, kept across a recreate.
+    // AD16: how the container runs, kept across a recreate.
     pub working_dir: Option<String>,
     pub user: Option<String>,
     pub healthcheck: Option<HealthCheck>,
@@ -288,7 +288,7 @@ impl ContainerSpec {
 
     /// Run settings the container has that this spec still cannot carry. A
     /// recreate would drop them, so the sheet disables Recreate and names
-    /// them (D16). Read from the raw inspect; empty for a plain container.
+    /// them (AD16). Read from the raw inspect; empty for a plain container.
     ///
     /// Not listed: the stop signal and the health check (the image's
     /// defaults are merged into the inspect, so a plain container always

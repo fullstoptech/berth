@@ -89,7 +89,7 @@ fn region_of(open: bool) -> Option<RegionMode> {
     }
 }
 
-/// The bottom region (⌃`, D22): one full-width area under the main area with
+/// The bottom region (⌃`, AD22): one full-width area under the main area with
 /// a top edge you drag to resize, 160 px up to 60 % of the window. It shows
 /// the Logs/Terminal/Problems/Assistant panel, the docked inspector (the
 /// `inspector` element the shell built), or both side by side with the panel

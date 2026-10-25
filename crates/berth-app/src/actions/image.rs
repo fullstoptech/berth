@@ -13,7 +13,7 @@ pub const DEFS: &[ActionDef] = &[
 ];
 
 const HANDLERS: &[(&str, Handler)] = &[
-    // ⌫ on the selected image asks first (D25a, P4-T1).
+    // ⌫ on the selected image asks first (AD25a, P4-T1).
     ("image.delete", |state, _| {
         crate::screens::images::delete_selected(state);
     }),

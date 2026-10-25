@@ -32,12 +32,12 @@
 
 ## 2026-10-25 (spacing)
 - Emmanuel: "the general spacing seems tight". Audit at 1x: table rows 28 (Containers, Activity, palette), Projects rows 32, Recent activity rows 24, page gutter 16, header block 12-13 top / 6-8 bottom, button gaps 4, section gaps 24 above Needs attention and 20 above Recent activity; Containers showed 26 lines at 1440x900.
-- Decided (D11, option A plus tweaks): `size.row.md` 28 -> 32 (compact stays 24); page gutter 16 -> 20 from a 1200 px-wide window up (new `layout.gutter` token, `--gutter`; `--space-12` untouched); Needs attention and Recent activity get `space-32` above them (was 24 and 20); header block 16 top, 20 bottom, 8 to the table; button gaps in the Projects row actions and the bulk bar 4 -> 8; Recent activity rows 24 -> 28. Unchanged: status bar 24, title bar 38, sidebar rows 28, menu rows 28, cell padding 8, column gap 12, dialog padding 24.
+- Decided (AD11, option A plus tweaks): `size.row.md` 28 -> 32 (compact stays 24); page gutter 16 -> 20 from a 1200 px-wide window up (new `layout.gutter` token, `--gutter`; `--space-12` untouched); Needs attention and Recent activity get `space-32` above them (was 24 and 20); header block 16 top, 20 bottom, 8 to the table; button gaps in the Projects row actions and the bulk bar 4 -> 8; Recent activity rows 24 -> 28. Unchanged: status bar 24, title bar 38, sidebar rows 28, menu rows 28, cell padding 8, column gap 12, dialog padding 24.
 - Numbers (1440x900, 100 %): Containers lines 26 -> 22 (+ a cut-off 23rd) with the inspector docked; Projects rows 32 -> 36 (`--projects-row` = row + 4, left as is); Activity rows 28 -> 32.
 - Side effects handled: the container-query em tiers for Containers moved by the wider gutter (63 -> 63.5, 55 -> 55.5, 68 -> 68.5 em); the Projects buttons track grew 12 px (3 gaps x 4) so Services at 1024 px and 150 % has 88 px (was 100). Containers row buttons keep gap 0: 8 would need 40 px more in a table with no slack at 1024.
 
-## 2026-10-25 (spacing fix-up, D12/D13)
-- Art-director review of the D11 commit plus advisor decisions D12 and D13, applied as seven `Design:` commits.
+## 2026-10-25 (spacing fix-up, AD12/AD13)
+- Art-director review of the AD11 commit plus advisor decisions AD12 and AD13, applied as seven `Design:` commits.
 - Bug first: `.vt-row` and `.table-header-cell` lacked `box-sizing: border-box`, so the 1 px border made 32 px rows 33 px while VirtualTable assumed 32 (scroll drift of 1 px per row). Fixed, with a test that ties the stylesheet row to `DEFAULT_ROW_HEIGHT_PX` and `row_height_px`.
 - One 12 px gap from the last header control to the column headers on Projects, Containers and Activity (was 42, 16, 32); all three column-header rows are 28 px (`size.control.md`).
 - Activity's first column, headers, rows and gap banner sit on the page gutter, under the title.

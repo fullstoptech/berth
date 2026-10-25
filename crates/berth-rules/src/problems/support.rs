@@ -34,7 +34,7 @@ const MASK: &str = "••••";
 const EVIDENCE_LINES: usize = 6;
 const EVIDENCE_CHARS: usize = 240;
 
-/// The input narrowed to one engine (D27), plus the env values to keep out of anything shown.
+/// The input narrowed to one engine (AD27), plus the env values to keep out of anything shown.
 pub(super) struct Ctx<'a> {
     pub input: &'a ProblemInput,
     pub containers: Vec<&'a ContainerFacts>,

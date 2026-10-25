@@ -249,7 +249,7 @@
 
 /* Problem summary under a failing row. The slot has the line's height
    whether or not the line is there, so a problem that appears or clears
-   moves no other row (D31). */
+   moves no other row (AD31). */
 .project-problem-slot {
   height: var(--size-row);
 }

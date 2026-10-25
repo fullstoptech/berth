@@ -456,7 +456,7 @@ fn find_images_an_idle_view_has_no_hits_and_no_cache_mark() {
 // Column tiers
 // ---------------------------------------------------------------------
 
-/// The table's room: the screen next to the 420 px panel (D24 sweep over
+/// The table's room: the screen next to the 420 px panel (AD24 sweep over
 /// the three windows and every text size).
 fn table_width(window: f32, scale: f32) -> (f32, bool) {
     let body = window - 220.0;

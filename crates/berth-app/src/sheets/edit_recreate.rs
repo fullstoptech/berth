@@ -210,8 +210,8 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
                 Ok(new) => (offer(&base, new), diff_rows(&base, new)),
                 Err(_) => (Offer::Nothing, Vec::new()),
             };
-            // Compose never recreates outside Compose (D17); settings the
-            // spec cannot carry would be dropped (D16).
+            // Compose never recreates outside Compose (AD17); settings the
+            // spec cannot carry would be dropped (AD16).
             let block = (offered == Offer::Recreate)
                 .then(|| recreate_block(&base, &uncarried))
                 .flatten();
@@ -409,7 +409,7 @@ pub fn primary_button(
     if let EditStatus::Running(label) = status {
         return (label.clone(), None);
     }
-    // A Compose container never shows Recreate (D17): the button stays
+    // A Compose container never shows Recreate (AD17): the button stays
     // Apply limits, disabled, and says why.
     let label = match (offered, block) {
         (Offer::ApplyLimits, _) | (_, Some(Block::Compose)) => "Apply limits",

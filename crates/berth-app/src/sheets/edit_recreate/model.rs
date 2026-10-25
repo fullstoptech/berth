@@ -18,13 +18,13 @@ use berth_core::{
 };
 
 // ---------------------------------------------------------------------
-// Compose and what a recreate cannot carry (D16, D17)
+// Compose and what a recreate cannot carry (AD16, AD17)
 // ---------------------------------------------------------------------
 
 /// The label Compose puts on every container it manages.
 pub const COMPOSE_PROJECT_LABEL: &str = "com.docker.compose.project";
 
-/// Is this container managed by Compose (D17)?
+/// Is this container managed by Compose (AD17)?
 #[must_use]
 pub fn is_compose_managed(spec: &ContainerSpec) -> bool {
     spec.labels.contains_key(COMPOSE_PROJECT_LABEL)
@@ -835,9 +835,9 @@ pub fn offer(old: &ContainerSpec, new: &ContainerSpec) -> Offer {
 /// Why Recreate is not offered even though the change needs one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Block {
-    /// A Compose-managed container is never recreated outside Compose (D17).
+    /// A Compose-managed container is never recreated outside Compose (AD17).
     Compose,
-    /// Settings the spec cannot carry would be dropped (D16 backstop).
+    /// Settings the spec cannot carry would be dropped (AD16 backstop).
     Uncarried(Vec<String>),
 }
 
@@ -865,7 +865,7 @@ pub fn recreate_block(base: &ContainerSpec, uncarried: &[String]) -> Option<Bloc
 }
 
 /// The limits and restart policy in words, memory in binary units
-/// labelled MB (D19): "CPUs 0.5 · Memory 256 MB · Restart unless-stopped".
+/// labelled MB (AD19): "CPUs 0.5 · Memory 256 MB · Restart unless-stopped".
 #[must_use]
 pub fn limits_summary(spec: &ContainerSpec) -> String {
     let none = || "no limit".to_string();

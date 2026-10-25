@@ -343,7 +343,7 @@ async fn edit_recreate_it_a_changed_port_recreates_and_the_run_settings_survive(
         return;
     };
     // A container with a user, a working directory, a health check, an
-    // added capability and an alias on a user network (D16).
+    // added capability and an alias on a user network (AD16).
     let net = docker(
         &rig.bin,
         &rig.host,

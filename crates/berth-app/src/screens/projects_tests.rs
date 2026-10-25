@@ -831,7 +831,7 @@ fn projects_scene_with_unassigned_shows_the_row_last_and_the_sidebar_hides_it() 
     assert!(sidebar.contains("docker-manger"), "{sidebar}");
 }
 
-// --- D5: the Unassigned row is a holding row, not a project ---
+// --- AD5: the Unassigned row is a holding row, not a project ---
 
 /// The mock world's projects plus its default-engine Unassigned row, and
 /// the containers the row groups.

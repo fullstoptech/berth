@@ -51,7 +51,7 @@ impl DetailTab {
     ];
 
     /// Logs and Terminal live in the bottom panel's own tabs, so the
-    /// inspector hides them while that panel sits beside it (D22).
+    /// inspector hides them while that panel sits beside it (AD22).
     pub const STREAMS: [DetailTab; 2] = [Self::Logs, Self::Terminal];
 
     #[must_use]
@@ -296,7 +296,7 @@ fn is_toggle(action: &str) -> bool {
 /// The ⋯ menu: Edit, Duplicate, Recreate with latest image and Rename work
 /// (P3-T7); the later tasks' items stay present and disabled with the task
 /// that enables them (D34: disabled stays visible, with a reason).
-/// A Compose-managed container is never recreated outside Compose (D17).
+/// A Compose-managed container is never recreated outside Compose (AD17).
 #[must_use]
 pub fn header_menu(c: &Container, backing: crate::services::backing::Backing) -> Vec<MenuEntry> {
     let later = |id: &str, label: &str, task: &str| {

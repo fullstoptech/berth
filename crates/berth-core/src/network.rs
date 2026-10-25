@@ -13,7 +13,7 @@ pub struct Network {
     pub containers: Vec<ContainerId>,
     pub project: Option<ProjectId>,
     pub built_in: bool,
-    /// The engine this network is on (D27).
+    /// The engine this network is on (AD27).
     pub engine: EngineId,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,7 +24,7 @@ pub struct NetworkSpec {
     pub gateway: Option<String>,
     pub internal: bool,
     pub attach: Vec<ContainerId>,
-    /// Labels on the new network (D25b), e.g. `dev.berth.fixture=1`.
+    /// Labels on the new network (`AD25b`), e.g. `dev.berth.fixture=1`.
     pub labels: std::collections::BTreeMap<String, String>,
 }
 

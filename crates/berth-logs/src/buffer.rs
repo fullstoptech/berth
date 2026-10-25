@@ -69,7 +69,7 @@ impl PreparedLine {
 }
 
 /// A batch of lines run through the part of [`LogView::push_batch`](crate::LogView::push_batch)
-/// that needs no view state (D23): ANSI stripping, classification, JSON parsing and the text facts
+/// that needs no view state (AD23): ANSI stripping, classification, JSON parsing and the text facts
 /// for folding. Build it with [`PreparedBatch::new`] outside any lock, then hand it to
 /// [`LogView::commit_batch`](crate::LogView::commit_batch), which does the short remainder: the
 /// fold link to the previous line, sequence numbers, counts, the visible list, the search and

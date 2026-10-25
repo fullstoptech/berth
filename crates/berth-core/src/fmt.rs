@@ -44,7 +44,7 @@ pub fn uptime(since: DateTime<Utc>, now: DateTime<Utc>) -> String {
     format!("{n} {unit}")
 }
 
-/// A memory limit in binary units labelled "MB" (D19): `256m` shows as
+/// A memory limit in binary units labelled "MB" (AD19): `256m` shows as
 /// "256 MB", 1.5 GiB as "1.5 GB". Image and disk sizes use [`bytes`].
 #[must_use]
 #[allow(clippy::cast_precision_loss)]

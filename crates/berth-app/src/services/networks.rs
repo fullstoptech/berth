@@ -9,7 +9,7 @@
 //!   service (create, delete, connect, disconnect).
 //! * [`project_of`] and [`connectable`] answer the questions the data model
 //!   leaves open: Compose project names come from the containers on it.
-//!   A network knows its engine (`Network::engine`, D27).
+//!   A network knows its engine (`Network::engine`, AD27).
 
 use std::net::IpAddr;
 

@@ -157,7 +157,7 @@ pub struct ProjectRowModel {
     pub problem_count: usize,
     pub problem_summary: Option<String>,
     /// Whether the row reserves a fixed-height slot under it for the
-    /// problem line (D31). `row_model` says yes when there is a summary;
+    /// problem line (AD31). `row_model` says yes when there is a summary;
     /// the Projects screen overrides it with the slot decided when the
     /// row first appeared, so a problem that shows up later moves nothing.
     pub problem_slot: bool,
@@ -709,7 +709,7 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
         div { class: "project-row-wrap",
             div { class: "{row_class}", role: "row",
                 // The full path is the name cell's tooltip at any size, so it
-                // stays reachable when the Path column is hidden (D3). The
+                // stays reachable when the Path column is hidden (AD3). The
                 // button inside carries it too: a child's title wins on hover.
                 div {
                     class: "project-cell project-cell-name",

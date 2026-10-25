@@ -25,7 +25,7 @@ pub fn screen(section: Section, dev_gallery: bool) -> Element {
 
 /// How the inspector body is drawn: the width of the pane (how many tabs
 /// fit before the overflow menu) and whether the bottom panel beside it
-/// already shows the stream tabs (D22).
+/// already shows the stream tabs (AD22).
 #[derive(Debug, Clone, Copy)]
 pub struct InspectorPane {
     pub pane_px: u32,

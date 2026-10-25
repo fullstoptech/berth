@@ -79,7 +79,7 @@ impl ProjectFilter {
     }
 }
 
-/// The Unassigned row holds the containers that belong to no project (D5).
+/// The Unassigned row holds the containers that belong to no project (AD5).
 /// It is a holding row, not a project: it never counts anywhere.
 pub fn is_unassigned(project: &berth_core::Project) -> bool {
     matches!(project.source, berth_core::ProjectSource::Loose)
@@ -133,7 +133,7 @@ pub fn matches_query(project: &berth_core::Project, engine_name: &str, query: &s
 }
 
 /// The Unassigned row matches the query when it matches "Unassigned" or the
-/// name of one of its containers (D5). It has no folder, branch or engine
+/// name of one of its containers (AD5). It has no folder, branch or engine
 /// name worth matching.
 pub fn unassigned_matches_query(
     project: &berth_core::Project,
@@ -581,7 +581,7 @@ pub fn ProjectsScreen() -> Element {
     let stale = *state.snapshot_stale.read();
 
     let screen = screen_state(&engines, &projects, stale);
-    // Sorted once, when live data first shows; kept while the screen is open (D31).
+    // Sorted once, when live data first shows; kept while the screen is open (AD31).
     let frozen = use_hook(|| std::rc::Rc::new(std::cell::RefCell::new(FrozenOrder::default())));
     let ordered = frozen.borrow_mut().arrange(&projects, &engines, !stale);
     let counts = filter_counts(&ordered);

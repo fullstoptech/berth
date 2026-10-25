@@ -21,13 +21,13 @@ pub fn inspector_visible(section: Section, selection: &Selection) -> bool {
 /// Which frame the inspector is drawn in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InspectorFrame {
-    /// The right column (PLAN 7.1), 360 px unless resized (D21).
+    /// The right column (PLAN 7.1), 360 px unless resized (AD21).
     #[default]
     Docked,
     /// Over the main area: Space opens it when the window is too narrow to
-    /// dock it (D8, D21).
+    /// dock it (D8, AD21).
     Overlay,
-    /// The right pane of the bottom region, or all of it (D22).
+    /// The right pane of the bottom region, or all of it (AD22).
     Bottom,
 }
 

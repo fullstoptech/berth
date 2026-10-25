@@ -1,6 +1,6 @@
 //! The first `push_batch` on a fresh `LogView` costs a little more than a later one (lazy regexes,
 //! first-touch memory). The app builds its view and pushes a throwaway batch in the service task,
-//! off the UI path. Wall-clock, so `scripts/perf.sh` runs them (D26).
+//! off the UI path. Wall-clock, so `scripts/perf.sh` runs them (AD26).
 
 #![allow(clippy::expect_used)]
 

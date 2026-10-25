@@ -69,7 +69,7 @@ fn is_panic_head(text: &str) -> bool {
 }
 
 /// What a line's text alone says about folding, computed without any state so that it can run
-/// before the view lock is taken (D23). [`FoldTracker::place_with`] combines it with the previous
+/// before the view lock is taken (AD23). [`FoldTracker::place_with`] combines it with the previous
 /// line of the same container and stream, which is the part that has to run in order.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FoldFacts {

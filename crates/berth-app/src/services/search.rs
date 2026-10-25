@@ -20,7 +20,7 @@
 //! * A verb alone (`rest`) acts on the subject in context: the selection,
 //!   the project and engine it belongs to, else the one that most needs
 //!   attention (a restarting or failing container before a healthy one).
-//! * Every engine is searched (D4). The engine selected in the title-bar
+//! * Every engine is searched (AD4). The engine selected in the title-bar
 //!   switcher ranks first, a little below the gap acting gets over
 //!   opening, and results from the other engines carry the engine name.
 //!   A bare verb prefers the selected engine's subjects.
@@ -159,7 +159,7 @@ impl Results {
 /// A verb match outranks an equally strong "open" match.
 const ACTION_BONUS: u32 = 32;
 /// A result on the engine the title-bar switcher selects outranks an equal
-/// one on another engine, but not an action over an open (D4).
+/// one on another engine, but not an action over an open (AD4).
 const HOME_BONUS: u32 = 16;
 const _: () = assert!(HOME_BONUS < ACTION_BONUS);
 const PORT_EXACT: u32 = 240;
@@ -407,7 +407,7 @@ fn state_label(state: &EngineState) -> &'static str {
 }
 
 impl Index {
-    /// Index every engine's records (D4: the palette always searches all
+    /// Index every engine's records (AD4: the palette always searches all
     /// engines). `scope` is the title-bar switcher: the engine it selects
     /// ranks first ([`HOME_BONUS`]) and every other engine's results carry
     /// the engine name; under "All engines" nothing is preferred and
@@ -440,7 +440,7 @@ impl Index {
             Some(selected) => (selected != id).then(|| engine_name(id)),
             None => multi.then(|| engine_name(id)),
         };
-        // Images, volumes and networks know their engine (D27). Off the
+        // Images, volumes and networks know their engine (AD27). Off the
         // selected engine, the result names it.
         let resource_home = |engine: &berth_core::EngineId| is_home(engine);
         let resource_suffix = |engine: &berth_core::EngineId| {
@@ -754,7 +754,7 @@ struct Matching {
     buf: Vec<char>,
     indices: Vec<u32>,
     /// How many haystacks were scored; tests count work with it instead of
-    /// timing it (D26).
+    /// timing it (AD26).
     #[cfg(test)]
     scored: usize,
 }

@@ -6,7 +6,7 @@ use super::*;
 /// column), the palette open on the query "rest". The bare verb still picks
 /// the container that needs the most attention, the restarting worker.
 ///
-/// The palette searches every engine (D4), and "rest" would also reach
+/// The palette searches every engine (AD4), and "rest" would also reach
 /// `backup-1` and its restic image on hetzner-1. The frame was drawn with
 /// one engine's data, so this scene keeps the default engine's records
 /// only (the other engines stay listed).

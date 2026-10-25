@@ -121,7 +121,7 @@ impl DashboardStore {
             .push(at, cpu_pct, mem_bytes);
     }
 
-    /// Read the engine's `disk_usage` (the client's own 60 s budget, D29) and
+    /// Read the engine's `disk_usage` (the client's own 60 s budget, AD29) and
     /// store it. Replaces nothing until the answer is in, so the bar does not
     /// flash. The store's task outlives the caller: Clean up asks for a
     /// fresh reading and closes its sheet in the same breath.

@@ -12,7 +12,7 @@ pub enum Density {
     Compact,
 }
 
-/// Where the inspector lives (D21, D22): a right column, or the right pane
+/// Where the inspector lives (AD21, AD22): a right column, or the right pane
 /// of the bottom region as in browser dev tools.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum InspectorDock {
@@ -21,11 +21,11 @@ pub enum InspectorDock {
     Bottom,
 }
 
-/// The inspector's width bounds and default in px (D21).
+/// The inspector's width bounds and default in px (AD21).
 pub const INSPECTOR_WIDTH_MIN: u32 = 320;
 pub const INSPECTOR_WIDTH_MAX: u32 = 560;
 pub const INSPECTOR_WIDTH_DEFAULT: u32 = 360;
-/// The bottom dock's inspector share of the region, in percent (D22).
+/// The bottom dock's inspector share of the region, in percent (AD22).
 pub const INSPECTOR_SPLIT_DEFAULT: u8 = 40;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,13 +36,13 @@ pub struct Settings {
     /// before this field existed load with the default.
     #[serde(default = "default_text_scale")]
     pub text_scale: f32,
-    /// 320..=560, default 360 (owner request, D21). Settings saved before
+    /// 320..=560, default 360 (owner request, AD21). Settings saved before
     /// this field existed load with the default.
     #[serde(default = "default_inspector_width")]
     pub inspector_width_px: u32,
     #[serde(default)]
     pub inspector_dock: InspectorDock,
-    /// Bottom dock: the inspector's share of the region, default 40 (D22).
+    /// Bottom dock: the inspector's share of the region, default 40 (AD22).
     #[serde(default = "default_inspector_split")]
     pub inspector_split_pct: u8,
     pub default_engine: Option<berth_core::EngineId>,
