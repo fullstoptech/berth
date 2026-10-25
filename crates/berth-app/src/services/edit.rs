@@ -131,6 +131,8 @@ async fn guard<T>(
     call: impl std::future::Future<Output = Result<T, berth_engine::EngineError>>,
 ) -> Result<T, String> {
     tokio::select! {
+        // Cancelled wins a tie, so a cancelled edit always reports "cancelled".
+        biased;
         () = cancel.cancelled() => Err("cancelled".to_string()),
         result = call => result.map_err(|e| e.to_string()),
     }
@@ -146,6 +148,7 @@ async fn pull(
     let mut stream = client.pull(reference, spec.platform.as_deref(), cancel.child_token());
     loop {
         tokio::select! {
+            biased;
             () = cancel.cancelled() => return Err("cancelled".to_string()),
             next = stream.next() => match next {
                 None => return Ok(()),

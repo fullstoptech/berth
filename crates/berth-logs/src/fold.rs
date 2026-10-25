@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use berth_core::ContainerId;
+use berth_core::{ContainerId, Stream};
 use regex::Regex;
 
 /// `    at …` (Java, Node), `  File "…", line N` (Python), `Caused by:`, `... N more`,
@@ -88,16 +88,25 @@ impl Last {
     }
 }
 
-/// Remembers, per container, the last line seen so interleaved streams fold independently.
+/// Remembers, per container and output stream, the last line seen. The engine's log interleaves
+/// stdout and stderr in whatever order it read the two pipes (a stdout line can land between two
+/// frames of a stderr trace), so a trace must follow its own stream, not the container's line order.
 #[derive(Debug, Default)]
 pub(crate) struct FoldTracker {
-    last: HashMap<ContainerId, Last>,
+    last: HashMap<(ContainerId, Stream), Last>,
 }
 
 impl FoldTracker {
     /// Records the line at `seq` and returns the head `seq` it folds under, if it continues a trace.
-    pub(crate) fn place(&mut self, container: &ContainerId, seq: u64, text: &str) -> Option<u64> {
-        let prev = self.last.get(container).copied();
+    pub(crate) fn place(
+        &mut self,
+        container: &ContainerId,
+        stream: Stream,
+        seq: u64,
+        text: &str,
+    ) -> Option<u64> {
+        let key = (container.clone(), stream);
+        let prev = self.last.get(&key).copied();
         let kind = prev.and_then(|p| continuation_kind(text, &p));
         let (head, entry) = match (kind, prev) {
             (Some(kind), Some(p)) => {
@@ -124,11 +133,7 @@ impl FoldTracker {
                 },
             ),
         };
-        if let Some(slot) = self.last.get_mut(container) {
-            *slot = entry;
-        } else {
-            self.last.insert(container.clone(), entry);
-        }
+        self.last.insert(key, entry);
         head
     }
 
@@ -208,7 +213,7 @@ mod tests {
         lines
             .iter()
             .enumerate()
-            .map(|(i, text)| tracker.place(&id, i as u64, text))
+            .map(|(i, text)| tracker.place(&id, Stream::Stdout, i as u64, text))
             .collect()
     }
 
@@ -256,9 +261,56 @@ mod tests {
         let mut tracker = FoldTracker::default();
         let a = ContainerId("a".to_string());
         let b = ContainerId("b".to_string());
-        assert_eq!(tracker.place(&a, 0, "Error: x"), None);
-        assert_eq!(tracker.place(&b, 1, "info"), None);
-        assert_eq!(tracker.place(&a, 2, "    at f (a.js:1:1)"), Some(0));
-        assert_eq!(tracker.place(&b, 3, "    at g (b.js:1:1)"), Some(1));
+        assert_eq!(tracker.place(&a, Stream::Stdout, 0, "Error: x"), None);
+        assert_eq!(tracker.place(&b, Stream::Stdout, 1, "info"), None);
+        assert_eq!(
+            tracker.place(&a, Stream::Stdout, 2, "    at f (a.js:1:1)"),
+            Some(0)
+        );
+        assert_eq!(
+            tracker.place(&b, Stream::Stdout, 3, "    at g (b.js:1:1)"),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn a_trace_follows_its_own_stream_through_interleaved_stdout() {
+        let mut tracker = FoldTracker::default();
+        let id = ContainerId("c".to_string());
+        let place =
+            |tracker: &mut FoldTracker, stream, seq, text| tracker.place(&id, stream, seq, text);
+        assert_eq!(
+            place(
+                &mut tracker,
+                Stream::Stderr,
+                0,
+                "Traceback (most recent call last):"
+            ),
+            None
+        );
+        assert_eq!(
+            place(
+                &mut tracker,
+                Stream::Stderr,
+                1,
+                "  File \"a.py\", line 1, in f"
+            ),
+            Some(0)
+        );
+        // The engine delivers a stdout line in the middle of the stderr trace.
+        assert_eq!(place(&mut tracker, Stream::Stdout, 2, "INFO started"), None);
+        assert_eq!(
+            place(
+                &mut tracker,
+                Stream::Stderr,
+                3,
+                "  File \"a.py\", line 2, in g"
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            place(&mut tracker, Stream::Stderr, 4, "ValueError: x"),
+            None
+        );
     }
 }

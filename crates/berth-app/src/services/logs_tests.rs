@@ -112,6 +112,82 @@ async fn logs_first_lines_of_several_streams_are_merged_in_time_order() {
     core.close();
 }
 
+/// A stderr trace of `frames` frames for `container`, a stdout line landing after `noise_at`
+/// trace lines (the engine hands over stdout and stderr in the order it read the two pipes).
+fn trace_with_noise(container: &str, start: i64, noise_at: usize) -> Vec<LogLine> {
+    let mut lines = vec![line(
+        container,
+        start,
+        true,
+        "Traceback (most recent call last):",
+    )];
+    for n in 1..=10 {
+        lines.push(line(
+            container,
+            start,
+            true,
+            &format!("  File \"/app/worker.py\", line {}, in step_{n}", 40 + n),
+        ));
+    }
+    lines.push(line(container, start, true, "RuntimeError: boom"));
+    lines.insert(
+        noise_at,
+        line(container, start, false, "INFO logger cycle started"),
+    );
+    lines
+}
+
+fn hidden_of_tracebacks(core: &LogCore) -> Vec<berth_logs::Fold> {
+    core.with_view(|v| {
+        v.rows(0..v.len())
+            .iter()
+            .filter(|r| r.text.starts_with("Traceback"))
+            .map(|r| r.fold)
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn logs_a_trace_folds_whole_across_the_batch_cap_and_the_merge_window() {
+    // One stream: the trace starts a few lines before the 2,048-line batch cap and runs past it.
+    let mut lines: Vec<LogLine> = (0..2_044)
+        .map(|i| line("web", i, false, &format!("INFO filler {i}")))
+        .collect();
+    lines.extend(trace_with_noise("web", 3_000, 6));
+    let total = lines.len();
+    let core = LogCore::start(
+        names(&["web"]),
+        move |_, _| vec![stream::iter(lines).boxed()],
+        &CancellationToken::new(),
+    );
+    assert!(until(|| visible(&core) >= total - 10).await);
+    assert!(core.batches() >= 2, "{}", core.batches());
+    assert_eq!(
+        hidden_of_tracebacks(&core),
+        vec![berth_logs::Fold::Head { hidden: 10 }]
+    );
+
+    // Two streams merged in the window: each trace keeps its own frames.
+    let a = trace_with_noise("a", 0, 4);
+    let b = trace_with_noise("b", 0, 9);
+    let core = LogCore::start_merging(
+        names(&["a", "b"]),
+        move |_, _| vec![stream::iter(a).boxed(), stream::iter(b).boxed()],
+        &CancellationToken::new(),
+        Duration::from_millis(100),
+    );
+    assert!(
+        until(|| visible(&core) == 2 * 3).await,
+        "{}",
+        visible(&core)
+    );
+    assert_eq!(
+        hidden_of_tracebacks(&core),
+        vec![berth_logs::Fold::Head { hidden: 10 }; 2]
+    );
+}
+
 #[tokio::test]
 async fn logs_lines_that_arrive_while_paused_are_counted_for_the_pill() {
     let (sender, receiver) = futures::channel::mpsc::unbounded::<LogLine>();

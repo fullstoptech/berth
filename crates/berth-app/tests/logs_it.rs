@@ -161,12 +161,21 @@ async fn logs_it_follows_the_logger_marks_errors_folds_the_trace_and_searches() 
         .expect("searched");
     assert!(summary.matches >= 2, "{summary:?}");
     let _ = core.run(|v| v.next_match()).await;
-    let label = core
-        .with_view(|v| search_count_label(&v.search_summary()))
-        .expect("view")
-        .expect("a label");
+    // The logger keeps writing while this runs, so the label and the match count it must agree
+    // with are read under one lock; `summary.matches` is only the count at the time of the search.
+    let (label, matches_now) = core
+        .with_view(|v| {
+            let now = v.search_summary();
+            (search_count_label(&now), now.matches)
+        })
+        .expect("view");
+    let label = label.expect("a label");
     eprintln!("search label: {label}");
-    assert_eq!(label, format!("1 of {}", summary.matches));
+    assert!(
+        matches_now >= summary.matches,
+        "matches only grow while following"
+    );
+    assert_eq!(label, format!("1 of {matches_now}"));
 
     // Save: the file's line count is the view's.
     let text = core
@@ -186,5 +195,84 @@ async fn logs_it_follows_the_logger_marks_errors_folds_the_trace_and_searches() 
             .count(),
         written
     );
+    core.close();
+}
+
+/// Delivery rate of the live logger: run it against `LOGGER_RATE=10000 scripts/fx-up.sh` with
+/// `BERTH_LOGS_RATE=1 BERTH_IT=1 cargo nextest run -p berth-app --run-ignored only logs_it_rate --no-capture`.
+/// Prints, once a second for ten seconds, the lines the view has taken in (`seq` counts every
+/// pushed line, folded or not), the lines dropped (queue overflow plus ring evictions) and the
+/// slowest `push_batch`. It asserts only that lines kept flowing and the UI path stayed in budget.
+#[tokio::test]
+#[ignore = "needs the live Colima engine; run with BERTH_IT=1 BERTH_LOGS_RATE=1"]
+async fn logs_it_rate_reports_delivered_lines_per_second_and_drops() {
+    if std::env::var("BERTH_IT").is_err() || std::env::var("BERTH_LOGS_RATE").is_err() {
+        eprintln!("BERTH_IT and BERTH_LOGS_RATE not both set, skipping");
+        return;
+    }
+    common::settle_fixture().await;
+    let (engine, client) = live_client().await;
+    let logger = client
+        .containers()
+        .await
+        .expect("list")
+        .into_iter()
+        .find(|c| c.name == "berthfx-logger-1")
+        .expect("berthfx-logger-1 listed");
+    let clients = client_map();
+    clients
+        .lock()
+        .expect("client map")
+        .insert(engine.id.clone(), Arc::clone(&client));
+    let services = Services {
+        store: Arc::new(berth_store::Store::open_in_memory().expect("store")),
+        clients,
+        cancel: CancellationToken::new(),
+    };
+    let core = open_session(
+        &services,
+        &[LogTarget {
+            engine: engine.id.clone(),
+            id: logger.id.clone(),
+            name: logger.name.clone(),
+        }],
+    );
+    let pushed = |core: &berth_app::services::logs::LogCore| {
+        core.with_view(|v| v.rows(0..v.len()).last().map_or(0, |r| r.seq + 1))
+            .unwrap_or(0)
+    };
+    let started = std::time::Instant::now();
+    while pushed(&core) == 0 {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "no line in 10 s"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let (t0, at0) = (std::time::Instant::now(), pushed(&core));
+    let mut last = at0;
+    for second in 1..=10 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let now = pushed(&core);
+        let dropped = core.with_view(|v| v.dropped()).expect("view");
+        eprintln!(
+            "t={second:>2}s  +{:>6} lines  total {now:>7}  dropped {dropped}  slowest push {:?}",
+            now - last,
+            core.slowest_push()
+        );
+        last = now;
+    }
+    let seconds = t0.elapsed().as_secs_f64();
+    #[allow(clippy::cast_precision_loss)]
+    let rate = (last - at0) as f64 / seconds;
+    let dropped = core.with_view(|v| v.dropped()).expect("view");
+    eprintln!(
+        "delivered {} lines in {seconds:.2} s = {rate:.0} lines/s; dropped {dropped}; batches {}; slowest push_batch {:?}; status {:?}",
+        last - at0,
+        core.batches(),
+        core.slowest_push(),
+        core.status()
+    );
+    assert!(last > at0, "lines kept flowing");
     core.close();
 }

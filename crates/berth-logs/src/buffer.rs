@@ -77,7 +77,10 @@ impl LogBuffer {
         self.next_seq += 1;
         let json = summarize_json(&line.text);
         let (level, error_mark) = classify_with(&line.text, line.stream, json.as_ref());
-        let fold = match self.folds.place(&line.container, seq, &line.text) {
+        let fold = match self
+            .folds
+            .place(&line.container, line.stream, seq, &line.text)
+        {
             Some(head) => {
                 self.add_hidden_to(head);
                 Fold::Member { head }

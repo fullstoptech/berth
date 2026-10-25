@@ -590,6 +590,83 @@ mod tests {
         assert_eq!(view.len(), 3);
     }
 
+    /// The logger fixture's trace: stderr `Traceback`, ten frames, the exception line.
+    fn stderr_trace() -> Vec<LogLine> {
+        let mut lines = vec![line(
+            "c1",
+            Stream::Stderr,
+            "Traceback (most recent call last):",
+        )];
+        for n in 1..=10 {
+            lines.push(line(
+                "c1",
+                Stream::Stderr,
+                &format!("  File \"/app/worker.py\", line {}, in step_{n}", 40 + n),
+            ));
+        }
+        lines.push(line("c1", Stream::Stderr, "RuntimeError: boom"));
+        lines
+    }
+
+    fn traceback_fold(view: &LogView) -> Option<Fold> {
+        view.rows(0..view.len())
+            .iter()
+            .find(|r| r.text.starts_with("Traceback"))
+            .map(|r| r.fold)
+    }
+
+    #[test]
+    fn a_trace_split_across_two_batches_folds_whole_at_every_split_point() {
+        let trace = stderr_trace();
+        for split in 0..=trace.len() {
+            let mut view = LogView::new(1000, BTreeMap::new());
+            view.push_batch(trace[..split].to_vec());
+            view.push_batch(trace[split..].to_vec());
+            assert_eq!(
+                traceback_fold(&view),
+                Some(Fold::Head { hidden: 10 }),
+                "split after {split} lines"
+            );
+        }
+    }
+
+    #[test]
+    fn stdout_lines_landing_inside_a_stderr_trace_do_not_cut_it() {
+        // The engine's log holds stdout and stderr in the order the daemon read the two pipes, so
+        // the logger's INFO/WARN/JSON lines can arrive between two frames of the trace.
+        let trace = stderr_trace();
+        let noise = [
+            line("c1", Stream::Stdout, "INFO logger cycle 7 started"),
+            line(
+                "c1",
+                Stream::Stdout,
+                "WARN logger cycle 7 cache is nearly full",
+            ),
+        ];
+        for at in 1..trace.len() {
+            for split in 0..=trace.len() + noise.len() {
+                let mut mixed = trace[..at].to_vec();
+                mixed.extend(noise.clone());
+                mixed.extend(trace[at..].to_vec());
+                let mut view = LogView::new(1000, BTreeMap::new());
+                view.push_batch(mixed[..split].to_vec());
+                view.push_batch(mixed[split..].to_vec());
+                assert_eq!(
+                    traceback_fold(&view),
+                    Some(Fold::Head { hidden: 10 }),
+                    "stdout inserted after {at} trace lines, batch split after {split}"
+                );
+                // The stdout lines stay visible and are never swallowed by the trace.
+                let plain = view
+                    .rows(0..view.len())
+                    .iter()
+                    .filter(|r| r.text.starts_with("INFO") || r.text.starts_with("WARN"))
+                    .count();
+                assert_eq!(plain, 2);
+            }
+        }
+    }
+
     #[test]
     fn toggling_a_plain_line_does_nothing() {
         let mut view = view_with(&["plain", "other"]);
