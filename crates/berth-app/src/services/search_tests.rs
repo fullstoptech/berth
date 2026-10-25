@@ -98,9 +98,21 @@ fn search_rest_ranks_restart_shop_api_worker_first_in_the_mock_world() {
 fn search_rest_with_the_worker_selected_matches_the_palette_frame() {
     let world = mock();
     let results = index(&world, &selecting_worker(&world), &scope_default()).search("rest", &[]);
-    assert_eq!(group_titles(&results), ["Containers", "Projects", "Engine"]);
-    let items: Vec<(&str, &str, Option<&str>)> = results
+    // Every engine is searched, so hetzner-1's `backup-1` (image
+    // restic/restic) answers "rest" too. The palette scene shows the
+    // default engine's records only, and those are the frame's rows.
+    let (elsewhere, here): (Vec<&SearchItem>, Vec<&SearchItem>) = results
         .flat()
+        .into_iter()
+        .partition(|i| i.meta.contains("hetzner-1"));
+    assert_eq!(
+        elsewhere
+            .iter()
+            .map(|i| i.title.as_str())
+            .collect::<Vec<_>>(),
+        ["backup-1", "restic/restic:latest"]
+    );
+    let items: Vec<(&str, &str, Option<&str>)> = here
         .iter()
         .map(|i| (i.title.as_str(), i.meta.as_str(), i.shortcut))
         .collect();
@@ -120,7 +132,7 @@ fn search_rest_with_the_worker_selected_matches_the_palette_frame() {
             ),
         ]
     );
-    assert!(results.flat()[2].confirm);
+    assert!(here[2].confirm);
     assert!(results.docker_command.is_none());
 }
 
@@ -247,19 +259,158 @@ fn search_scattered_letters_do_not_match() {
     );
 }
 
+/// `name` cloned onto `engine` under a new id, listed before the original
+/// so that a tie would put it first.
+fn clone_to_engine(world: &mut World, name: &str, engine: &str) -> ContainerId {
+    let mut copy = world
+        .containers
+        .iter()
+        .find(|c| c.name == name)
+        .unwrap_or_else(|| panic!("mock container {name}"))
+        .clone();
+    copy.id = ContainerId(format!("{engine}-{}", copy.id.0));
+    copy.engine = EngineId(engine.to_string());
+    let id = copy.id.clone();
+    world.containers.insert(0, copy);
+    id
+}
+
+fn is_tagged(item: &SearchItem, engine: &str) -> bool {
+    item.meta.ends_with(&format!(" · {engine}"))
+}
+
 #[test]
-fn search_scope_one_hides_other_engines_and_all_reaches_them() {
+fn search_with_default_selected_still_finds_other_engines_and_tags_them() {
     let world = mock();
     let one = index(&world, &Selection::None, &scope_default()).search("backup", &[]);
-    assert!(one.is_empty(), "{:?}", titles(&one));
+    let item = one
+        .flat()
+        .into_iter()
+        .find(|i| i.title == "backup-1")
+        .unwrap_or_else(|| panic!("remote container hidden: {:?}", titles(&one)));
+    assert!(is_tagged(item, "hetzner-1"), "{}", item.meta);
+    // Under "All engines" it is tagged as before.
     let all = index(&world, &Selection::None, &EngineScope::All).search("backup", &[]);
     let item = all
         .flat()
         .into_iter()
         .find(|i| i.title == "backup-1")
         .expect("remote");
-    // Other engines are named so results cannot be confused.
-    assert!(item.meta.contains("hetzner-1"), "{}", item.meta);
+    assert!(is_tagged(item, "hetzner-1"), "{}", item.meta);
+}
+
+#[test]
+fn search_selected_engine_ranks_above_an_equal_match_on_another_engine() {
+    let mut world = mock();
+    let on_work = clone_to_engine(&mut world, "shop-api-db-1", "colima:work");
+    let results = index(&world, &Selection::None, &scope_default()).search("shop-api-db", &[]);
+    let items: Vec<&SearchItem> = results
+        .flat()
+        .into_iter()
+        .filter(|i| i.title == "shop-api-db-1")
+        .collect();
+    assert_eq!(items.len(), 2, "{:?}", titles(&results));
+    // Default first and untagged; work second, tagged with the engine name.
+    assert!(!items[0].meta.contains("work"), "{}", items[0].meta);
+    assert_eq!(items[1].target, Target::Open(Subject::Container(on_work)));
+    assert!(is_tagged(items[1], "work"), "{}", items[1].meta);
+    assert_eq!(items[0].score - items[1].score, HOME_BONUS);
+}
+
+#[test]
+fn search_all_engines_scope_prefers_no_engine_and_tags_every_result() {
+    let mut world = mock();
+    let on_work = clone_to_engine(&mut world, "shop-api-db-1", "colima:work");
+    let results = index(&world, &Selection::None, &EngineScope::All).search("shop-api-db", &[]);
+    let items: Vec<&SearchItem> = results
+        .flat()
+        .into_iter()
+        .filter(|i| i.title == "shop-api-db-1")
+        .collect();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].score, items[1].score);
+    // The clone was listed first, so with no preference it stays first.
+    assert_eq!(
+        items[0].target,
+        Target::Open(Subject::Container(on_work.clone()))
+    );
+    assert!(is_tagged(items[0], "work"), "{}", items[0].meta);
+    assert!(is_tagged(items[1], "default"), "{}", items[1].meta);
+}
+
+#[test]
+fn search_bare_verb_acts_on_the_selected_engine_first() {
+    // Two restarting workers, the other engine's listed first: the bare
+    // verb must still pick the selected engine's.
+    let mut world = mock();
+    world
+        .engines
+        .iter_mut()
+        .find(|e| e.id.0 == "colima:work")
+        .expect("work")
+        .state = berth_core::EngineState::Running;
+    let default_worker = id_of(&world, "shop-api-worker-1");
+    clone_to_engine(&mut world, "shop-api-worker-1", "colima:work");
+    let results = index(&world, &Selection::None, &scope_default()).search("rest", &[]);
+    let first = results.flat().into_iter().next().expect("a result");
+    assert_eq!(first.title, "Restart shop-api-worker-1");
+    assert_eq!(
+        first.target,
+        Target::Run {
+            action: "container.restart",
+            subject: Some(Subject::Container(default_worker)),
+        }
+    );
+    assert!(!first.meta.contains("work"), "{}", first.meta);
+}
+
+#[test]
+fn search_port_query_lists_other_engines_after_the_selected_one() {
+    let mut world = mock();
+    let on_work = clone_to_engine(&mut world, "pg-scratch", "colima:work");
+    let results = index(&world, &Selection::None, &scope_default()).search(":5432", &[]);
+    let flat = results.flat();
+    let titles = titles(&results);
+    assert!(titles.contains(&"shop-api-db-1".to_string()), "{titles:?}");
+    let work_pos = flat
+        .iter()
+        .position(|i| i.target == Target::Open(Subject::Container(on_work.clone())))
+        .expect("work's pg-scratch");
+    let default_pos = flat
+        .iter()
+        .position(|i| i.title == "pg-scratch" && !is_tagged(i, "work"))
+        .expect("default's pg-scratch");
+    assert!(default_pos < work_pos, "{titles:?}");
+    assert!(is_tagged(flat[work_pos], "work"));
+}
+
+#[test]
+fn search_images_follow_the_engines_of_their_users() {
+    let world = mock();
+    // restic/restic is used by hetzner-1's backup-1 only.
+    let one = index(&world, &Selection::None, &scope_default()).search("restic", &[]);
+    let image = one
+        .flat()
+        .into_iter()
+        .find(|i| i.title == "restic/restic:latest")
+        .expect("image searchable from another engine");
+    assert!(is_tagged(image, "hetzner-1"), "{}", image.meta);
+    // An image the selected engine uses carries no tag.
+    let postgres = index(&world, &Selection::None, &scope_default()).search("postgres", &[]);
+    let image = postgres
+        .flat()
+        .into_iter()
+        .find(|i| i.group == Group::Images)
+        .expect("postgres image");
+    assert!(!image.meta.contains("hetzner"), "{}", image.meta);
+    // Under "All engines" images keep today's rule: no tag.
+    let all = index(&world, &Selection::None, &EngineScope::All).search("restic", &[]);
+    let image = all
+        .flat()
+        .into_iter()
+        .find(|i| i.title == "restic/restic:latest")
+        .expect("image");
+    assert!(!image.meta.contains("hetzner"), "{}", image.meta);
 }
 
 #[test]

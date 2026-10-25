@@ -20,6 +20,10 @@
 //! * A verb alone (`rest`) acts on the subject in context: the selection,
 //!   the project and engine it belongs to, else the one that most needs
 //!   attention (a restarting or failing container before a healthy one).
+//! * Every engine is searched (D4). The engine selected in the title-bar
+//!   switcher ranks first, a little below the gap acting gets over
+//!   opening, and results from the other engines carry the engine name.
+//!   A bare verb prefers the selected engine's subjects.
 //! * `:5432` (or a bare number of two digits or more) matches published
 //!   and container ports; other atoms match names, then image, project,
 //!   folder, labels and engine name at a lower rank.
@@ -154,6 +158,10 @@ impl Results {
 
 /// A verb match outranks an equally strong "open" match.
 const ACTION_BONUS: u32 = 32;
+/// A result on the engine the title-bar switcher selects outranks an equal
+/// one on another engine, but not an action over an open (D4).
+const HOME_BONUS: u32 = 16;
+const _: () = assert!(HOME_BONUS < ACTION_BONUS);
 const PORT_EXACT: u32 = 240;
 const PORT_PREFIX: u32 = 120;
 /// Matches in image, folder, labels and the like rank below name matches.
@@ -285,6 +293,9 @@ struct Entry {
     caps: Vec<ActionId>,
     /// For the engine's confirm text: running containers on it.
     running: usize,
+    /// On the engine the title-bar switcher selects: ranks above the rest
+    /// by [`HOME_BONUS`].
+    home: bool,
 }
 
 /// Everything search needs, built once per state change.
@@ -396,15 +407,19 @@ fn state_label(state: &EngineState) -> &'static str {
 }
 
 impl Index {
-    /// Index the engines in `scope` (the title-bar switcher: one engine, or
-    /// "All engines" for a search across every engine, D81). `selection`
-    /// decides which records are "in context".
+    /// Index every engine's records (D4: the palette always searches all
+    /// engines). `scope` is the title-bar switcher: the engine it selects
+    /// ranks first ([`HOME_BONUS`]) and every other engine's results carry
+    /// the engine name; under "All engines" nothing is preferred and
+    /// results are tagged when there is more than one engine (D81).
+    /// `selection` decides which records are "in context".
     #[must_use]
     pub fn build(view: &StateView<'_>, selection: &Selection, scope: &EngineScope) -> Self {
-        let in_scope = |engine: &berth_core::EngineId| match scope {
-            EngineScope::All => true,
-            EngineScope::One(id) => id == engine,
+        let selected_engine = match scope {
+            EngineScope::All => None,
+            EngineScope::One(id) => Some(id),
         };
+        let is_home = |engine: &berth_core::EngineId| selected_engine == Some(engine);
         let engine_name = |id: &berth_core::EngineId| {
             view.engines
                 .iter()
@@ -417,9 +432,43 @@ impl Index {
                 .find(|e| e.id == *id)
                 .is_some_and(|e| e.state == EngineState::Running)
         };
-        // A tag only when the result could be confused with another engine.
-        let multi = matches!(scope, EngineScope::All) && view.engines.len() > 1;
-        let tag = |id: &berth_core::EngineId| multi.then(|| engine_name(id));
+        // A tag only when the result could be confused with another engine:
+        // anything off the selected engine, or everything under "All
+        // engines" when there are several.
+        let multi = view.engines.len() > 1;
+        let tag = |id: &berth_core::EngineId| match selected_engine {
+            Some(selected) => (selected != id).then(|| engine_name(id)),
+            None => multi.then(|| engine_name(id)),
+        };
+        // Images, volumes and networks carry no engine id (PLAN §6.2); the
+        // engines of the containers that use them stand in for one.
+        let engine_of: std::collections::HashMap<&berth_core::ContainerId, &berth_core::EngineId> =
+            view.containers.iter().map(|c| (&c.id, &c.engine)).collect();
+        let user_engines = |users: &[berth_core::ContainerId]| {
+            let mut engines: Vec<&berth_core::EngineId> = users
+                .iter()
+                .filter_map(|id| engine_of.get(id).copied())
+                .collect();
+            engines.sort();
+            engines.dedup();
+            engines
+        };
+        // On the selected engine when any user is; tagged when all of its
+        // users are elsewhere. Unused ones have no engine to name.
+        let resource_home =
+            |users: &[berth_core::ContainerId]| user_engines(users).into_iter().any(is_home);
+        let resource_suffix = |users: &[berth_core::ContainerId]| {
+            let engines = user_engines(users);
+            let elsewhere = selected_engine.is_some()
+                && !engines.is_empty()
+                && !engines.iter().any(|e| is_home(e));
+            if elsewhere {
+                let names: Vec<String> = engines.into_iter().map(engine_name).collect();
+                format!(" · {}", names.join(", "))
+            } else {
+                String::new()
+            }
+        };
 
         let selected_containers: &[berth_core::ContainerId] = match selection {
             Selection::Containers(ids) => ids,
@@ -467,7 +516,7 @@ impl Index {
                 + view.engines.len(),
         );
 
-        for c in view.containers.iter().filter(|c| in_scope(&c.engine)) {
+        for c in view.containers {
             let status = berth_core::status_of(c.state, c.health, c.exit_code).label();
             let project = project_of(c);
             let mut secondary = vec![c.image.reference.clone()];
@@ -523,10 +572,11 @@ impl Index {
                 attention: container_attention(c.state, c.health, c.exit_code),
                 caps: container_caps(c.state, engine_up(&c.engine)),
                 running: 0,
+                home: is_home(&c.engine),
             });
         }
 
-        for p in view.projects.iter().filter(|p| in_scope(&p.engine)) {
+        for p in view.projects {
             let count = view
                 .containers
                 .iter()
@@ -567,10 +617,11 @@ impl Index {
                 attention: project_attention(p.status),
                 caps: project_caps(p, engine_up(&p.engine)),
                 running: 0,
+                home: is_home(&p.engine),
             });
         }
 
-        for e in view.engines.iter().filter(|e| in_scope(&e.id)) {
+        for e in view.engines {
             let running = view
                 .containers
                 .iter()
@@ -602,22 +653,13 @@ impl Index {
                 attention,
                 caps: engine_caps(e),
                 running,
+                home: is_home(&e.id),
             });
         }
 
-        // Images, volumes and networks carry no engine id (PLAN §6.2); one
-        // that containers use belongs to those containers' engines, so in a
-        // single-engine scope it is hidden when none of its users is there.
-        // Unused ones show in every scope. Verbs arrive with P4.
-        let users_visible = |users: &[berth_core::ContainerId]| {
-            matches!(scope, EngineScope::All)
-                || users.is_empty()
-                || view
-                    .containers
-                    .iter()
-                    .any(|c| users.contains(&c.id) && in_scope(&c.engine))
-        };
-        for image in view.images.iter().filter(|i| users_visible(&i.used_by)) {
+        // Images, volumes and networks are always searchable. Verbs arrive
+        // with P4.
+        for image in view.images {
             let name = image
                 .repo_tags
                 .first()
@@ -630,15 +672,20 @@ impl Index {
                 name,
                 secondary: image.repo_tags.iter().skip(1).cloned().collect(),
                 ports: Vec::new(),
-                open_meta: format!("Image · {}", berth_core::fmt::bytes(image.size)),
+                open_meta: format!(
+                    "Image · {}{}",
+                    berth_core::fmt::bytes(image.size),
+                    resource_suffix(&image.used_by)
+                ),
                 verb_meta: String::new(),
                 ctx,
                 attention: 0,
                 caps: Vec::new(),
                 running: 0,
+                home: resource_home(&image.used_by),
             });
         }
-        for volume in view.volumes.iter().filter(|v| users_visible(&v.used_by)) {
+        for volume in view.volumes {
             let ctx = u8::from(matches!(selection, Selection::Volume(n) if *n == volume.name)) * 2;
             entries.push(Entry {
                 subject: Subject::Volume(volume.name.clone()),
@@ -651,21 +698,22 @@ impl Index {
                     .collect(),
                 ports: Vec::new(),
                 open_meta: match volume.size {
-                    Some(size) => format!("Volume · {}", berth_core::fmt::bytes(size)),
-                    None => "Volume".to_string(),
+                    Some(size) => format!(
+                        "Volume · {}{}",
+                        berth_core::fmt::bytes(size),
+                        resource_suffix(&volume.used_by)
+                    ),
+                    None => format!("Volume{}", resource_suffix(&volume.used_by)),
                 },
                 verb_meta: String::new(),
                 ctx,
                 attention: 0,
                 caps: Vec::new(),
                 running: 0,
+                home: resource_home(&volume.used_by),
             });
         }
-        for network in view
-            .networks
-            .iter()
-            .filter(|n| users_visible(&n.containers))
-        {
+        for network in view.networks {
             let ctx = u8::from(
                 matches!(selection, Selection::Network(n) if *n == network.id || *n == network.name),
             ) * 2;
@@ -675,12 +723,17 @@ impl Index {
                 name: network.name.clone(),
                 secondary: network.subnet.iter().cloned().collect(),
                 ports: Vec::new(),
-                open_meta: format!("Network · {}", network.driver),
+                open_meta: format!(
+                    "Network · {}{}",
+                    network.driver,
+                    resource_suffix(&network.containers)
+                ),
                 verb_meta: String::new(),
                 ctx,
                 attention: 0,
                 caps: Vec::new(),
                 running: 0,
+                home: resource_home(&network.containers),
             });
         }
         Self { entries }
@@ -847,6 +900,15 @@ fn shortcut_of(id: ActionId) -> Option<&'static str> {
 }
 
 impl Entry {
+    /// The rank bonus of a result on the selected engine.
+    fn home_bonus(&self) -> u32 {
+        if self.home {
+            HOME_BONUS
+        } else {
+            0
+        }
+    }
+
     fn verb_item(&self, verb: &Verb, score: u32) -> SearchItem {
         let ellipsis = if verb.confirm { "…" } else { "" };
         let danger = action_by_id(verb.id).is_some_and(|d| d.danger);
@@ -1077,8 +1139,9 @@ impl Index {
                     candidates
                         .into_iter()
                         .min_by(|a, b| {
-                            a.0.attention
-                                .cmp(&b.0.attention)
+                            b.0.home
+                                .cmp(&a.0.home)
+                                .then(a.0.attention.cmp(&b.0.attention))
                                 .then(a.0.name.cmp(&b.0.name))
                         })
                         .into_iter()
@@ -1088,7 +1151,7 @@ impl Index {
                 };
                 for (entry, total) in explicit.into_iter().chain(bare) {
                     found.push((
-                        entry.verb_item(verb, total + ACTION_BONUS),
+                        entry.verb_item(verb, total + ACTION_BONUS + entry.home_bonus()),
                         entry.ctx,
                         entry.attention,
                         &entry.name,
@@ -1113,7 +1176,7 @@ impl Index {
             }
             if ok {
                 found.push((
-                    entry.open_item(total),
+                    entry.open_item(total + entry.home_bonus()),
                     entry.ctx,
                     entry.attention,
                     &entry.name,
