@@ -376,6 +376,17 @@ pub async fn run_container(
     settle: Settle,
     cancel: &CancellationToken,
 ) -> Result<(), String> {
+    // A restart is settled by a new start time, judged by inspecting the
+    // container (the list may carry none, as the live list does not). When
+    // the caller has no baseline, read it before acting.
+    let before_started = match (&action, before_started) {
+        (ContainerAction::Restart { .. }, None) => client
+            .container(id)
+            .await
+            .ok()
+            .and_then(|detail| detail.container.started),
+        (_, known) => known,
+    };
     let first = tokio::select! {
         () = cancel.cancelled() => return Err("cancelled".to_string()),
         result = client.act(id, action.clone()) => result,
@@ -1471,6 +1482,39 @@ mod tests {
         rig.settle_one().await;
         assert!(rig.pending().is_empty(), "polled to success, not Timeout");
         assert!(started.elapsed() >= std::time::Duration::from_millis(80));
+        assert_eq!(rig.activity()[0].outcome, berth_core::Outcome::Ok);
+    }
+
+    /// The live container list carries no start times, so a target built
+    /// from it has `started: None`. A restart that times out must still be
+    /// judged by inspecting the container, against the start time read
+    /// before the action: the old run is not "restarted".
+    #[tokio::test]
+    async fn actions_restart_that_times_out_waits_for_a_new_run_without_list_start_times() {
+        let mut rig = Rig::new(Mode::SlowAct(std::time::Duration::from_millis(80)));
+        let mut target = rig.target("shop-api-api-1");
+        let old_started = rig.container("shop-api-api-1").started;
+        assert!(old_started.is_some(), "the mock container has run before");
+        target.started = None;
+        let service = rig.service.clone();
+        let mut state = rig.state;
+        let began = std::time::Instant::now();
+        rig.dom
+            .in_runtime(|| {
+                service.container(
+                    &mut state,
+                    &target,
+                    ContainerAction::Restart { timeout_s: Some(0) },
+                )
+            })
+            .expect("accepted");
+        rig.settle_one().await;
+        assert!(
+            began.elapsed() >= std::time::Duration::from_millis(80),
+            "settled on the old run after {:?}",
+            began.elapsed()
+        );
+        assert!(rig.pending().is_empty(), "{:?}", rig.pending());
         assert_eq!(rig.activity()[0].outcome, berth_core::Outcome::Ok);
     }
 
