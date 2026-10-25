@@ -1,0 +1,14 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"node-vite-npm\"))"
+---
+folder: "<folder>"
+found: []
+stack:
+  - Node:
+      pm: npm
+      framework: Vite
+      version: ~
+services_needed: []
+confidence: High
+git_branch: ~

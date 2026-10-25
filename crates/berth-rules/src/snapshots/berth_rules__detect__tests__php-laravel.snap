@@ -1,0 +1,22 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"php-laravel\"))"
+---
+folder: "<folder>"
+found:
+  - kind:
+      Env:
+        keys: 9
+    path: ".env"
+stack:
+  - Php:
+      framework: Laravel
+services_needed:
+  - kind: Mysql
+    reason: from DB_CONNECTION
+  - kind: Redis
+    reason: from REDIS_HOST
+  - kind: Mailpit
+    reason: from MAIL_HOST
+confidence: High
+git_branch: ~

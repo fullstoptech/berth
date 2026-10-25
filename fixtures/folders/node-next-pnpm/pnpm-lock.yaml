@@ -1,0 +1,25 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      ioredis:
+        specifier: ^5.4.1
+        version: 5.4.1
+      next:
+        specifier: 15.0.3
+        version: 15.0.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      pg:
+        specifier: ^8.13.1
+        version: 8.13.1
+      react:
+        specifier: 19.0.0
+        version: 19.0.0
+      react-dom:
+        specifier: 19.0.0
+        version: 19.0.0(react@19.0.0)

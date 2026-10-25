@@ -1,0 +1,10 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"empty\"))"
+---
+folder: "<folder>"
+found: []
+stack: []
+services_needed: []
+confidence: Low
+git_branch: ~

@@ -1,0 +1,16 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"dockerfile-only\"))"
+---
+folder: "<folder>"
+found:
+  - kind:
+      Dockerfile:
+        from: "nginx:1.27-alpine"
+    path: Dockerfile
+  - kind: DockerIgnore
+    path: ".dockerignore"
+stack: []
+services_needed: []
+confidence: Medium
+git_branch: ~

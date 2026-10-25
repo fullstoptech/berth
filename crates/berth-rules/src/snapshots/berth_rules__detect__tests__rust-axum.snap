@@ -1,0 +1,13 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"rust-axum\"))"
+---
+folder: "<folder>"
+found: []
+stack:
+  - Rust
+services_needed:
+  - kind: Postgres
+    reason: "from sqlx[postgres] in Cargo.toml"
+confidence: High
+git_branch: ~

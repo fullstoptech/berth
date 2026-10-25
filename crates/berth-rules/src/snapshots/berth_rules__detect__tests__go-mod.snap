@@ -1,0 +1,15 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"go-mod\"))"
+---
+folder: "<folder>"
+found: []
+stack:
+  - Go
+services_needed:
+  - kind: Postgres
+    reason: from github.com/jackc/pgx/v5 in go.mod
+  - kind: Redis
+    reason: from github.com/redis/go-redis/v9 in go.mod
+confidence: High
+git_branch: ~

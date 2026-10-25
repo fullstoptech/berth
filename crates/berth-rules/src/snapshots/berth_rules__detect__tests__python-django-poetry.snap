@@ -1,0 +1,19 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"python-django-poetry\"))"
+---
+folder: "<folder>"
+found:
+  - kind: EnvExample
+    path: ".env.example"
+stack:
+  - Python:
+      tool: poetry
+      framework: Django
+services_needed:
+  - kind: Postgres
+    reason: from DATABASE_URL
+  - kind: Redis
+    reason: from redis in pyproject.toml
+confidence: High
+git_branch: ~

@@ -1,0 +1,17 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"java-spring-maven\"))"
+---
+folder: "<folder>"
+found: []
+stack:
+  - Java:
+      build: Maven
+      framework: Spring Boot
+services_needed:
+  - kind: Postgres
+    reason: from postgresql in pom.xml
+  - kind: Rabbitmq
+    reason: from spring-boot-starter-amqp in pom.xml
+confidence: High
+git_branch: ~

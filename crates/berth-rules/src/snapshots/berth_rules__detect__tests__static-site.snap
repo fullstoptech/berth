@@ -1,0 +1,11 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"static-site\"))"
+---
+folder: "<folder>"
+found: []
+stack:
+  - Static
+services_needed: []
+confidence: Medium
+git_branch: ~

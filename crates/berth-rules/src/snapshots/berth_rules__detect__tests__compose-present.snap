@@ -1,0 +1,16 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"compose-present\"))"
+---
+folder: "<folder>"
+found:
+  - kind: Compose
+    path: compose.yaml
+  - kind:
+      Env:
+        keys: 1
+    path: ".env"
+stack: []
+services_needed: []
+confidence: Medium
+git_branch: ~
