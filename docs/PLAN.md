@@ -485,7 +485,15 @@ pub struct ContainerSpec {               // what Edit and recreate edits (brief 
     pub env: Vec<(String, String)>, pub ports: Vec<PortMapping>, pub mounts: Vec<Mount>,
     pub networks: Vec<String>, pub labels: std::collections::BTreeMap<String, String>,
     pub restart: RestartPolicy, pub limits: Limits, pub platform: Option<String>,
+    // D16 (architect, 2026-10-25): recreate must not silently drop how the container runs.
+    pub working_dir: Option<String>, pub user: Option<String>, pub healthcheck: Option<HealthCheck>,
+    pub cap_add: Vec<String>, pub cap_drop: Vec<String>,
+    pub network_aliases: std::collections::BTreeMap<String, Vec<String>>, // network name -> aliases
 }
+pub struct HealthCheck { pub test: Vec<String>, pub interval_s: Option<u64>, pub timeout_s: Option<u64>, pub retries: Option<u32>, pub start_period_s: Option<u64> }
+// Anything else the inspect carries that the spec cannot is listed by `ContainerSpec::uncarried(&ContainerDetail) -> Vec<String>`; Recreate is disabled with those names as its reason (D16 backstop).
+// D17: a Compose-managed container is never recreated outside Compose; the sheet offers Apply limits and "Write to compose.yaml instead" (P5-T3) with the reason.
+// D19: memory is formatted in binary units labelled "MB" (256m shows "256 MB"); image and disk sizes stay decimal.
 #[derive(Default)] pub struct Limits { pub cpus: Option<f32>, pub memory: Option<ByteSize>, pub memory_swap: Option<ByteSize> }
 pub enum RestartPolicy { No, Always, UnlessStopped, OnFailure { max_retries: u16 } }
 pub struct SpecChange { pub field: String, pub before: String, pub after: String }   // env values shown masked
@@ -610,6 +618,7 @@ pub enum EngineAction {
     Colima { profile: String, op: ColimaOp },
     PullImage { engine: EngineId, reference: String, platform: Option<String> },
     Prune { plan: PrunePlan },
+    Recreate { engine: EngineId, id: ContainerId, spec: ContainerSpec, pull: bool }, // D18 (2026-10-25): edit-and-recreate and "Recreate with latest image"
 }
 
 // ---------- generation.rs ----------
