@@ -17,8 +17,8 @@
 .palette-field { width: 100%; }
 .palette-field .search-input { height: 100%; }
 /* The field is always focused while the palette is open; the frame draws
-   its plain border, not the focus ring. */
-.palette-field:focus-within, .palette-field .search-input:focus-visible { outline: none; }
+   its plain border, so the search focus border is not applied here. */
+.search-field.palette-field:focus-within { border-color: var(--color-line-strong); }
 
 .palette-body {
   padding: var(--space-12) var(--space-8) var(--space-12) var(--space-8);

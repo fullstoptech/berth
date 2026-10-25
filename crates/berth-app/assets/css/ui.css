@@ -129,9 +129,12 @@
 }
 .search-field, .select-control { height: var(--size-control-md); }
 .field-control:hover, .search-field:hover, .select-control:hover { border-color: var(--color-ink-muted); }
-.field-control:focus-within, .search-field:focus-within, .select-control:focus-within {
+.field-control:focus-within, .select-control:focus-within {
   outline: 2px solid var(--color-focus); outline-offset: 1px;
 }
+/* Search fields never draw the accent ring: focus shows as the strongest
+   neutral border (line-strong is already the resting border, so ink). */
+.search-field:focus-within { border-color: var(--color-ink); }
 .text-field-error .field-control { border-color: var(--color-danger); }
 .field-input, .search-input, .select-input {
   flex: 1; min-width: 0; border: none; background: transparent; color: var(--color-ink);

@@ -584,8 +584,9 @@ fn fields_draw_one_focus_ring_on_the_wrapper_never_on_the_input() {
             }
         }
     }
-    // The wrapper draws the one ring, with the focus token.
-    for wrapper in [".field-control", ".search-field", ".select-control"] {
+    // The wrapper draws the one ring, with the focus token (search fields
+    // are the exception, see the next test).
+    for wrapper in [".field-control", ".select-control"] {
         let ring = rules.iter().any(|(selector, body)| {
             selector
                 .split(',')
@@ -593,5 +594,52 @@ fn fields_draw_one_focus_ring_on_the_wrapper_never_on_the_input() {
                 && body.contains("outline: 2px solid var(--color-focus)")
         });
         assert!(ring, "{wrapper}:focus-within must draw the focus ring");
+    }
+}
+
+#[test]
+fn search_field_focus_changes_the_border_and_draws_no_accent_ring() {
+    let rules = css_rules(include_str!("../../assets/css/ui.css"));
+    let focus_bodies: Vec<&String> = rules
+        .iter()
+        .filter(|(selector, _)| {
+            selector
+                .split(',')
+                .any(|s| s.trim().starts_with(".search-field:focus"))
+        })
+        .map(|(_, body)| body)
+        .collect();
+    assert!(!focus_bodies.is_empty(), "search field needs a focus rule");
+    for body in focus_bodies {
+        for banned in [
+            "--color-focus",
+            "--color-accent",
+            "--color-info",
+            "outline",
+            "box-shadow",
+        ] {
+            assert!(
+                !body.contains(banned),
+                "search focus must not use {banned}: {body}"
+            );
+        }
+        assert!(
+            body.contains("border-color: var(--color-ink)"),
+            "search focus must switch the border: {body}"
+        );
+    }
+    // The shared rule that gives other fields their ring must not name search.
+    for (selector, body) in &rules {
+        let names_search = selector.split(',').map(str::trim).any(|s| {
+            (s.starts_with(".search-field") || s.starts_with(".search-input"))
+                && s.contains(":focus")
+                && !s.starts_with(".search-field:focus-within")
+        });
+        if names_search {
+            assert!(
+                !body.contains("--color-focus") && !body.contains("box-shadow: 0"),
+                "{selector} draws a ring: {body}"
+            );
+        }
     }
 }
