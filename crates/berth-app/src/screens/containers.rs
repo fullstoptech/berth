@@ -31,7 +31,7 @@ use crate::ui::container_row::{
 use crate::ui::{
     count_label, inspector_visible, scope_includes, Badge, BadgeKind, Banner, BannerTone,
     BulkAction, BulkBar, Button, ButtonVariant, CellAlign, ControlSize, EmptyState, GroupHeaderRow,
-    IconButton, InlineMessage, InlineTone, MenuEntry, SearchField, Select, SelectOption,
+    IconButton, InlineMessage, InlineTone, Menu, MenuEntry, SearchField, Select, SelectOption,
     SkeletonRows, SortDirection, TableHeaderCell, VirtualTable,
 };
 
@@ -190,6 +190,8 @@ pub struct ContainersView {
     /// Bumped to remount the (uncontrolled) filter field when cleared.
     pub filter_epoch: Signal<u32>,
     pub menu_open: Signal<Option<ContainerId>>,
+    /// Key of the group whose ⋯ menu is open.
+    pub group_menu: Signal<Option<String>>,
 }
 
 impl ContainersView {
@@ -202,6 +204,7 @@ impl ContainersView {
             inspector_toggled: Signal::new(false),
             filter_epoch: Signal::new(0),
             menu_open: Signal::new(None),
+            group_menu: Signal::new(None),
         }
     }
 }
@@ -330,6 +333,45 @@ impl GroupInfo {
         } else {
             None
         }
+    }
+
+    /// Why the restart button cannot run: it restarts running members.
+    pub fn restart_reason(&self) -> Option<&'static str> {
+        self.stop_ids.is_empty().then_some("Nothing is running")
+    }
+
+    /// The group's ⋯ menu: the group actions the Actions service runs,
+    /// each disabled with its reason when no member qualifies.
+    pub fn menu_items(&self) -> Vec<MenuEntry> {
+        let entry = |id: &str, label: String, icon: &'static str, reason: Option<&str>| {
+            let entry = MenuEntry::new(id, label).icon(icon);
+            match reason {
+                Some(reason) => entry.disabled(reason),
+                None => entry,
+            }
+        };
+        let none_stopped = self.start_ids.is_empty().then_some("Nothing is stopped");
+        let none_running = self.restart_reason();
+        vec![
+            entry(
+                "start-stopped",
+                format!("Start {} stopped", self.start_ids.len()),
+                "play",
+                none_stopped,
+            ),
+            entry(
+                "stop-all",
+                "Stop all running".to_string(),
+                "square",
+                none_running,
+            ),
+            entry(
+                "restart-running",
+                "Restart running".to_string(),
+                "rotate-cw",
+                none_running,
+            ),
+        ]
     }
 }
 
@@ -1166,6 +1208,8 @@ fn ContainerRowHost(id: ContainerId, show_uptime: bool, show_engine: bool) -> El
             ontoggle: move |id: ContainerId| toggle_selected(&mut state, &id),
             onaction: move |(id, action): (ContainerId, RowAction)| match action {
                 RowAction::More => {
+                    let mut group_menu = view.group_menu;
+                    group_menu.set(None);
                     let mut menu = view.menu_open;
                     let open = menu.peek().as_ref() == Some(&id);
                     menu.set(if open { None } else { Some(id) });
@@ -1227,8 +1271,17 @@ fn GroupRowHost(info: GroupInfo) -> Element {
     let stop_ids = info.stop_ids.clone();
     let restart_ids = info.stop_ids.clone();
     let group_actions = actions.clone();
-    let restart_actions = actions;
+    let restart_actions = actions.clone();
+    let menu_actions = actions;
     let restart_label = format!("Restart running containers in {}", info.name);
+    let restart_reason = info.restart_reason();
+    let menu_open = view.group_menu.read().as_deref() == Some(info.key.as_str());
+    let menu_key = info.key.clone();
+    let menu_items = info.menu_items();
+    let more_label = format!("More actions for {}", info.name);
+    let menu_label = more_label.clone();
+    let menu_start = info.start_ids.clone();
+    let menu_stop = info.stop_ids.clone();
     rsx! {
         GroupHeaderRow {
             name: info.name.clone(),
@@ -1256,20 +1309,60 @@ fn GroupRowHost(info: GroupInfo) -> Element {
                     );
                 }
             },
-            if !restart_ids.is_empty() {
+            IconButton {
+                icon: "rotate-cw",
+                label: restart_label,
+                tooltip: restart_reason.unwrap_or("Restart running").to_string(),
+                size: ControlSize::Sm,
+                disabled: restart_reason.is_some(),
+                onclick: move |_| {
+                    run_group_action(
+                        &mut state,
+                        restart_actions.as_ref(),
+                        &restart_ids,
+                        &ContainerAction::Restart { timeout_s: None },
+                    );
+                },
+            }
+            span { class: "group-header-more",
                 IconButton {
-                    icon: "rotate-cw",
-                    label: restart_label,
-                    tooltip: "Restart running".to_string(),
+                    icon: "more-horizontal",
+                    label: more_label,
+                    tooltip: "More".to_string(),
                     size: ControlSize::Sm,
-                    onclick: move |_| {
-                        run_group_action(
-                            &mut state,
-                            restart_actions.as_ref(),
-                            &restart_ids,
-                            &ContainerAction::Restart { timeout_s: None },
-                        );
+                    onclick: move |e: MouseEvent| {
+                        e.stop_propagation();
+                        let mut open = view.group_menu;
+                        let was_open = open.peek().as_deref() == Some(menu_key.as_str());
+                        open.set(if was_open { None } else { Some(menu_key.clone()) });
+                        let mut row_menu = view.menu_open;
+                        row_menu.set(None);
                     },
+                }
+                if menu_open {
+                    div {
+                        class: "group-menu",
+                        onclick: move |e| e.stop_propagation(),
+                        Menu {
+                            items: menu_items,
+                            aria_label: menu_label,
+                            on_select: move |item: String| {
+                                let mut open = view.group_menu;
+                                open.set(None);
+                                let (ids, action) = match item.as_str() {
+                                    "start-stopped" => (&menu_start, ContainerAction::Start),
+                                    "stop-all" => {
+                                        (&menu_stop, ContainerAction::Stop { timeout_s: None })
+                                    }
+                                    "restart-running" => {
+                                        (&menu_stop, ContainerAction::Restart { timeout_s: None })
+                                    }
+                                    _ => return,
+                                };
+                                run_group_action(&mut state, menu_actions.as_ref(), ids, &action);
+                            },
+                        }
+                    }
                 }
             }
         }
@@ -1558,6 +1651,10 @@ pub fn ContainersScreen() -> Element {
                 let mut menu = view.menu_open;
                 if menu.peek().is_some() {
                     menu.set(None);
+                }
+                let mut group_menu = view.group_menu;
+                if group_menu.peek().is_some() {
+                    group_menu.set(None);
                 }
             },
             if let Some(ids) = bulk_ids.clone() {

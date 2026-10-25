@@ -307,6 +307,92 @@ fn containers_model_groups_by_project_with_counts_and_actions() {
     assert!(!names_in_order(&m).contains(&"ml-notebooks-jupyter-1".to_string()));
 }
 
+#[test]
+fn containers_group_menu_enables_only_the_actions_some_member_can_take() {
+    let m = model(&Filters::default(), GroupBy::Project, None);
+    let g = groups(&m);
+    let find = |items: &[MenuEntry], id: &str| items.iter().find(|e| e.id == id).cloned();
+    // shop-api: 1 stopped, 4 running or restarting.
+    let items = g[0].menu_items();
+    assert_eq!(items[0].label, "Start 1 stopped");
+    assert!(items.iter().all(|e| e.disabled_reason.is_none()));
+    // berth-site: everything runs, nothing to start.
+    let items = g[2].menu_items();
+    assert_eq!(
+        find(&items, "start-stopped").and_then(|e| e.disabled_reason),
+        Some("Nothing is stopped".to_string())
+    );
+    assert!(find(&items, "stop-all").is_some_and(|e| e.disabled_reason.is_none()));
+    assert!(g[2].restart_reason().is_none());
+    // ml-notebooks: nothing runs, so stop and restart say why.
+    let items = g[4].menu_items();
+    assert!(find(&items, "start-stopped").is_some_and(|e| e.disabled_reason.is_none()));
+    for id in ["stop-all", "restart-running"] {
+        assert_eq!(
+            find(&items, id).and_then(|e| e.disabled_reason),
+            Some("Nothing is running".to_string()),
+            "{id}"
+        );
+    }
+    assert_eq!(g[4].restart_reason(), Some("Nothing is running"));
+}
+
+/// The opening tag of the first element whose markup contains `needle`.
+fn tag_around<'a>(html: &'a str, needle: &str) -> &'a str {
+    let at = html
+        .find(needle)
+        .unwrap_or_else(|| panic!("{needle} missing"));
+    let start = html[..at].rfind('<').unwrap_or(0);
+    let end = html[at..].find('>').map_or(html.len(), |i| at + i);
+    &html[start..end]
+}
+
+#[test]
+fn containers_screen_every_group_header_has_restart_and_more_even_when_collapsed() {
+    let html = render_screen(|state, _| mock_state(state));
+    for name in [
+        "shop-api",
+        "analytics",
+        "berth-site",
+        "payments-mock",
+        "ml-notebooks",
+        "docs-site",
+        "Unassigned",
+    ] {
+        let more = format!("aria-label=\"More actions for {name}\"");
+        assert_eq!(count(&html, &more), 1, "{name}: {html}");
+        let restart = format!("aria-label=\"Restart running containers in {name}\"");
+        assert_eq!(count(&html, &restart), 1, "{name}");
+    }
+    // Collapsed groups show the restart button, disabled with its reason.
+    let tag = tag_around(&html, "Restart running containers in ml-notebooks");
+    assert!(tag.contains("disabled"), "{tag}");
+    assert!(tag.contains("data-tooltip=\"Nothing is running\""), "{tag}");
+    let tag = tag_around(&html, "Restart running containers in shop-api\"");
+    assert!(!tag.contains("disabled"), "{tag}");
+    // The menu stays closed until the ⋯ button opens it.
+    assert!(!html.contains("group-menu"), "{html}");
+}
+
+#[test]
+fn containers_screen_group_menu_lists_the_group_actions_when_open() {
+    let html = render_screen(|state, view| {
+        mock_state(state);
+        let m = model(&Filters::default(), GroupBy::Project, None);
+        view.group_menu.set(Some(groups(&m)[0].key.clone()));
+        let _ = state;
+    });
+    assert_eq!(count(&html, "group-menu"), 1, "{html}");
+    assert!(
+        html.contains("aria-label=\"More actions for shop-api\" role=\"menu\"")
+            || html.contains("role=\"menu\" aria-label=\"More actions for shop-api\""),
+        "{html}"
+    );
+    for label in ["Start 1 stopped", "Stop all running", "Restart running"] {
+        assert!(html.contains(label), "{label}: {html}");
+    }
+}
+
 fn names_in_order(m: &ListModel) -> Vec<String> {
     names(m, &world().containers)
 }

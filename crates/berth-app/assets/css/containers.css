@@ -409,6 +409,18 @@
   z-index: 30;
 }
 
+/* A group header's more menu hangs under its ⋯ button. */
+.group-header-more {
+  position: relative;
+  display: inline-flex;
+}
+.group-menu {
+  position: absolute;
+  top: 100%;
+  right: calc(-1 * var(--space-8));
+  z-index: 30;
+}
+
 /* Failed action message under the row (D34) */
 .ct-failure {
   display: flex;
