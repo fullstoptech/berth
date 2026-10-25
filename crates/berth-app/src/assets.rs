@@ -128,4 +128,31 @@ mod tests {
         assert!(!ICONS_SVG.contains("stroke=\"#"));
         assert!(!ICONS_SVG.contains("fill=\"#"));
     }
+
+    /// Every symbol is the icon component's own 16x16 frame, so a glyph
+    /// fills the same share of the icon box as in the design (a cropped
+    /// viewBox drew glyphs at about 0.6 of that size).
+    #[test]
+    fn sprite_symbols_are_all_16_by_16_frames() {
+        let mut checked = 0;
+        for symbol in ICONS_SVG.split("<symbol ").skip(1) {
+            let view_box = symbol
+                .split("viewBox=\"")
+                .nth(1)
+                .and_then(|rest| rest.split('"').next())
+                .expect("a viewBox");
+            let numbers: Vec<f32> = view_box
+                .split_whitespace()
+                .map(|n| n.parse().expect("a number"))
+                .collect();
+            assert_eq!(numbers.len(), 4, "{view_box}");
+            assert!(
+                (numbers[2] - 16.0).abs() < f32::EPSILON
+                    && (numbers[3] - 16.0).abs() < f32::EPSILON,
+                "viewBox {view_box} is not a 16x16 frame"
+            );
+            checked += 1;
+        }
+        assert!(checked >= 40, "only {checked} symbols");
+    }
 }

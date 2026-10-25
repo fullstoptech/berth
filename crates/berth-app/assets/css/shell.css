@@ -295,16 +295,3 @@ html, body {
 }
 .overlay-card h2 { margin: 0 0 var(--space-4); font-size: var(--text-h2-size); line-height: var(--text-h2-line); font-weight: var(--text-h2-weight); }
 .overlay-card p { margin: 0; color: var(--color-ink-muted); }
-
-/* Sprite glyphs are drawn at about 0.6 of the frame's glyph size (the
-   exported symbols carry 6-unit margins in a 24-unit box), so chrome icons
-   get a larger box with a matching negative margin: layout stays 16/14 px,
-   the glyph matches the frame. The sprite itself is P0-T3's to fix. */
-.titlebar .icon-md, .sidebar .icon-md, .statusbar .icon-md, .bottom-panel .icon-md {
-  width: calc(var(--size-icon-md) * 7 / 5); height: calc(var(--size-icon-md) * 7 / 5);
-  margin: calc(var(--size-icon-md) * -1 / 5);
-}
-.titlebar .icon-sm, .sidebar .icon-sm, .statusbar .icon-sm, .bottom-panel .icon-sm {
-  width: calc(var(--size-icon-sm) * 7 / 5); height: calc(var(--size-icon-sm) * 7 / 5);
-  margin: calc(var(--size-icon-sm) * -1 / 5);
-}

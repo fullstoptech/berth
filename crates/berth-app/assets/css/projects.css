@@ -11,21 +11,6 @@
   padding-bottom: var(--space-24);
 }
 
-/* Sprite glyphs are drawn at about 0.6 of the frame's glyph size, so the
-   screen's icons get a larger box with a matching negative margin (the same
-   compensation shell.css applies to chrome; remove both once the sprite is
-   fixed). Layout stays 16/14 px. */
-.projects-screen .icon-md {
-  width: calc(var(--size-icon-md) * 7 / 5);
-  height: calc(var(--size-icon-md) * 7 / 5);
-  margin: calc(var(--size-icon-md) * -1 / 5);
-}
-.projects-screen .icon-sm {
-  width: calc(var(--size-icon-sm) * 7 / 5);
-  height: calc(var(--size-icon-sm) * 7 / 5);
-  margin: calc(var(--size-icon-sm) * -1 / 5);
-}
-
 /* Header: title, count, filter controls, primary action */
 .projects-header {
   display: flex;

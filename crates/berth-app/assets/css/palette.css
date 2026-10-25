@@ -80,14 +80,3 @@
   background: var(--color-surface);
 }
 .palette-hint .kbd + .kbd { margin-left: calc(var(--space-2) * -1); }
-
-/* Same sprite compensation as the shell chrome (see shell.css): the glyph is
-   drawn at about 0.6 of the frame size, so the box grows and the margin cancels it. */
-.palette .icon-md {
-  width: calc(var(--size-icon-md) * 7 / 5); height: calc(var(--size-icon-md) * 7 / 5);
-  margin: calc(var(--size-icon-md) * -1 / 5);
-}
-.palette .icon-sm {
-  width: calc(var(--size-icon-sm) * 7 / 5); height: calc(var(--size-icon-sm) * 7 / 5);
-  margin: calc(var(--size-icon-sm) * -1 / 5);
-}
