@@ -88,9 +88,25 @@ pub fn GenerateSheet(folder: PathBuf) -> Element {
     }
 }
 
+/// What the Detected sheet changes in the body: it shows its own Found list and names the button
+/// after what it makes ("Generate compose.yaml").
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BodyDress {
+    /// The Found card is the sheet's own; leave this one out.
+    pub hide_found: bool,
+    /// The button's label; "Review changes" when `None`.
+    pub action: Option<String>,
+    /// The line left of the buttons.
+    pub note: Option<String>,
+}
+
 /// Detection, choices and the Review changes button, for `folder`. `on_close` is the Cancel button.
 #[component]
-pub fn GenerateBody(folder: PathBuf, on_close: EventHandler<()>) -> Element {
+pub fn GenerateBody(
+    folder: PathBuf,
+    on_close: EventHandler<()>,
+    #[props(default)] dress: BodyDress,
+) -> Element {
     let mut state = use_context::<AppState>();
     let store = try_consume_context::<PlanStore>();
     let seed = try_consume_context::<SeedDetection>();
@@ -271,6 +287,7 @@ pub fn GenerateBody(folder: PathBuf, on_close: EventHandler<()>) -> Element {
                 p { class: "gen-lede",
                     "Berth read the files in {shown_folder} and nothing else. You review every file before it is written."
                 }
+                if !dress.hide_found {
                 section { class: "gen-card", "aria-label": "What Berth found",
                     h3 { class: "gen-card-title", "Found" }
                     dl { class: "gen-facts",
@@ -293,6 +310,7 @@ pub fn GenerateBody(folder: PathBuf, on_close: EventHandler<()>) -> Element {
                             }
                         }
                     }
+                }
                 }
                 if let Some(text) = block.clone() {
                     InlineMessage { message: text, tone: InlineTone::Warning }
@@ -385,6 +403,9 @@ pub fn GenerateBody(folder: PathBuf, on_close: EventHandler<()>) -> Element {
                     InlineMessage { message: text, tone: InlineTone::Danger }
                 }
                 div { class: "gen-footer",
+                    if let Some(note) = dress.note.clone() {
+                        p { class: "gen-footer-note", "{note}" }
+                    }
                     Button {
                         label: "Cancel".to_string(),
                         variant: ButtonVariant::Secondary,
@@ -392,7 +413,7 @@ pub fn GenerateBody(folder: PathBuf, on_close: EventHandler<()>) -> Element {
                         onclick: move |_| on_close.call(()),
                     }
                     Button {
-                        label: "Review changes".to_string(),
+                        label: dress.action.clone().unwrap_or_else(|| "Review changes".to_string()),
                         variant: ButtonVariant::Primary,
                         size: ControlSize::Md,
                         loading: *building.read(),

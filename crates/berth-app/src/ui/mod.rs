@@ -14,6 +14,7 @@ pub mod confirm_dialog;
 pub mod container_row;
 pub mod diff_view;
 pub mod dock;
+pub mod drop_overlay;
 pub mod empty_state;
 pub mod engine_switcher;
 pub mod file_browser;

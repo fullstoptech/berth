@@ -160,6 +160,14 @@ pub fn App() -> Element {
                 .write()
                 .push(crate::state::Overlay::Generate(folder.into()));
         }
+        // BERTH_OPEN_DETECTED=<folder> opens the Detected sheet for a folder, as a drop of it would
+        // (for live checks where the Finder drag cannot be scripted).
+        if let Some(folder) = std::env::var_os("BERTH_OPEN_DETECTED") {
+            state
+                .overlays
+                .write()
+                .push(crate::state::Overlay::Detected(folder.into()));
+        }
         // BERTH_THEME forces the theme for development shots.
         if let Ok(forced) = std::env::var("BERTH_THEME") {
             let theme = match forced.as_str() {
@@ -279,6 +287,7 @@ pub fn Shell() -> Element {
     let dock = crate::ui::dock::use_dock_view(state);
     let layout = *dock.layout.read();
     // One body, drawn in the right column, as an overlay or at the bottom.
+    let zone = crate::ui::drop_overlay::use_drop_zone(state);
     let hide_stream_tabs = layout.region == Some(RegionMode::Split);
     let pane = crate::routes::InspectorPane {
         pane_px: layout.pane_px,
@@ -303,10 +312,16 @@ pub fn Shell() -> Element {
     } else {
         rsx! {}
     };
+    let (on_enter, on_over, on_leave, on_drop) =
+        (zone.clone(), zone.clone(), zone.clone(), zone.clone());
     rsx! {
         div {
             class: "shell",
             tabindex: "-1",
+            ondragenter: move |e| on_enter.enter(&e),
+            ondragover: move |e| on_over.over(&e),
+            ondragleave: move |_| on_leave.leave(),
+            ondrop: move |e| on_drop.dropped(&e),
             onmounted: move |e| {
                 spawn(async move {
                     let _ = e.set_focus(true).await;
@@ -347,6 +362,7 @@ pub fn Shell() -> Element {
             }
             StatusBar {}
             OverlayStack {}
+            crate::ui::drop_overlay::DropOverlay { hover: zone.hover() }
             crate::ui::ToastStack {}
         }
     }

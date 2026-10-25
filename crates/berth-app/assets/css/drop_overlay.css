@@ -1,0 +1,64 @@
+/* Drop overlay (P5-T5), "Projects / drop folder / 1440". Tokens only. It sits between the title
+   bar and the status bar, lets the pointer through and dims what is under it. */
+
+.drop-overlay {
+  position: fixed;
+  top: var(--size-titlebar);
+  right: 0;
+  bottom: calc(24px * var(--text-scale, 1));
+  left: 0;
+  z-index: 90;
+  box-sizing: border-box;
+  padding: var(--space-12);
+  background: color-mix(in srgb, var(--neutral-dark-50) 40%, transparent);
+  pointer-events: none;
+}
+.drop-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 100%;
+  padding: calc(var(--space-24) + var(--space-16)) var(--space-24) var(--space-24);
+  border: 2px dashed var(--color-accent-fill);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  text-align: center;
+}
+.drop-refuse .drop-box {
+  border-color: var(--color-danger-fill);
+}
+.drop-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(48px * var(--text-scale, 1));
+  height: calc(48px * var(--text-scale, 1));
+  margin-bottom: var(--space-8);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-hover);
+  color: var(--color-ink);
+}
+.drop-refuse .drop-icon {
+  color: var(--color-danger);
+}
+.drop-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-body-weight);
+}
+.drop-detail {
+  margin: var(--space-12) 0 0;
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+}
+.drop-body {
+  max-width: calc(400px * var(--text-scale, 1));
+  margin: var(--space-12) 0 0;
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}

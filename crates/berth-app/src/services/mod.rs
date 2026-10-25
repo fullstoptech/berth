@@ -8,6 +8,7 @@ pub mod colima;
 pub mod compose;
 pub mod confirm;
 pub mod detail;
+pub mod drops;
 pub mod edit;
 pub mod engine_dashboard;
 pub mod engines;

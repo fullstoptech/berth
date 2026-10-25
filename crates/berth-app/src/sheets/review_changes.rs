@@ -91,6 +91,8 @@ fn close(state: &mut AppState, id: Uuid, root: Option<&std::path::Path>) {
         Overlay::Generate(folder) | Overlay::Detected(folder) => root != Some(folder.as_path()),
         // Add service opened this sheet: once the files are written it has nothing left to ask.
         Overlay::AddService(_) => root.is_none(),
+        // A written editor project is done: its sheet goes too (P5-T5). Cancel keeps it.
+        Overlay::NewProject => root.is_none(),
         _ => true,
     });
 }

@@ -58,6 +58,7 @@ scene_modules! {
     add_service,
     clean_up,
     containers,
+    detected,
     dev,
     engines,
     find_images,
