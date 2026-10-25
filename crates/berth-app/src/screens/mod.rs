@@ -19,6 +19,7 @@ pub mod network_detail;
 pub mod networks;
 pub mod palette;
 pub mod projects;
+mod projects_order;
 pub mod recent_activity;
 #[cfg(test)]
 pub(crate) mod table_tiers;

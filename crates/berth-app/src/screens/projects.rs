@@ -6,6 +6,7 @@
 
 use dioxus::prelude::*;
 
+use super::projects_order::FrozenOrder;
 use crate::services::actions::{ActionsService, StateView};
 use crate::state::{AppState, Section, Selection};
 use crate::ui::project_row::{row_model, ProjectRow};
@@ -580,7 +581,9 @@ pub fn ProjectsScreen() -> Element {
     let stale = *state.snapshot_stale.read();
 
     let screen = screen_state(&engines, &projects, stale);
-    let ordered = ordered_projects(&projects, &engines);
+    // Sorted once, when live data first shows; kept while the screen is open (D31).
+    let frozen = use_hook(|| std::rc::Rc::new(std::cell::RefCell::new(FrozenOrder::default())));
+    let ordered = frozen.borrow_mut().arrange(&projects, &engines, !stale);
     let counts = filter_counts(&ordered);
     let listing = list_projects(
         &ordered,
@@ -610,7 +613,13 @@ pub fn ProjectsScreen() -> Element {
     });
     let rows: Vec<_> = visible
         .iter()
-        .map(|p| row_model(p, &view, &sorted_problems, &home))
+        .map(|p| {
+            let mut model = row_model(p, &view, &sorted_problems, &home);
+            model.problem_slot = frozen
+                .borrow_mut()
+                .slot(&model.id, model.problem_summary.is_some());
+            model
+        })
         .collect();
     let attention = attention_items(
         &problems,

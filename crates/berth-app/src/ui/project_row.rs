@@ -156,6 +156,11 @@ pub struct ProjectRowModel {
     /// Error-severity problems on this project's containers.
     pub problem_count: usize,
     pub problem_summary: Option<String>,
+    /// Whether the row reserves a fixed-height slot under it for the
+    /// problem line (D31). `row_model` says yes when there is a summary;
+    /// the Projects screen overrides it with the slot decided when the
+    /// row first appeared, so a problem that shows up later moves nothing.
+    pub problem_slot: bool,
     pub primary: PrimaryOp,
     /// "Start project", "Stop project", or "Start all" / "Stop all" on the
     /// Unassigned row.
@@ -505,6 +510,7 @@ pub fn row_model(
         cpu,
         mem,
         problem_count: mine.len(),
+        problem_slot: problem_summary.is_some(),
         problem_summary,
         primary,
         primary_label,
@@ -926,10 +932,14 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                     }
                 }
             }
-            if let Some(summary) = &model.problem_summary {
-                div { class: "project-problem-line", role: "alert",
-                    Icon { name: "alert-circle", size: IconSize::Md }
-                    span { "{summary}" }
+            if model.problem_slot {
+                div { class: "project-problem-slot",
+                    if let Some(summary) = &model.problem_summary {
+                        div { class: "project-problem-line", role: "alert",
+                            Icon { name: "alert-circle", size: IconSize::Md }
+                            span { "{summary}" }
+                        }
+                    }
                 }
             }
             if let Some(failure) = &model.failure {
