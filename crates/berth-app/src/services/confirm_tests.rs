@@ -130,6 +130,51 @@ fn confirm_anonymous_volumes_are_not_listed_as_kept() {
 }
 
 #[test]
+fn confirm_delete_checkbox_names_the_named_volumes_it_leaves_alone() {
+    let named = |db: &mut Container, name: &str| {
+        db.mounts.push(berth_core::Mount {
+            kind: berth_core::MountKind::Volume,
+            source: String::new(),
+            destination: "/x".to_string(),
+            read_only: false,
+            volume_name: Some(name.to_string()),
+        });
+    };
+    let db = container("shop-api-db-1");
+    assert_eq!(
+        delete_checkbox_label(&[&db]),
+        "Also delete anonymous volumes (not shop-api_pgdata)"
+    );
+    // Nothing named to keep: no parenthesis. Anonymous volumes are not
+    // "kept" names (they are what the box deletes).
+    let mut plain = container("shop-api-api-1");
+    plain.mounts.clear();
+    assert_eq!(
+        delete_checkbox_label(&[&plain]),
+        "Also delete anonymous volumes"
+    );
+    named(&mut plain, &"b".repeat(64));
+    assert_eq!(
+        delete_checkbox_label(&[&plain]),
+        "Also delete anonymous volumes"
+    );
+    // Several names are listed; past three they are counted.
+    let mut many = container("shop-api-db-1");
+    named(&mut many, "v2");
+    assert_eq!(
+        delete_checkbox_label(&[&many]),
+        "Also delete anonymous volumes (not shop-api_pgdata, v2)"
+    );
+    for name in ["v3", "v4"] {
+        named(&mut many, name);
+    }
+    assert_eq!(
+        delete_checkbox_label(&[&many]),
+        "Also delete anonymous volumes (not 4 named volumes)"
+    );
+}
+
+#[test]
 fn confirm_many_kept_volumes_are_summed_up() {
     let mut db = container("shop-api-db-1");
     for name in ["v1", "v2", "v3", "v4"] {
@@ -291,7 +336,10 @@ fn confirm_delete_scene_renders_the_frame_dialog() {
     );
     assert!(html.contains("Removes"));
     assert!(html.contains("Keeps"));
-    assert!(html.contains("Also delete its anonymous volumes"));
+    assert!(
+        html.contains("Also delete anonymous volumes (not shop-api_pgdata)"),
+        "{html}"
+    );
     assert!(html.contains("aria-checked=\"false\""), "{html}");
     assert!(html.contains("Cancel"));
     assert!(html.contains("Delete container"));
@@ -407,7 +455,10 @@ fn confirm_backspace_opens_the_delete_dialog_for_the_selection() {
             assert_eq!(model.title, "Delete container shop-api-db-1?");
             assert_eq!(
                 model.checkbox,
-                Some(("Also delete its anonymous volumes".to_string(), false))
+                Some((
+                    "Also delete anonymous volumes (not shop-api_pgdata)".to_string(),
+                    false
+                ))
             );
             assert!(matches!(
                 &model.action,

@@ -233,7 +233,7 @@ pub fn delete_model(state: &AppState, ids: &[ContainerId]) -> Option<ConfirmMode
     let found = find_containers(&containers, ids);
     let first = found.first()?;
     let effect = delete_effect(&found, &volumes);
-    let checkbox = Some(("Also delete its anonymous volumes".to_string(), false));
+    let checkbox = Some((delete_checkbox_label(&found), false));
     if let [only] = found.as_slice() {
         return Some(ConfirmModel {
             title: format!("Delete container {}?", only.name),
@@ -264,8 +264,26 @@ pub fn delete_model(state: &AppState, ids: &[ContainerId]) -> Option<ConfirmMode
                 volumes: false,
             },
         },
-        checkbox: checkbox.map(|(_, on)| ("Also delete their anonymous volumes".to_string(), on)),
+        checkbox,
     })
+}
+
+/// The delete dialog's checkbox (frame "Containers / confirm delete"):
+/// "Also delete anonymous volumes", with the named volumes that stay put
+/// listed so the box cannot be read as "all volumes".
+#[must_use]
+pub fn delete_checkbox_label(containers: &[&Container]) -> String {
+    let kept = kept_volumes(containers);
+    match kept.as_slice() {
+        [] => "Also delete anonymous volumes".to_string(),
+        names if names.len() <= KEPT_LINES => {
+            format!("Also delete anonymous volumes (not {})", names.join(", "))
+        }
+        names => format!(
+            "Also delete anonymous volumes (not {} named volumes)",
+            names.len()
+        ),
+    }
 }
 
 /// The kill dialog for one container.
