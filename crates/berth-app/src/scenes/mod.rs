@@ -55,6 +55,7 @@ macro_rules! scene_modules {
 
 scene_modules! {
     activity,
+    add_service,
     clean_up,
     containers,
     dev,
@@ -69,10 +70,13 @@ scene_modules! {
     project_detail,
     projects,
     review_changes,
+    templates,
     terminal,
     volumes,
 }
 
+#[cfg(test)]
+pub(crate) use add_service::SCENE_PASSWORD;
 pub(crate) use dev::{DevFilesPanel, DevStatsPanel};
 #[cfg(test)]
 pub(crate) use generate::next_detection;

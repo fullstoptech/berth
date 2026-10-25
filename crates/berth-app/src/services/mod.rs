@@ -25,6 +25,7 @@ pub mod project_files;
 pub mod prune;
 pub mod search;
 pub mod stats;
+pub mod templates;
 pub mod volume_backup;
 pub mod volumes;
 

@@ -24,5 +24,6 @@ mod projects_order;
 pub mod recent_activity;
 #[cfg(test)]
 pub(crate) mod table_tiers;
+pub mod templates;
 pub mod volume_browser;
 pub mod volumes;

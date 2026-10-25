@@ -89,6 +89,8 @@ fn close(state: &mut AppState, id: Uuid, root: Option<&std::path::Path>) {
     state.overlays.write().retain(|o| match o {
         Overlay::ReviewChanges(other) => *other != id,
         Overlay::Generate(folder) | Overlay::Detected(folder) => root != Some(folder.as_path()),
+        // Add service opened this sheet: once the files are written it has nothing left to ask.
+        Overlay::AddService(_) => root.is_none(),
         _ => true,
     });
 }

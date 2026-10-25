@@ -17,6 +17,7 @@ pub fn screen(section: Section, dev_gallery: bool) -> Element {
         Section::Containers => rsx! { crate::screens::containers::ContainersScreen {} },
         Section::Logs => rsx! { crate::screens::logs::LogsScreen {} },
         Section::Networks => rsx! { crate::screens::networks::NetworksScreen {} },
+        Section::Templates => rsx! { crate::screens::templates::TemplatesScreen {} },
         Section::Volumes => rsx! { crate::screens::volumes::VolumesScreen {} },
         Section::Images => rsx! { crate::screens::images::ImagesScreen {} },
         Section::Engines => rsx! { crate::screens::engines::EnginesScreen {} },
@@ -109,6 +110,12 @@ pub fn overlay(overlay: &Overlay) -> Element {
         Overlay::Palette => rsx! { crate::screens::palette::PaletteScreen {} },
         Overlay::Confirm(model) => rsx! {
             crate::ui::ConfirmOverlay { key: "{model.title}", model: model.clone() }
+        },
+        Overlay::AddService(seed) => rsx! {
+            crate::sheets::add_service::AddServiceSheet {
+                key: "{seed.project:?}{seed.template:?}{seed.image:?}",
+                seed: seed.clone(),
+            }
         },
         Overlay::CleanUp(engine) => rsx! {
             crate::sheets::clean_up::CleanUpSheet { key: "{engine.0}", engine: engine.clone() }
