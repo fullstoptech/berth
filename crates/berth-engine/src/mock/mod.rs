@@ -119,6 +119,58 @@ mod tests {
         berth_core::EngineId(s.to_string())
     }
 
+    /// The frames' sidebar badges are canonical: the default engine has 23
+    /// containers (15 running), 31 images and 12 volumes, and every
+    /// engine's stored counts equal the lists the engine serves.
+    #[tokio::test]
+    async fn mock_engine_counts_match_the_frames_and_their_lists() {
+        let world = MockWorld::bundled();
+        let default = world.engine(&engine_id("colima:default")).expect("default");
+        assert_eq!(default.counts.containers_total, 23);
+        assert_eq!(default.counts.containers_running, 15);
+        assert_eq!(default.counts.images, 31);
+        assert_eq!(default.counts.volumes, 12);
+        for engine in &world.engines {
+            let client = MockEngine::bundled(&engine.id);
+            let containers = client.containers().await.expect("containers");
+            assert_eq!(
+                containers.len(),
+                engine.counts.containers_total as usize,
+                "{} containers",
+                engine.id.0
+            );
+            assert_eq!(
+                containers
+                    .iter()
+                    .filter(|c| c.state == berth_core::ContainerState::Running)
+                    .count(),
+                engine.counts.containers_running as usize,
+                "{} running",
+                engine.id.0
+            );
+            assert_eq!(
+                client.images().await.expect("images").len(),
+                engine.counts.images as usize,
+                "{} images",
+                engine.id.0
+            );
+            assert_eq!(
+                client.volumes().await.expect("volumes").len(),
+                engine.counts.volumes as usize,
+                "{} volumes",
+                engine.id.0
+            );
+        }
+        // Unassigned on the default engine: the frame's loose containers
+        // are 6 running, 1 paused and eager_hopper exited.
+        let loose: Vec<_> = world
+            .containers_for(&engine_id("colima:default"))
+            .into_iter()
+            .filter(|c| c.compose_project.is_none())
+            .collect();
+        assert_eq!(loose.len(), 8, "{loose:?}");
+    }
+
     #[tokio::test]
     async fn mock_world_matches_brief() {
         let world = MockWorld::bundled();
@@ -556,7 +608,7 @@ mod tests {
     async fn mock_engines_are_isolated_per_engine_id() {
         let work = MockEngine::bundled(&engine_id("colima:work"));
         let work_containers = work.containers().await.expect("work containers");
-        assert_eq!(work_containers.len(), 6);
+        assert_eq!(work_containers.len(), 11);
         assert!(work_containers
             .iter()
             .all(|c| c.engine == engine_id("colima:work")));

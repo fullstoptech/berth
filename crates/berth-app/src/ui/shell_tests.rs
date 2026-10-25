@@ -143,10 +143,14 @@ fn shell_sidebar_counts_follow_the_engine_scope() {
         &world.projects,
         &world.containers,
     );
-    assert_eq!(one.containers, 28);
-    assert_eq!(one.images, 30);
-    assert_eq!(one.volumes, 8);
+    assert_eq!(one.containers, 23);
+    assert_eq!(one.images, 31);
+    assert_eq!(one.volumes, 12);
     assert_eq!(one.engines, 3);
+    // The Projects badge is the Projects screen's count: every engine's
+    // projects, whatever the scope (frames: 8).
+    assert_eq!(one.projects_total, world.projects.len());
+    assert_eq!(one.projects_total, 8);
     let all = sidebar_model(
         &world.engines,
         &EngineScope::All,

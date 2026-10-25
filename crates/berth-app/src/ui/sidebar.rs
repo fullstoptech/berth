@@ -19,24 +19,29 @@ pub struct SidebarProject {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SidebarModel {
     pub projects: Vec<SidebarProject>,
+    /// The badge on the Projects item: every project the Projects screen
+    /// lists, across all engines, whatever the engine scope.
+    pub projects_total: usize,
     pub containers: usize,
     pub images: usize,
     pub volumes: usize,
     pub engines: usize,
 }
 
-/// Counts follow the engine scope (D81). Projects exclude the one
-/// "Unassigned" bucket of loose containers: it is not something the user
-/// opened, and the Containers table shows it as a group. Image and volume
+/// Counts follow the engine scope (D81), except the Projects badge, which
+/// equals the Projects screen's own count (all engines). The project list
+/// excludes the one "Unassigned" bucket of loose containers: it is not
+/// something the user opened, and the Containers table shows it as a group.
+/// Image and volume
 /// counts come from each engine's own counts because the flat lists carry
 /// no engine.
 pub fn sidebar_model(
     engines: &[berth_core::Engine],
     scope: &EngineScope,
-    projects: &[berth_core::Project],
+    all_projects: &[berth_core::Project],
     containers: &[berth_core::Container],
 ) -> SidebarModel {
-    let projects = projects
+    let projects = all_projects
         .iter()
         .filter(|p| scope_includes(scope, &p.engine))
         .filter(|p| !matches!(p.source, berth_core::ProjectSource::Loose))
@@ -47,9 +52,11 @@ pub fn sidebar_model(
             services: (!p.services.is_empty()).then_some(p.services.len()),
         })
         .collect();
+    let projects_total = all_projects.len();
     let in_scope = || engines.iter().filter(|e| scope_includes(scope, &e.id));
     SidebarModel {
         projects,
+        projects_total,
         containers: containers
             .iter()
             .filter(|c| scope_includes(scope, &c.engine))
@@ -99,7 +106,7 @@ pub fn Sidebar() -> Element {
                 icon: "folder",
                 label: "Projects",
                 target: Section::Projects,
-                count: model.projects.len(),
+                count: model.projects_total,
             }
             div { class: "sidebar-group-label", "Projects" }
             for project in model.projects.iter() {

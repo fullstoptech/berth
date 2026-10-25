@@ -23,9 +23,9 @@
    },
    "counts": {
     "containers_running": 15,
-    "containers_total": 28,
-    "images": 30,
-    "volumes": 8,
+    "containers_total": 23,
+    "images": 31,
+    "volumes": 12,
     "networks": 9
    },
    "owner": "Local"
@@ -53,7 +53,7 @@
    },
    "counts": {
     "containers_running": 0,
-    "containers_total": 6,
+    "containers_total": 11,
     "images": 6,
     "volumes": 1,
     "networks": 3
@@ -982,7 +982,7 @@
   },
   {
    "id": "8c3b0748696565e0a68ba485e950fa2d65f793e8371458453042a6c9832fcbab",
-   "engine": "colima:default",
+   "engine": "colima:work",
    "name": "pg-old",
    "project": null,
    "compose_project": null,
@@ -1009,7 +1009,7 @@
   },
   {
    "id": "597fbc141b11df74a6642a6d8381d1b77ae49de801b177957cfa624fc13db748",
-   "engine": "colima:default",
+   "engine": "colima:work",
    "name": "test-runner",
    "project": null,
    "compose_project": null,
@@ -1200,7 +1200,7 @@
   },
   {
    "id": "60077b1c6340d712e6b28fd677e61f5b7f11dda44369a9c10bc267b74a44d4e9",
-   "engine": "colima:default",
+   "engine": "colima:work",
    "name": "mongo-scratch",
    "project": null,
    "compose_project": null,
@@ -1227,7 +1227,7 @@
   },
   {
    "id": "e7b983bd242d0aac2a9bdca4bdf2817d0821e77a31ce2f99913ca5e7f01bb729",
-   "engine": "colima:default",
+   "engine": "colima:work",
    "name": "busybox-sleep",
    "project": null,
    "compose_project": null,
@@ -1254,7 +1254,7 @@
   },
   {
    "id": "a198ab3bde5acae63db0db3c683c17d15e12f15c59942b7db98ffe4c66a6678b",
-   "engine": "colima:default",
+   "engine": "colima:work",
    "name": "old-builder-1",
    "project": null,
    "compose_project": null,
@@ -2014,8 +2014,7 @@
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [
-     "20244446461475ca8d46516543e8be566709b65b2b8b83e4d35eb626a325ab18",
-     "597fbc141b11df74a6642a6d8381d1b77ae49de801b177957cfa624fc13db748"
+     "20244446461475ca8d46516543e8be566709b65b2b8b83e4d35eb626a325ab18"
     ],
     "dangling": false
    },
@@ -2149,9 +2148,7 @@
     "created": "2026-10-20T10:00:00Z",
     "arch": "Aarch64",
     "os": "linux",
-    "used_by": [
-     "8c3b0748696565e0a68ba485e950fa2d65f793e8371458453042a6c9832fcbab"
-    ],
+    "used_by": [],
     "dangling": false
    },
    {
@@ -2224,9 +2221,7 @@
     "created": "2026-10-20T10:00:00Z",
     "arch": "Aarch64",
     "os": "linux",
-    "used_by": [
-     "60077b1c6340d712e6b28fd677e61f5b7f11dda44369a9c10bc267b74a44d4e9"
-    ],
+    "used_by": [],
     "dangling": false
    },
    {
@@ -2239,9 +2234,7 @@
     "created": "2026-10-20T10:00:00Z",
     "arch": "Aarch64",
     "os": "linux",
-    "used_by": [
-     "e7b983bd242d0aac2a9bdca4bdf2817d0821e77a31ce2f99913ca5e7f01bb729"
-    ],
+    "used_by": [],
     "dangling": false
    },
    {
@@ -2254,9 +2247,7 @@
     "created": "2026-10-20T10:00:00Z",
     "arch": "Aarch64",
     "os": "linux",
-    "used_by": [
-     "a198ab3bde5acae63db0db3c683c17d15e12f15c59942b7db98ffe4c66a6678b"
-    ],
+    "used_by": [],
     "dangling": false
    },
    {
@@ -2300,6 +2291,19 @@
     "digests": [],
     "size": 157000000,
     "created": "2026-10-22T10:00:00Z",
+    "arch": "Aarch64",
+    "os": "linux",
+    "used_by": [],
+    "dangling": false
+   },
+   {
+    "id": "sha256:bd59573624a6dac5c681b33040e36e440782131c5b3e3871d49857f1980b5ca9",
+    "repo_tags": [
+     "nginx:1.27-alpine"
+    ],
+    "digests": [],
+    "size": 48000000,
+    "created": "2026-10-20T10:00:00Z",
     "arch": "Aarch64",
     "os": "linux",
     "used_by": [],
@@ -2627,6 +2631,54 @@
     "project": null,
     "created": "2026-10-20T10:00:00Z",
     "labels": {}
+   },
+   {
+    "name": "shop-api_redis-data",
+    "driver": "local",
+    "size": 60000000,
+    "mountpoint": "/var/lib/docker/volumes/shop-api_redis-data/_data",
+    "used_by": [
+     "368e4c42cdef1b006f2774049bb32100b6dd8781a01de29b8cb19a2eae6f50a2"
+    ],
+    "project": "bf1ea56a4202fef9",
+    "created": "2026-10-20T10:00:00Z",
+    "labels": {}
+   },
+   {
+    "name": "berth-site_caddy-data",
+    "driver": "local",
+    "size": 25000000,
+    "mountpoint": "/var/lib/docker/volumes/berth-site_caddy-data/_data",
+    "used_by": [
+     "297eb2a162b6d4c3fb3437d7520215c787e7b56887947bc6419e4a560320337c"
+    ],
+    "project": "fa98a539f6437c5e",
+    "created": "2026-10-20T10:00:00Z",
+    "labels": {}
+   },
+   {
+    "name": "analytics_ingest-spool",
+    "driver": "local",
+    "size": 410000000,
+    "mountpoint": "/var/lib/docker/volumes/analytics_ingest-spool/_data",
+    "used_by": [
+     "e214c12863c6de3e71db7ff5e4269f494947c8288eb44ba7f24dfeed55702a4c"
+    ],
+    "project": "fa4e93e67d893b04",
+    "created": "2026-10-20T10:00:00Z",
+    "labels": {}
+   },
+   {
+    "name": "pg-scratch-data",
+    "driver": "local",
+    "size": 520000000,
+    "mountpoint": "/var/lib/docker/volumes/pg-scratch-data/_data",
+    "used_by": [
+     "566985d0d3bc6fee3b6ff707b6e4297d88913f130860e3e9a9fd76dc1f87cca5"
+    ],
+    "project": null,
+    "created": "2026-10-20T10:00:00Z",
+    "labels": {}
    }
   ],
   "colima:work": [
@@ -2910,18 +2962,18 @@
  "disk_usage_by_engine": {
   "colima:default": {
    "images": {
-    "count": 30,
-    "size": 11800000000,
+    "count": 31,
+    "size": 11848000000,
     "reclaimable": 2400000000
    },
    "containers": {
-    "count": 28,
+    "count": 23,
     "size": 1400000000,
     "reclaimable": 210000000
    },
    "volumes": {
-    "count": 8,
-    "size": 6200000000,
+    "count": 12,
+    "size": 7215000000,
     "reclaimable": 1600000000
    },
    "build_cache": {
@@ -2938,7 +2990,7 @@
     "reclaimable": 0
    },
    "containers": {
-    "count": 6,
+    "count": 11,
     "size": 80000000,
     "reclaimable": 0
    },
