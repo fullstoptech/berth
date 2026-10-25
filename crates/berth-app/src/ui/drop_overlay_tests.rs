@@ -321,3 +321,127 @@ fn drop_nothing_hovering_draws_no_overlay() {
     let html = render_scene_html("Projects / default / 1440").expect("scene");
     assert!(!html.contains("drop-overlay"));
 }
+
+// --- Drags that are not drops of files ---
+
+fn drag_event(files: &[&Path], texts: &[(&str, &str)]) -> DragEvent {
+    use dioxus::html::{
+        DragData, SerializedDataTransfer, SerializedDataTransferItem, SerializedDragData,
+        SerializedFileData, SerializedPointInteraction,
+    };
+    let data = SerializedDragData {
+        mouse: SerializedPointInteraction::default(),
+        data_transfer: SerializedDataTransfer {
+            items: texts
+                .iter()
+                .map(|(kind, data)| SerializedDataTransferItem {
+                    kind: "string".to_string(),
+                    type_: (*kind).to_string(),
+                    data: (*data).to_string(),
+                })
+                .collect(),
+            files: files
+                .iter()
+                .map(|path| SerializedFileData {
+                    path: path.to_path_buf(),
+                    size: 0,
+                    last_modified: 0,
+                    content_type: None,
+                    contents: None,
+                })
+                .collect(),
+            effect_allowed: "all".to_string(),
+            drop_effect: "none".to_string(),
+        },
+    };
+    Event::new(std::rc::Rc::new(DragData::new(data)), true)
+}
+
+#[test]
+fn drop_a_drag_of_files_shows_the_overlay_and_a_drag_of_text_with_the_last_paths_does_not() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let app = folder_in(root.path(), "new-app");
+    let (dom, _state, zone) = rig();
+
+    // dioxus-desktop attaches the last drop's paths to an in-app drag of selected text.
+    let text = drag_event(&[app.as_path()], &[("text/plain", "selected words")]);
+    dom.in_runtime(|| {
+        zone.enter(&text);
+        zone.over(&text);
+    });
+    assert_eq!(dom.in_runtime(|| zone.hover().peek().clone()), None);
+
+    let files = drag_event(&[app.as_path()], &[]);
+    dom.in_runtime(|| zone.enter(&files));
+    let shown = dom.in_runtime(|| zone.hover().peek().clone());
+    assert_eq!(shown.map(|d| d.folders), Some(vec![app]));
+}
+
+#[test]
+fn drop_a_drag_without_paths_shows_nothing() {
+    let (dom, _state, zone) = rig();
+    let nothing = drag_event(&[], &[]);
+    dom.in_runtime(|| {
+        zone.enter(&nothing);
+        zone.over(&nothing);
+    });
+    assert_eq!(dom.in_runtime(|| zone.hover().peek().clone()), None);
+}
+
+#[test]
+fn drop_a_drop_of_text_with_the_last_paths_opens_nothing_and_clears_the_overlay() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let app = folder_in(root.path(), "new-app");
+    let (mut dom, state, zone) = rig();
+    dom.in_runtime(|| zone.enter(&drag_event(&[app.as_path()], &[])));
+    assert!(dom.in_runtime(|| zone.hover().peek().is_some()));
+
+    let text = drag_event(&[app.as_path()], &[("text/plain", "selected words")]);
+    dom.in_runtime(|| zone.dropped(&text));
+    let _ = dom.render_immediate_to_vec();
+
+    assert_eq!(
+        dom.in_runtime(|| zone.hover().peek().clone()),
+        None,
+        "the overlay goes"
+    );
+    assert!(overlays(&state).is_empty(), "{:?}", overlays(&state));
+    assert!(pins(&zone).is_empty());
+    assert!(
+        state.toasts.peek().is_empty(),
+        "no wrong-type message either"
+    );
+}
+
+#[test]
+fn drop_a_leave_clears_the_overlay_and_a_text_file_still_counts_as_files() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let app = folder_in(root.path(), "new-app");
+    let (dom, _state, zone) = rig();
+    dom.in_runtime(|| zone.enter(&drag_event(&[app.as_path()], &[])));
+    dom.in_runtime(|| zone.leave());
+    assert_eq!(dom.in_runtime(|| zone.hover().peek().clone()), None);
+
+    // WebKit lists a dragged notes.txt as a text/plain item whose data is its name.
+    let notes = root.path().join("notes.txt");
+    let file = drag_event(&[notes.as_path()], &[("text/plain", "notes.txt")]);
+    dom.in_runtime(|| zone.enter(&file));
+    assert!(dom.in_runtime(|| zone.hover().peek().is_some()));
+}
+
+#[test]
+fn drop_file_drag_judges_the_paths_and_the_text_a_drag_carries() {
+    let folder = PathBuf::from("/work/new-app");
+    let one = std::slice::from_ref(&folder);
+    assert_eq!(file_drag(&[], &[]), None);
+    assert_eq!(file_drag(one, &[]), Some(vec![folder.clone()]));
+    assert_eq!(
+        file_drag(one, &["file:///work/new-app".to_string()]),
+        Some(vec![folder.clone()])
+    );
+    assert_eq!(
+        file_drag(one, &["new-app".to_string(), String::new()]),
+        Some(vec![folder.clone()])
+    );
+    assert_eq!(file_drag(one, &["https://example.com".to_string()]), None);
+}

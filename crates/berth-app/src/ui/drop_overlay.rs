@@ -150,6 +150,49 @@ fn paths_of(event: &DragEvent) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The text items a drag event carries (`text/plain`, `text/uri-list`, `text/html`). A drag of
+/// files has none besides the file's own name or URL.
+fn strings_of(event: &DragEvent) -> Vec<String> {
+    let transfer = event.data_transfer();
+    ["text/plain", "text/uri-list", "text/html"]
+        .iter()
+        .filter_map(|kind| transfer.get_data(kind))
+        .collect()
+}
+
+/// The paths of a drag of files, or `None` when the event is not one.
+///
+/// dioxus-desktop hands every drag event the paths of the *last* native drag or drop
+/// (`NativeFileHover` keeps them and nothing clears them), so a drag inside the window (selected
+/// text, a link) arrives with the folder dropped a minute ago. A drag of files carries no text of
+/// its own: a text item that is not the name, path or `file://` URL of one of the paths means
+/// something else is being dragged.
+#[must_use]
+pub fn file_drag(paths: &[PathBuf], strings: &[String]) -> Option<Vec<PathBuf>> {
+    if paths.is_empty() {
+        return None;
+    }
+    let is_a_file_of_the_drag = |text: &str| {
+        let text = text.trim();
+        text.is_empty()
+            || text.starts_with("file://")
+            || paths.iter().any(|p| {
+                p.to_string_lossy() == text
+                    || p.file_name()
+                        .is_some_and(|name| name.to_string_lossy() == text)
+            })
+    };
+    strings
+        .iter()
+        .all(|text| is_a_file_of_the_drag(text))
+        .then(|| paths.to_vec())
+}
+
+/// The paths of `event` when it drags files.
+fn file_paths_of(event: &DragEvent) -> Option<Vec<PathBuf>> {
+    file_drag(&paths_of(event), &strings_of(event))
+}
+
 /// The window's drop state and handlers. Create it once in the shell.
 #[derive(Clone)]
 pub struct DropZone {
@@ -204,10 +247,9 @@ impl DropZone {
         if !accepts(&self.state.overlays.peek()) {
             return;
         }
-        let paths = paths_of(event);
-        if paths.is_empty() {
+        let Some(paths) = file_paths_of(event) else {
             return;
-        }
+        };
         let mut depth = self.depth;
         *depth.write() += 1;
         let mut hover = self.hover;
@@ -218,8 +260,7 @@ impl DropZone {
     pub fn over(&self, event: &DragEvent) {
         event.prevent_default();
         if self.hover.peek().is_none() && accepts(&self.state.overlays.peek()) {
-            let paths = paths_of(event);
-            if !paths.is_empty() {
+            if let Some(paths) = file_paths_of(event) {
                 let mut hover = self.hover;
                 hover.set(Some(classify(&paths)));
                 let mut depth = self.depth;
@@ -245,7 +286,8 @@ impl DropZone {
     /// `drop`: open what was dropped.
     pub fn dropped(&self, event: &DragEvent) {
         event.prevent_default();
-        let paths = paths_of(event);
+        // Not a drop of files: nothing opens, and whatever was showing goes.
+        let paths = file_paths_of(event).unwrap_or_default();
         self.finish(&paths);
     }
 
