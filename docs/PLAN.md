@@ -652,7 +652,7 @@ impl GenerationPlan { pub fn effect(&self) -> EffectSummary; }  // "Adds 3 files
 pub enum FoundKind { Compose, Dockerfile { from: Option<String> }, Env { keys: u32 }, EnvExample, DockerIgnore } // Dockerfile.from: the "Found" list shows `FROM node:22-alpine` (gap review 2026-10-25)
 pub struct FoundFile { pub kind: FoundKind, pub path: std::path::PathBuf }
 pub enum StackGuess {
-    Node { pm: String, framework: Option<String>, version: Option<String> },
+    Node { pm: String, framework: Option<String>, framework_version: Option<String>, version: Option<String> },   // framework_version: major only, "15" from next 15.0.3 (AD33)
     Python { tool: String, framework: Option<String> }, Go, Rust, Php { framework: Option<String> },
     Ruby { framework: Option<String> }, Java { build: String, framework: Option<String> }, Static,
 }
@@ -988,6 +988,7 @@ pub trait ComposeRunner: Send + Sync {
     fn run(&self, target: &berth_core::ComposeTarget, cmd: berth_core::ComposeCommand, cancel: Cancel) -> Bs<berth_core::ComposeEvent>;
     async fn config(&self, target: &berth_core::ComposeTarget) -> Result<serde_json::Value, EngineError>;   // config --format json
     async fn validate(&self, folder: &std::path::Path, files: &[std::path::PathBuf]) -> Result<(), EngineError>; // config -q; Docker(msg) on error
+    async fn validate_text(&self, folder: &std::path::Path, compose_text: &str, env: &[(String, String)]) -> Result<(), EngineError>; // AD33: `config -q -f -` from stdin before Write (ADR 0012); new .env lines go in as process env; env_file-not-found passes when the plan creates it
 }
 pub struct CliCompose { /* SearchPath */ }      // D27; args built by pure `compose_args(target, cmd) -> Vec<String>`
 pub struct MockCompose;
@@ -1093,7 +1094,7 @@ pub mod templates {
     pub fn render(t: &berth_core::Template, inputs: &std::collections::BTreeMap<String, String>) -> (String, Vec<(String, String)>);
     pub fn generate_password() -> String;                                            // 24 chars, [A-Za-z0-9]
     pub fn add_service_plan(root: &std::path::Path, compose_rel: &std::path::Path, compose_text: &str, env_text: Option<&str>, t: &berth_core::Template,   // compose_rel: the file may be docker-compose.yml
-                            inputs: &std::collections::BTreeMap<String, String>) -> Result<berth_core::GenerationPlan, RulesError>;
+                            service: &str, inputs: &std::collections::BTreeMap<String, String>) -> Result<berth_core::GenerationPlan, RulesError>;   // service: the name to add (user may rename to avoid ServiceExists), AD33
 }
 pub mod compose_edit {   // D32: text edits that keep comments
     pub fn add_service(text: &str, name: &str, block_yaml: &str) -> Result<String, RulesError>;
@@ -1350,8 +1351,10 @@ pub enum Overlay {          // stacked; Esc closes the top one
     Palette, Confirm(ConfirmModel), ReviewChanges(uuid::Uuid), Generate(std::path::PathBuf), Detected(std::path::PathBuf),
     OpenFolder, DropFolder(Vec<std::path::PathBuf>), NewProject, EditRecreate(berth_core::ContainerId), Run(String),
     CleanUp(berth_core::EngineId), CreateVolume, CreateNetwork, EditResources(String), AddEngine, AddRegistry,
-    BuildImage, AddService(berth_core::ProjectId),
+    BuildImage, AddService(AddServiceSeed), DeleteProject(berth_core::ProjectId),   // AD33 (2026-10-25): AddService opens from Templates/Find images without a project; DeleteProject has two checkboxes
 }
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AddServiceSeed { pub project: Option<berth_core::ProjectId>, pub template: Option<String>, pub image: Option<String> }
 #[derive(Clone, Copy)]
 pub struct AppState {
     pub settings: Signal<berth_store::Settings>,
