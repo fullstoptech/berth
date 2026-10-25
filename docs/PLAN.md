@@ -142,7 +142,7 @@ Every decision below is final for v1. The workhorse implements them and never re
 | D40 | Mod key | `⌘` is Cmd. Shortcut labels come from one `mod_label()` function so a later port changes one place. |
 | D41 | Exec and terminal | `bollard` `create_exec` with `tty: true`, `attach_stdin/stdout/stderr`, then `start_exec` (attached) and `resize_exec`. Shell probe: `bash`, then `sh` (zsh and ash when picked); "executable file not found" on both gives the no-shell state. Output is passed to xterm.js through the bridge as base64 chunks. |
 | D42 | Open in Terminal app | macOS only: writes a 0700 temp `.command` file running `docker exec -it <id> <shell>` with `DOCKER_HOST` set, and opens it with `open -a <Terminal|iTerm|Ghostty|WezTerm>`. Only apps found under `/Applications` or `/System/Applications/Utilities` are offered. On this Mac only Terminal.app is installed (2026-10-24). |
-| D43 | Harness sessions | Claude Code: `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages --mcp-config <file> --strict-mcp-config --tools "" --allowedTools mcp__berth --setting-sources "" --disable-slash-commands --session-id <uuid>` (resume: `--resume <uuid>` instead of `--session-id`). muse: `muse serve --disable-shell --disable-write` speaking MSP v1 over stdio, `session/start` with `workspaceRoot` and `config.mcpServers.berth = {transport: "stdio", command, args}`; fallback one-shot `muse exec --json --workspace <folder> --prompt-file <tmp>`. Flags are constants at the top of each adapter. ADR 0005. |
+| D43 | Harness sessions | Claude Code: `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages --mcp-config <file> --strict-mcp-config --tools "" --allowedTools mcp__berth --setting-sources "" --disable-slash-commands --session-id <uuid>` (resume: `--resume <uuid>` instead of `--session-id`). muse: `muse serve --disable-shell --disable-write` speaking MSP v1 over stdio, `session/start` with `workspaceRoot` and `config.mcpServers.berth = {transport: "stdio", command, args}`; fallback one-shot `muse exec --json --workspace <folder> --prompt-file <tmp>`. Flags are constants at the top of each adapter. ADR 0005. // AD37 (2026-10-26): the `config.mcpServers.berth` entry uses the MSP stdio schema (`command, args, env, framing, mode`) in place of `{transport: "stdio", command, args}`, with `framing` newline-delimited, which is what rmcp `transport-io` speaks. |
 | D44 | Berth's MCP server | `berth mcp --bridge <socket>` is the same binary as the app. It serves MCP over stdio with `rmcp` 3.7 and forwards each tool call over a Unix-socket bridge (JSON lines, token from env `BERTH_BRIDGE_TOKEN`) to the running app, which gates and executes it. Tool tiers: Read runs at once; Change waits for Approve; Destructive waits for the typed name. Tool results never carry `.env` values or container env values, only keys. ADR 0006. |
 | D45 | Plugins | Separate processes, JSON-RPC 2.0 over stdio, one JSON object per line. Manifest `berth-plugin.json` with id, version, executable, permissions and contributions. Plugins draw no UI: they return declarative views (table, detail, actions, log stream) the app renders. Secrets go to a plugin only through `host/secret.get` for keys its manifest declares and the user approved. Declared network hosts are shown at enable time and not enforced in v1. ADR 0008. |
 | D46 | Coolify | Plugin binary `berth-coolify` in `plugins/coolify`. Hand-written `reqwest` client for the endpoints in brief §6.11, field names from the OpenAPI spec at tag v4.5.0 (212 paths, info.version "0.1"; checked 2026-10-24), vendored at `plugins/coolify/spec/openapi-v4.5.0.json` with its SHA-256. Reads `GET /version` on connect and warns on a newer major. |
@@ -698,12 +698,14 @@ pub enum ContextItem {
     Logs { container: ContainerId, name: String, lines: Vec<String> },   // the selection itself, capped at 400 lines
     Problem(ProblemId), ComposeFile(std::path::PathBuf), Dockerfile(std::path::PathBuf),
     Inspect(ContainerId), FolderTree(std::path::PathBuf),
+    File(std::path::PathBuf),   // AD37 (2026-10-26): package.json for Generate with a harness
 }
 pub struct ToolCall { pub call_id: String, pub tool: String, pub args: serde_json::Value, pub risk: Risk }
 pub enum ToolStatus { Running, Done { ms: u64, summary: String }, Failed { message: String }, WaitingForApproval, Denied }
-pub enum TurnPart { Text(String), Tool { call: ToolCall, status: ToolStatus }, ProposedChange { change_id: uuid::Uuid, plan: GenerationPlan } }
+pub enum TurnPart { Text(String), Tool { call: ToolCall, status: ToolStatus }, ProposedChange { change_id: uuid::Uuid, title: String, files: Vec<(std::path::PathBuf, u32, u32)>, state: ProposalState } }   // AD37 (2026-10-26): save_session writes JSON to berth.db and GenerationPlan carries .env text, so a turn stores only a summary (path, lines added, lines removed)
+pub enum ProposalState { Pending, Written, Discarded, Gone }   // AD37 (2026-10-26): the plan itself lives in the app's PlanStore; Gone when it no longer exists (e.g. after restart)
 pub enum TurnRole { User, Assistant }
-pub struct Turn { pub role: TurnRole, pub parts: Vec<TurnPart>, pub at: DateTime<Utc> }
+pub struct Turn { pub role: TurnRole, pub parts: Vec<TurnPart>, pub at: DateTime<Utc>, #[serde(default)] pub origin: Option<String> }   // AD37 (2026-10-26): origin is the entry point shown above the turn, e.g. "From Logs · Ask about 2 lines"
 pub enum SessionState { Idle, Thinking, WaitingForApproval(ToolCall), Error { stderr: String }, Stopped }
 pub struct AssistantSession {
     pub id: SessionId, pub harness: HarnessId, pub harness_session: Option<String>,   // Claude session uuid or MSP session id
@@ -1192,27 +1194,36 @@ pub enum AssistantError {
 pub async fn detect(path: &berth_sys::SearchPath, overrides: &std::collections::BTreeMap<String, std::path::PathBuf>) -> Vec<berth_core::Harness>;
 
 pub struct ToolDef { pub name: &'static str, pub description: &'static str, pub risk: berth_core::Risk, pub input_schema: fn() -> serde_json::Value }
+impl ToolDef { pub fn wire_name(&self) -> String }   // AD37 (2026-10-26): wire form "containers_list"; Claude API tool names forbid '.', so Claude Code rewrites them
 /// Brief §6.12 tools: Read: engines.list, projects.list, containers.list, containers.inspect, containers.logs, containers.stats,
 /// images.list, volumes.list, networks.list, compose.config, problems.list, files.read, activity.list.
 /// Change: files.propose_edit, compose.up, compose.restart, containers.restart, containers.start, containers.stop,
 /// images.pull, images.build. Destructive: containers.remove, volumes.remove, images.remove, system.prune.
 pub fn catalog() -> &'static [ToolDef];
+pub fn tool(name: &str) -> Option<&'static ToolDef>;   // AD37 (2026-10-26): accepts the dotted, wire or `mcp__berth__` form; `parse_line` maps names back through it
 pub mod redact {
     pub fn env_file(text: &str) -> String;                       // KEY=•••• per line, comments kept
     pub fn inspect(v: &serde_json::Value) -> serde_json::Value;  // Config.Env values masked
     pub fn compose_config(v: &serde_json::Value) -> serde_json::Value;   // services.*.environment values masked
+    pub fn is_env_file(p: &std::path::Path) -> bool;                      // AD37 (2026-10-26): .env, .env.*, *.env
+    pub fn compose_text(yaml: &str) -> String;                            // AD37 (2026-10-26): files.read of compose.yaml masks inline environment values
+    pub fn scrub(text: &str, secrets: &[String]) -> String;               // AD37 (2026-10-26): logs and context lines can echo env values
+    pub fn unmask_env(proposed: &str, on_disk: &str) -> String;           // AD37 (2026-10-26): `KEY=••••` in a proposed .env edit keeps the value on disk
+    // AD37 (2026-10-26): the compose.config tool runs `docker compose config --no-interpolate`; interpolated output leaks .env values
 }
 
 pub mod bridge {   // app <-> `berth mcp`, JSON lines over a Unix socket in paths::runtime_dir()
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct BridgeRequest { pub id: uuid::Uuid, pub token: String, pub session: berth_core::SessionId, pub tool: String, pub args: serde_json::Value }
+    pub struct BridgeRequest { pub id: uuid::Uuid, pub token: String, pub session: berth_core::SessionId, pub tool: String, pub args: serde_json::Value, #[serde(default)] pub call_id: Option<String> }   // AD37 (2026-10-26): call_id is the tool_use id from MCP `_meta`, if sent; it ties the approval card to the tool row
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum BridgeResponse { Ok { id: uuid::Uuid, text: String, data: Option<serde_json::Value> }, Denied { id: uuid::Uuid, reason: String }, Error { id: uuid::Uuid, message: String } }
     pub struct Incoming { pub request: BridgeRequest, pub reply: tokio::sync::oneshot::Sender<BridgeResponse> }
     pub struct BridgeServer { pub socket: std::path::PathBuf, pub token: String }
     impl BridgeServer {
         pub async fn bind(cancel: tokio_util::sync::CancellationToken) -> Result<(Self, tokio::sync::mpsc::Receiver<Incoming>), super::AssistantError>;
+        pub async fn bind_at(socket: std::path::PathBuf, token: String, cancel: tokio_util::sync::CancellationToken) -> Result<(Self, tokio::sync::mpsc::Receiver<Incoming>), super::AssistantError>;   // AD37 (2026-10-26): one `bridge.sock` per app in the runtime dir: runtime_dir() is 64 bytes and sun_path holds 104, so a uuid name overflows
     }
+    // AD37 (2026-10-26): the `--mcp-config` file holding the token is written 0600 and deleted on close; never log `files.propose_edit` args
     pub async fn call(socket: &std::path::Path, req: &BridgeRequest) -> Result<BridgeResponse, super::AssistantError>;
 }
 /// Entry point of `berth mcp --bridge <socket> --session <id>`: rmcp stdio server exposing catalog(), forwarding to the bridge.
@@ -1242,7 +1253,7 @@ pub trait HarnessSession: Send {
 pub async fn start(cfg: SessionConfig, cancel: tokio_util::sync::CancellationToken)
     -> Result<(Box<dyn HarnessSession>, tokio::sync::mpsc::Receiver<AssistantEvent>), AssistantError>;
 pub mod claude { pub const FLAGS: &[&str]; pub fn args(cfg: &super::SessionConfig, mcp_config: &std::path::Path) -> Vec<String>; pub fn parse_line(line: &str) -> Vec<super::AssistantEvent>; }
-pub mod muse   { pub fn serve_args() -> Vec<String>; pub fn session_start(cfg: &super::SessionConfig) -> serde_json::Value; pub fn parse_notification(v: &serde_json::Value) -> Vec<super::AssistantEvent>; }
+pub mod muse   { pub fn serve_args() -> Vec<String>; pub fn session_start(cfg: &super::SessionConfig) -> serde_json::Value; pub fn parse_notification(v: &serde_json::Value) -> Vec<super::AssistantEvent>; pub fn approval_decision(params: &serde_json::Value) -> serde_json::Value; }   // AD37 (2026-10-26): approval_decision is the pure, testable answer to approval/requested (allow for berth tools, deny otherwise)
 pub mod context { pub fn render(items: &[berth_core::ContextItem], resolve: &dyn Fn(&berth_core::ContextItem) -> String) -> String; }
 ```
 
@@ -1372,6 +1383,8 @@ pub struct AppState {
     pub section: Signal<Section>, pub selection: Signal<Selection>, pub overlays: Signal<Vec<Overlay>>,
     pub bottom: Signal<BottomPanel>,                           // open, height, tab, terminal tabs
     pub harnesses: Signal<Vec<berth_core::Harness>>,
+    pub assistant: Signal<std::collections::BTreeMap<berth_core::SessionId, berth_core::AssistantSession>>,   // AD37 (2026-10-26): live sessions, one per project; saved through Store::save_session
+    pub approvals: Signal<Vec<Approval>>,                                                                    // AD37 (2026-10-26): pending tool approvals, oldest first
     pub toasts: Signal<Vec<Toast>>,
     pub snapshot_stale: Signal<bool>,
 }
@@ -1379,7 +1392,9 @@ pub enum EngineScope { One(berth_core::EngineId), All }
 pub struct PendingKey { pub subject: berth_core::Subject, pub action: &'static str }
 pub enum PendingState { Running { label: String }, Failed { message: String } }
 pub enum Selection { None, Containers(Vec<berth_core::ContainerId>), Project(berth_core::ProjectId), Image(String), Volume(String), Network(String), Engine(berth_core::EngineId) }
-pub struct BottomPanel { pub open: bool, pub height_px: u32, pub tab: BottomTab, pub terminals: Vec<TerminalTab> }
+pub struct BottomPanel { pub open: bool, pub height_px: u32, pub tab: BottomTab, pub terminals: Vec<TerminalTab>, pub maximized: bool }   // AD37 (2026-10-26): the "full section" of the assistant is a maximized bottom panel; there is no Section::Assistant
+pub struct Approval { pub id: uuid::Uuid, pub session: berth_core::SessionId, pub call: berth_core::ToolCall, pub effect: berth_core::EffectSummary, pub typed_name: Option<String>, pub after_plan: Option<uuid::Uuid> }   // AD37 (2026-10-26): frame "Then: recreate..."; typed_name is set for Destructive; Approve waits until the plan in after_plan is applied
+pub enum Clicked { /* existing: Review(Uuid), Confirm, CleanUp, Selected, Nothing(String) */ Assistant(berth_core::SessionId) }   // AD37 (2026-10-26): Clicked is defined in screens/problems/model.rs, not elsewhere in this plan; Fix with a harness opens the session
 pub struct TerminalTab { pub id: uuid::Uuid, pub title: String, pub session: Option<berth_core::ExecSession>, pub exited: bool, pub unread: bool }
 pub struct ConfirmModel { pub title: String, pub effect: berth_core::EffectSummary, pub action: berth_core::EngineAction, pub checkbox: Option<(String, bool)>, pub targets: Vec<berth_core::Subject> }
 // For EngineAction::Prune, `targets` stays empty and `plan.items` is the target list (Subject has no build-cache case; one list is the single source of what gets removed). 2026-10-25.
