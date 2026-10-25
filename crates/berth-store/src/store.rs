@@ -236,6 +236,22 @@ impl Store {
         self.get_json("SELECT json FROM snapshots WHERE engine = ?1", [&engine.0])
     }
 
+    /// Every stored engine snapshot, ordered by engine id.
+    pub fn snapshots(&self) -> Result<Vec<EngineSnapshot>, StoreError> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT json FROM snapshots ORDER BY engine")
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(sql_err)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(serde_json::from_str(&row.map_err(sql_err)?)?);
+        }
+        Ok(out)
+    }
+
     pub fn save_snapshot(&self, snapshot: &EngineSnapshot) -> Result<(), StoreError> {
         let conn = self.lock()?;
         conn.execute(
@@ -576,6 +592,29 @@ mod tests {
                 .expect("get")
                 .map(|s| s.taken),
             Some(at(600))
+        );
+    }
+
+    #[test]
+    fn snapshots_returns_every_engine_and_the_latest_save_of_each() {
+        let store = Store::open_in_memory().expect("open");
+        assert_eq!(store.snapshots().expect("empty"), vec![]);
+        let snap = |id: &str, secs: i64| EngineSnapshot {
+            engine: engine(id),
+            taken: at(secs),
+            containers: vec![],
+            projects: vec![],
+        };
+        store.save_snapshot(&snap("remote:b", 100)).expect("save");
+        store
+            .save_snapshot(&snap("colima:default", 200))
+            .expect("save");
+        store
+            .save_snapshot(&snap("colima:default", 300))
+            .expect("save");
+        assert_eq!(
+            store.snapshots().expect("all"),
+            vec![snap("colima:default", 300), snap("remote:b", 100)]
         );
     }
 

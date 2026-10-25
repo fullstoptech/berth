@@ -53,6 +53,10 @@ pub struct Settings {
     pub favourites: Vec<std::path::PathBuf>,
     pub show_dock_icon: bool,
     pub update_check: bool,
+    /// When the update check last ran (D62, once a day); survives a relaunch.
+    /// Settings saved before this field existed load with `None` (AD34).
+    #[serde(default)]
+    pub update_last_checked: Option<chrono::DateTime<chrono::Utc>>,
     pub log_buffer_lines: u32,
     pub owner: berth_core::OwnerId,
 }
@@ -92,6 +96,7 @@ impl Default for Settings {
             favourites,
             show_dock_icon: true,
             update_check: true,
+            update_last_checked: None,
             log_buffer_lines: 100_000,
             owner: berth_core::OwnerId::Local,
         }
@@ -147,6 +152,27 @@ mod tests {
             .expect("field was written");
         let old = serde_json::from_value::<Settings>(value).expect("old settings load");
         assert!((old.text_scale - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn settings_update_last_checked_round_trips_and_old_settings_load_none() {
+        let when = chrono::DateTime::from_timestamp(1_790_000_000, 0).expect("ts");
+        let s = Settings {
+            update_last_checked: Some(when),
+            ..Settings::default()
+        };
+        let json = serde_json::to_string(&s).expect("serialize");
+        let back = serde_json::from_str::<Settings>(&json).expect("deserialize");
+        assert_eq!(back.update_last_checked, Some(when));
+
+        let mut value = serde_json::to_value(Settings::default()).expect("to_value");
+        value
+            .as_object_mut()
+            .expect("object")
+            .remove("update_last_checked")
+            .expect("field was written");
+        let old = serde_json::from_value::<Settings>(value).expect("old settings load");
+        assert_eq!(old.update_last_checked, None);
     }
 
     #[test]
