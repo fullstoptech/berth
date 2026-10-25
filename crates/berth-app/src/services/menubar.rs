@@ -177,6 +177,49 @@ fn container_tone(c: &Container) -> Tone {
     }
 }
 
+/// The projects the menu lists: pinned, or with something running (or a status that is not
+/// stopped). Stopped, unpinned projects stay out of the menu and out of the failure count.
+fn is_shown(p: &Project, own: &[&Container]) -> bool {
+    p.pinned
+        || !matches!(p.status, ProjectStatus::Stopped | ProjectStatus::NotCreated)
+        || own.iter().any(|c| c.state == ContainerState::Running)
+}
+
+/// The projects with a menu row (`Loose` is the Containers screen's bucket, never a project).
+fn real_projects(s: &AppSnapshot) -> Vec<Project> {
+    s.projects
+        .iter()
+        .filter(|p| !matches!(p.source, ProjectSource::Loose))
+        .cloned()
+        .collect()
+}
+
+fn own_containers<'a>(p: &Project, s: &'a AppSnapshot, real: &[Project]) -> Vec<&'a Container> {
+    s.containers
+        .iter()
+        .filter(|c| owner(c, real).is_some_and(|o| o.id == p.id))
+        .collect()
+}
+
+/// AD36: the containers worth a glance. In a project the menu shows: failed (exited non-zero),
+/// restarting or unhealthy. Outside every project: only restarting or unhealthy; a loose
+/// container that exited never counts, however it exited. The summary, the icon and the loose
+/// rows all use this one filter.
+fn actionable<'a>(s: &'a AppSnapshot, real: &[Project]) -> Vec<&'a Container> {
+    let shown: Vec<&ProjectId> = real
+        .iter()
+        .filter(|p| is_shown(p, &own_containers(p, s, real)))
+        .map(|p| &p.id)
+        .collect();
+    s.containers
+        .iter()
+        .filter(|c| match owner(c, real) {
+            Some(p) => shown.contains(&&p.id) && is_trouble(c),
+            None => c.state == ContainerState::Restarting || c.health == Some(Health::Unhealthy),
+        })
+        .collect()
+}
+
 fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
@@ -331,13 +374,9 @@ fn project_row(p: &Project, own: &[&Container]) -> (MenuItem, u8) {
 }
 
 /// The summary line and its tone, and the icon.
-fn summary(s: &AppSnapshot) -> (String, Tone, MenuIcon) {
-    let failing = s.containers.iter().filter(|c| is_failed(c)).count();
-    let unhealthy = s
-        .containers
-        .iter()
-        .filter(|c| !is_failed(c) && is_trouble(c))
-        .count();
+fn summary(s: &AppSnapshot, actionable: &[&Container]) -> (String, Tone, MenuIcon) {
+    let failing = actionable.iter().filter(|c| is_failed(c)).count();
+    let unhealthy = actionable.len() - failing;
     let unreachable = s
         .engines
         .iter()
@@ -392,7 +431,9 @@ fn summary(s: &AppSnapshot) -> (String, Tone, MenuIcon) {
 /// containers leads the list and carries them nested; stopped projects only show when pinned.
 #[must_use]
 pub fn menu_model(s: &AppSnapshot) -> MenuModel {
-    let (text, tone, icon) = summary(s);
+    let real = real_projects(s);
+    let actionable = actionable(s, &real);
+    let (text, tone, icon) = summary(s, &actionable);
     let mut items = vec![MenuItem::Summary { text, tone }];
 
     if !s.engines.is_empty() {
@@ -402,31 +443,18 @@ pub fn menu_model(s: &AppSnapshot) -> MenuModel {
 
     // "Unassigned" is the Containers screen's bucket for loose containers, not a project you can
     // start or stop; its failures show as loose rows below.
-    let real: Vec<Project> = s
-        .projects
-        .iter()
-        .filter(|p| !matches!(p.source, ProjectSource::Loose))
-        .cloned()
-        .collect();
     let mut projects: Vec<(u8, &Project, Vec<&Container>)> = real
         .iter()
         .filter_map(|p| {
-            let own: Vec<&Container> = s
-                .containers
-                .iter()
-                .filter(|c| owner(c, &real).is_some_and(|o| o.id == p.id))
-                .collect();
-            let shown = p.pinned
-                || !matches!(p.status, ProjectStatus::Stopped | ProjectStatus::NotCreated)
-                || own.iter().any(|c| c.state == ContainerState::Running);
-            shown.then(|| (project_row(p, &own).1, p, own))
+            let own = own_containers(p, s, &real);
+            is_shown(p, &own).then(|| (project_row(p, &own).1, p, own))
         })
         .collect();
     projects.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.name.cmp(&b.1.name)));
-    let loose: Vec<&Container> = s
-        .containers
+    let loose: Vec<&Container> = actionable
         .iter()
-        .filter(|c| is_trouble(c) && owner(c, &real).is_none())
+        .copied()
+        .filter(|c| owner(c, &real).is_none())
         .collect();
     if !projects.is_empty() || !loose.is_empty() {
         items.push(MenuItem::Header("Projects"));
@@ -602,6 +630,13 @@ pub fn use_menubar(state: AppState) {
     });
     if std::env::var_os("BERTH_SCENE").is_none() {
         crate::platform::use_tray(model.into());
+        // The Dock's Quit ends the event loop without `platform::quit`; this is what its last
+        // snapshot save reads (AD36).
+        use_hook(move || {
+            if let Some(services) = try_consume_context::<crate::services::Services>() {
+                crate::platform::register_final_save(state, services.store);
+            }
+        });
     }
     use_effect(move || {
         let show = state.settings.read().show_dock_icon;

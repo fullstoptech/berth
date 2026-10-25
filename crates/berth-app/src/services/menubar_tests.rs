@@ -468,7 +468,7 @@ fn menubar_the_unassigned_bucket_is_not_a_project_and_its_failures_stay_visible(
         false,
     );
     bucket.source = ProjectSource::Loose;
-    let mut lone = container("lone", None, ContainerState::Exited, None, Some(1));
+    let mut lone = container("lone", None, ContainerState::Restarting, None, None);
     lone.project = Some(bucket.id.clone());
     let model = menu_model(&snapshot(
         vec![colima("default", EngineState::Running)],
@@ -480,16 +480,16 @@ fn menubar_the_unassigned_bucket_is_not_a_project_and_its_failures_stay_visible(
 }
 
 #[test]
-fn menubar_a_failed_container_outside_every_project_is_listed_on_its_own() {
+fn menubar_a_restarting_container_outside_every_project_is_listed_on_its_own() {
     let model = menu_model(&snapshot(
         vec![colima("default", EngineState::Running)],
         vec![],
         vec![container(
             "lone",
             None,
-            ContainerState::Exited,
+            ContainerState::Restarting,
             None,
-            Some(1),
+            None,
         )],
     ));
     assert_eq!(model.icon, MenuIcon::Failing);
@@ -498,6 +498,58 @@ fn menubar_a_failed_container_outside_every_project_is_listed_on_its_own() {
         .map(|(label, _, nested, _)| (label, nested))
         .collect();
     assert_eq!(got, vec![("default", false), ("lone", false)]);
+}
+
+#[test]
+fn menubar_loose_exited_containers_never_count_however_they_exited() {
+    let model = menu_model(&snapshot(
+        vec![colima("default", EngineState::Running)],
+        vec![],
+        vec![
+            container("old-job", None, ContainerState::Exited, None, Some(1)),
+            container("old-job-2", None, ContainerState::Exited, None, Some(137)),
+        ],
+    ));
+    assert_eq!(model.icon, MenuIcon::AllGood);
+    assert_eq!(summary_of(&model), ("All good", Tone::Success));
+    let got: Vec<_> = rows(&model).into_iter().map(|r| r.0).collect();
+    assert_eq!(got, vec!["default"]);
+}
+
+#[test]
+fn menubar_a_failed_container_in_a_running_project_makes_the_icon_failing() {
+    let model = menu_model(&snapshot(
+        vec![colima("default", EngineState::Running)],
+        vec![project("shop", ProjectStatus::AllRunning, false)],
+        vec![
+            running("web", "shop"),
+            container(
+                "migrate",
+                Some("shop"),
+                ContainerState::Exited,
+                None,
+                Some(1),
+            ),
+        ],
+    ));
+    assert_eq!(model.icon, MenuIcon::Failing);
+    assert_eq!(summary_of(&model), ("1 failing", Tone::Danger));
+}
+
+#[test]
+fn menubar_a_failed_container_in_a_project_the_menu_does_not_show_does_not_count() {
+    let model = menu_model(&snapshot(
+        vec![colima("default", EngineState::Running)],
+        vec![project("shop", ProjectStatus::Stopped, false)],
+        vec![container(
+            "migrate",
+            Some("shop"),
+            ContainerState::Exited,
+            None,
+            Some(1),
+        )],
+    ));
+    assert_eq!(model.icon, MenuIcon::AllGood);
 }
 
 #[test]
@@ -770,4 +822,33 @@ fn menubar_project_and_restart_commands_work_without_a_window_and_refuse_without
     // With no actions service the reason is told, not swallowed, and the window stays hidden.
     assert_eq!(state.toasts.peek().len(), 2);
     assert_eq!(*host.shown.borrow(), 0);
+}
+
+// --- the final save (AD36) ---
+
+#[test]
+fn menubar_final_save_writes_the_snapshot_the_dock_quit_would_lose() {
+    let (_dom, mut state) = harness();
+    let engine = colima("default", EngineState::Running);
+    let mut lone = container("lone", None, ContainerState::Running, None, None);
+    lone.engine = engine.id.clone();
+    state.engines.set(vec![engine.clone()]);
+    state.containers.set(vec![lone]);
+    let store = std::sync::Arc::new(berth_store::Store::open_in_memory().expect("store"));
+
+    assert_eq!(
+        crate::platform::final_save(),
+        0,
+        "nothing registered, nothing saved"
+    );
+    assert!(store.snapshot(&engine.id).expect("read").is_none());
+
+    crate::platform::register_final_save(state, std::sync::Arc::clone(&store));
+    assert_eq!(crate::platform::final_save(), 1);
+    let saved = store
+        .snapshot(&engine.id)
+        .expect("read")
+        .expect("a snapshot was written");
+    assert_eq!(saved.containers.len(), 1);
+    assert_eq!(saved.containers[0].name, "lone");
 }

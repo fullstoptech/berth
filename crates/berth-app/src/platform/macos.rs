@@ -38,6 +38,12 @@ pub fn config() -> Config {
             {
                 super::show_window();
             }
+            // AD36: Quit from the Dock ends the loop through `applicationWillTerminate:`, not
+            // through `platform::quit`, so the final snapshot is saved here, synchronously.
+            if matches!(event, dioxus::desktop::tao::event::Event::LoopDestroyed) {
+                let saved = super::final_save();
+                tracing::debug!(saved, "loop destroyed: final snapshot saved");
+            }
         })
 }
 

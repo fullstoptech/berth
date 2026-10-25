@@ -27,6 +27,35 @@ pub(crate) fn register_window(window: dioxus::desktop::DesktopContext) {
     WINDOW.with(|slot| *slot.borrow_mut() = Some(window));
 }
 
+thread_local! {
+    /// What the last-chance save needs. `AppState` holds unsync signals, so this is thread-local
+    /// rather than a `OnceLock`: the App root sets it and the event loop reads it, both on the
+    /// main thread.
+    static FINAL_SAVE: std::cell::RefCell<Option<(crate::state::AppState, std::sync::Arc<berth_store::Store>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Remember what `final_save` writes (called once from the App root, never in a scene).
+pub(crate) fn register_final_save(
+    state: crate::state::AppState,
+    store: std::sync::Arc<berth_store::Store>,
+) {
+    FINAL_SAVE.with(|slot| *slot.borrow_mut() = Some((state, store)));
+}
+
+/// The synchronous final snapshot save, for the event loop's `LoopDestroyed` (AD36): a Quit from
+/// the Dock ends the loop without going through `quit()`, and nothing may rely on `Drop` or a
+/// task there. Saving again after `quit()` already saved is harmless: a snapshot is replaced
+/// whole, so the second write only refreshes its timestamp.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn final_save() -> usize {
+    FINAL_SAVE.with(|slot| {
+        slot.borrow().as_ref().map_or(0, |(state, store)| {
+            crate::services::engines::save_snapshots(state, store)
+        })
+    })
+}
+
 /// Bring the main window back: unhide, unminimise, focus and activate the app.
 pub fn show_window() {
     WINDOW.with(|slot| {
