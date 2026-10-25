@@ -98,7 +98,6 @@ impl DetailTab {
     #[must_use]
     pub fn built_in(self) -> Option<&'static str> {
         match self {
-            Self::Logs => Some("P3-T2"),
             Self::Limits => Some("P3-T7"),
             Self::Overview
             | Self::Inspect
@@ -106,7 +105,8 @@ impl DetailTab {
             | Self::Mounts
             | Self::Stats
             | Self::Files
-            | Self::Terminal => None,
+            | Self::Terminal
+            | Self::Logs => None,
         }
     }
 }

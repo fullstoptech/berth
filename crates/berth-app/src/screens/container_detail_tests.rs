@@ -489,15 +489,20 @@ fn inspector_keeps_one_12px_left_edge_and_sets_delete_apart() {
 #[test]
 fn inspector_tabs_another_task_builds_say_which_task() {
     let api = container("shop-api-api-1");
-    for (tab, task) in [(DetailTab::Logs, "P3-T2"), (DetailTab::Limits, "P3-T7")] {
-        let mut panel = Panel::of(&api);
-        panel.tab = tab;
-        let html = render(panel);
-        assert!(
-            html.contains(&format!("Built in {task}")),
-            "{tab:?}: {html}"
-        );
-    }
+    let mut panel = Panel::of(&api);
+    panel.tab = DetailTab::Limits;
+    let html = render(panel);
+    assert!(html.contains("Built in P3-T7"), "{html}");
+}
+
+#[test]
+fn inspector_logs_tab_mounts_the_log_panel() {
+    let api = container("shop-api-api-1");
+    let mut panel = Panel::of(&api);
+    panel.tab = DetailTab::Logs;
+    let html = render(panel);
+    assert!(!html.contains("Built in P3-T2"), "{html}");
+    assert!(html.contains("log-panel"), "{html}");
 }
 
 #[test]
