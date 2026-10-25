@@ -1,6 +1,6 @@
 use dioxus::desktop::muda::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use dioxus::desktop::{Config, LogicalPosition, LogicalSize, WindowBuilder};
-use dioxus::prelude::use_hook;
+use dioxus::desktop::{Config, LogicalPosition, LogicalSize, WindowBuilder, WindowCloseBehaviour};
+use dioxus::prelude::{use_effect, use_hook, ReadSignal, ReadableExt};
 
 use crate::actions::ActionId;
 use crate::assets;
@@ -24,6 +24,55 @@ pub fn config() -> Config {
         .with_window(window)
         .with_menu(build_menu())
         .with_custom_head(assets::head_html())
+        // D38: closing the window leaves the menu bar item running; `platform::quit` flips this.
+        .with_close_behaviour(WindowCloseBehaviour::WindowHides)
+        // The tray's left click opens its menu; it must not also raise the window.
+        .with_tray_icon_show_window_on_click(false)
+        .with_custom_event_handler(|event, target| {
+            apply_dock_request(target);
+            // A click on the Dock icon while the window is hidden brings it back.
+            if let dioxus::desktop::tao::event::Event::Reopen {
+                has_visible_windows: false,
+                ..
+            } = event
+            {
+                super::show_window();
+            }
+        })
+}
+
+/// Dock icon changes the app asked for, applied on the event loop (only it holds the window
+/// target that can change the activation policy). 0 = none, 1 = show, 2 = hide.
+static DOCK_REQUEST: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+/// What the app last asked for (the dock icon starts shown).
+static DOCK_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Apply a pending dock change (D67): shown is a regular app, hidden is an accessory one that
+/// keeps its menu bar item.
+fn apply_dock_request<T>(target: &dioxus::desktop::tao::event_loop::EventLoopWindowTarget<T>) {
+    use dioxus::desktop::tao::platform::macos::{ActivationPolicy, EventLoopWindowTargetExtMacOS};
+    use std::sync::atomic::Ordering;
+    let policy = match DOCK_REQUEST.swap(0, Ordering::SeqCst) {
+        1 => ActivationPolicy::Regular,
+        2 => ActivationPolicy::Accessory,
+        _ => return,
+    };
+    target.set_activation_policy_at_runtime(policy);
+}
+
+/// Show or hide the Dock icon. The menu bar item stays either way. Takes effect on the next event
+/// the loop handles (a redraw is requested to cause one).
+pub fn set_dock_icon_visible(visible: bool) {
+    use std::sync::atomic::Ordering;
+    if DOCK_SHOWN.swap(visible, Ordering::SeqCst) == visible {
+        return;
+    }
+    DOCK_REQUEST.store(if visible { 1 } else { 2 }, Ordering::SeqCst);
+    super::WINDOW.with(|slot| {
+        if let Some(window) = slot.borrow().as_ref() {
+            window.window.request_redraw();
+        }
+    });
 }
 
 /// Place the traffic lights inside Berth's own 38 px title bar (D8).
@@ -37,6 +86,129 @@ pub fn use_traffic_lights() {
         if let Err(e) = window.webview.set_traffic_light_inset(inset) {
             tracing::warn!(error = %e, "could not place the traffic lights");
         }
+    });
+}
+
+// ---------------------------------------------------------------------
+// Menu bar item (D38, ADR 0010). The model is pure (`services::menubar`); this turns it into
+// native muda items and keeps one tray icon in step with it.
+// ---------------------------------------------------------------------
+
+use crate::services::menubar::{command_id, MenuCommand, MenuIcon, MenuItem as Entry2, MenuModel};
+
+const TRAY_ICON_PX: u32 = 36;
+
+fn tray_icon_bytes(icon: MenuIcon) -> &'static [u8] {
+    match icon {
+        MenuIcon::AllGood => include_bytes!("../../assets/tray/all-good.rgba"),
+        MenuIcon::Failing => include_bytes!("../../assets/tray/failing.rgba"),
+        MenuIcon::EngineStopped => include_bytes!("../../assets/tray/engine-stopped.rgba"),
+    }
+}
+
+fn tray_icon(icon: MenuIcon) -> Option<dioxus::desktop::trayicon::Icon> {
+    dioxus::desktop::trayicon::Icon::from_rgba(
+        tray_icon_bytes(icon).to_vec(),
+        TRAY_ICON_PX,
+        TRAY_ICON_PX,
+    )
+    .map_err(|err| tracing::warn!(%err, "tray icon failed"))
+    .ok()
+}
+
+/// The native menu for a model. A row is a submenu of its commands (muda rows hold no buttons);
+/// a row with none, and the summary and headers, are disabled plain items.
+fn tray_menu(model: &MenuModel) -> Menu {
+    let menu = Menu::new();
+    for item in &model.items {
+        let added = match item {
+            Entry2::Summary { text, .. } => menu.append(&MenuItem::new(
+                format!("Berth \u{2014} {text}"),
+                false,
+                None,
+            )),
+            Entry2::Header(title) => menu.append(&MenuItem::new(*title, false, None)),
+            Entry2::Row {
+                label,
+                detail,
+                nested,
+                commands,
+                ..
+            } => {
+                let indent = if *nested { "\u{2003}\u{2003}" } else { "" };
+                let text = format!("{indent}{label} \u{2014} {detail}");
+                if commands.is_empty() {
+                    menu.append(&MenuItem::new(text, false, None))
+                } else {
+                    let sub = Submenu::new(text, true);
+                    for (name, command) in commands {
+                        let entry = MenuItem::with_id(command_id(command), name, true, None);
+                        if let Err(err) = sub.append(&entry) {
+                            tracing::warn!(%err, "tray command failed");
+                        }
+                    }
+                    menu.append(&sub)
+                }
+            }
+            Entry2::Separator => menu.append(&PredefinedMenuItem::separator()),
+            Entry2::Command { label, command } => {
+                let accelerator = matches!(command, MenuCommand::Quit)
+                    .then(|| "Cmd+Q".parse().ok())
+                    .flatten();
+                menu.append(&MenuItem::with_id(
+                    command_id(command),
+                    *label,
+                    true,
+                    accelerator,
+                ))
+            }
+        };
+        if let Err(err) = added {
+            tracing::warn!(%err, "tray item failed");
+        }
+    }
+    menu
+}
+
+thread_local! {
+    /// The one tray icon (main thread only); dropping it would remove the item.
+    static TRAY: std::cell::RefCell<Option<dioxus::desktop::trayicon::TrayIcon>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Keep the menu bar item in step with `model`. The effect re-runs only when the model changes
+/// (`MenuModel: PartialEq`, read through a memo), and each run replaces the menu and the icon.
+pub fn use_tray(model: ReadSignal<MenuModel>) {
+    use dioxus::desktop::trayicon::TrayIconBuilder;
+    let window = dioxus::desktop::use_window();
+    use_hook(move || super::register_window(window));
+    use_effect(move || {
+        let model = model.read().clone();
+        let icon = tray_icon(model.icon);
+        TRAY.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            if let Some(tray) = slot.as_ref() {
+                tray.set_menu(Some(Box::new(tray_menu(&model))));
+                if let Some(icon) = icon {
+                    if let Err(err) = tray.set_icon_with_as_template(Some(icon), true) {
+                        tracing::warn!(%err, "tray icon update failed");
+                    }
+                }
+                return;
+            }
+            let mut builder = TrayIconBuilder::new()
+                .with_menu(Box::new(tray_menu(&model)))
+                .with_menu_on_left_click(true)
+                .with_icon_as_template(true)
+                .with_tooltip("Berth");
+            if let Some(icon) = icon {
+                builder = builder.with_icon(icon);
+            }
+            match builder.build() {
+                Ok(tray) => *slot = Some(tray),
+                Err(err) => tracing::warn!(%err, "tray item failed"),
+            }
+        });
     });
 }
 
@@ -409,9 +581,30 @@ pub fn set_dock_menu_label(dock: berth_store::InspectorDock) {
 pub fn use_menu_events(state: AppState) {
     dioxus::desktop::use_muda_event_handler(move |event| {
         let mut state = state;
+        tracing::debug!(id = %event.id().0, "menu event");
+        // Tray items arrive here too: muda keeps one event handler, the app menu's.
+        if event
+            .id()
+            .0
+            .starts_with(crate::services::menubar::ID_PREFIX)
+        {
+            let actions =
+                dioxus::prelude::try_consume_context::<crate::services::actions::ActionsService>();
+            let link = dioxus::prelude::try_consume_context::<
+                Option<crate::services::engines::EngineLink>,
+            >()
+            .flatten();
+            crate::services::menubar::handle_item(
+                &mut state,
+                actions.as_ref(),
+                link.as_ref(),
+                &event.id().0,
+            );
+            return;
+        }
         match menu_action(&event.id().0) {
             Some(MenuAction::Dispatch(action)) => crate::keys::dispatch(&mut state, action),
-            Some(MenuAction::Quit) => dioxus::desktop::window().close(),
+            Some(MenuAction::Quit) => super::quit(),
             None => {}
         }
     });

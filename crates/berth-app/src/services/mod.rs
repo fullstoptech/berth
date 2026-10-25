@@ -19,6 +19,7 @@ pub mod folders;
 pub mod group_ops;
 pub mod images;
 pub mod logs;
+pub mod menubar;
 pub mod networks;
 pub mod plans;
 pub mod ports;

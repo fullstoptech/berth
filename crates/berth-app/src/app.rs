@@ -161,6 +161,7 @@ pub fn App() -> Element {
         )
     });
     use_context_provider(|| exec);
+    crate::services::menubar::use_menubar(state);
 
     // BERTH_SCENE puts the UI into a frame's state for screenshots (D58).
     use_hook(move || {
