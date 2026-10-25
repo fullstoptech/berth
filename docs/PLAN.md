@@ -1339,7 +1339,8 @@ pub enum PendingState { Running { label: String }, Failed { message: String } }
 pub enum Selection { None, Containers(Vec<berth_core::ContainerId>), Project(berth_core::ProjectId), Image(String), Volume(String), Network(String), Engine(berth_core::EngineId) }
 pub struct BottomPanel { pub open: bool, pub height_px: u32, pub tab: BottomTab, pub terminals: Vec<TerminalTab> }
 pub struct TerminalTab { pub id: uuid::Uuid, pub title: String, pub session: Option<berth_core::ExecSession>, pub exited: bool, pub unread: bool }
-pub struct ConfirmModel { pub title: String, pub effect: berth_core::EffectSummary, pub action: berth_core::EngineAction, pub checkbox: Option<(String, bool)> }
+pub struct ConfirmModel { pub title: String, pub effect: berth_core::EffectSummary, pub action: berth_core::EngineAction, pub checkbox: Option<(String, bool)>, pub targets: Vec<berth_core::Subject> }
+// targets (architect, 2026-10-25, D2): the subjects the dialog acts on, fixed when it opens; effect.count == targets.len(); a target gone by confirm time becomes a refused line in the result. run() never re-reads the selection.
 pub enum ToastTone { Neutral, Success, Danger }
 pub struct Toast { pub id: uuid::Uuid, pub text: String, pub tone: ToastTone, pub action: Option<(String, &'static str)> }  // (label, ActionDef id)
 pub enum ActionScope { Global, Container, Project, Image, Volume, Network, Engine, Logs, Assistant }
