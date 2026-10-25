@@ -263,6 +263,15 @@ pub fn CreateNetworkSheet() -> Element {
                         oninput: move |e: FormEvent| draft.write().gateway = e.value(),
                     }
                 }
+                TextField {
+                    label: "Labels".to_string(),
+                    initial_value: initial.labels.clone(),
+                    placeholder: "dev.berth.fixture=1, owner=me".to_string(),
+                    help: Some("Optional. key=value, separated by commas.".to_string()),
+                    aria_label: "Labels".to_string(),
+                    error: error_of(&errors, Field::Labels),
+                    oninput: move |e: FormEvent| draft.write().labels = e.value(),
+                }
                 Switch {
                     on: current.internal,
                     label: "Internal: containers on it cannot reach the outside".to_string(),

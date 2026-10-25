@@ -5,10 +5,10 @@
 //! list it, disconnect (the container is back on its original networks) and
 //! delete it through the confirm builder.
 //!
-//! `NetworkSpec` has no labels (PLAN §6), so the network Berth creates
-//! carries no `dev.berth.fixture=1` label; the test only ever removes the
-//! network named exactly `berthfx-net` and only disconnects `berthfx-web-1`
-//! from it. No other network or container is touched.
+//! The sheet's Labels field gives the network `dev.berth.fixture=1`; the
+//! test only ever removes the network named exactly `berthfx-net`, only when
+//! it carries that label, and only disconnects `berthfx-web-1` from it. No
+//! other network or container is touched.
 //!
 //! Run with `BERTH_IT=1 cargo nextest run -p berth-app --run-ignored only
 //! networks_it` (live tests share the engine: run them one at a time).
@@ -57,9 +57,28 @@ fn text(output: &std::process::Output) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
-/// Only the network named exactly `berthfx-net`, and only the fixture web
-/// container leaves it.
+/// The fixture label of the network named exactly `berthfx-net`, `""` when
+/// it has none or does not exist.
+fn fixture_label(bin: &std::path::Path, host: &str) -> String {
+    text(&docker(
+        bin,
+        host,
+        &[
+            "network",
+            "inspect",
+            "-f",
+            "{{index .Labels \"dev.berth.fixture\"}}",
+            NET,
+        ],
+    ))
+}
+
+/// Only the network named exactly `berthfx-net` and only when it carries
+/// the fixture label; only the fixture web container leaves it.
 fn clean(bin: &std::path::Path, host: &str) {
+    if fixture_label(bin, host) != "1" {
+        return;
+    }
     let _ = docker(bin, host, &["network", "disconnect", "-f", NET, WEB]);
     let _ = docker(bin, host, &["network", "rm", NET]);
 }
@@ -233,6 +252,7 @@ async fn networks_it_create_connect_inspect_disconnect_delete() {
     let draft = Draft {
         name: NET.to_string(),
         subnet: SUBNET.to_string(),
+        labels: "dev.berth.fixture=1".to_string(),
         ..Draft::default()
     };
     rig.load_state().await;
@@ -251,6 +271,11 @@ async fn networks_it_create_connect_inspect_disconnect_delete() {
             NET
         ]),
         SUBNET
+    );
+    assert_eq!(
+        fixture_label(&rig.bin, &rig.host),
+        "1",
+        "the sheet's Labels field reached the engine"
     );
 
     // Connect berthfx-web-1.
@@ -304,14 +329,12 @@ async fn networks_it_create_connect_inspect_disconnect_delete() {
         let actions = rig.actions.clone();
         let engine = rig.engine.clone();
         rig.dom.in_runtime(|| {
-            actions.network(
+            actions.remove(
                 &mut state,
                 &engine,
-                &network_id,
+                &berth_core::ResourceRef::Network(network_id.clone()),
                 NET,
-                NetOp::Remove {
-                    id: network_id.clone(),
-                },
+                false,
             )
         })
     };
@@ -330,7 +353,12 @@ async fn networks_it_create_connect_inspect_disconnect_delete() {
     assert_eq!(done.result, Ok(()), "the engine disconnected it");
     assert_eq!(rig.web_network_names(), original, "left as it was");
 
-    // Delete through the confirm dialog's model.
+    // Delete through the confirm dialog's model, only a fixture-labelled one.
+    assert_eq!(
+        fixture_label(&rig.bin, &rig.host),
+        "1",
+        "refusing to delete a network without the fixture label"
+    );
     rig.load_state().await;
     let model = {
         let state = rig.state;

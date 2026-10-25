@@ -22,6 +22,8 @@ pub struct NetworkSpec {
     pub gateway: Option<String>,
     pub internal: bool,
     pub attach: Vec<ContainerId>,
+    /// Labels on the new network (D25b), e.g. `dev.berth.fixture=1`.
+    pub labels: std::collections::BTreeMap<String, String>,
 }
 
 #[cfg(test)]

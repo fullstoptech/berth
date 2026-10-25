@@ -1087,6 +1087,13 @@ impl EngineClient for BollardEngine {
             driver: Some(spec.driver.clone()).filter(|d| !d.is_empty()),
             internal: Some(spec.internal),
             ipam,
+            labels: Some(
+                spec.labels
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            )
+            .filter(|labels: &std::collections::HashMap<String, String>| !labels.is_empty()),
             ..Default::default()
         };
         let created = self

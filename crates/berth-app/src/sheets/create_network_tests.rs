@@ -61,6 +61,7 @@ fn create_network_sheet_offers_the_drivers_the_switch_and_the_engines_containers
         "aria-label=\"Driver\"",
         "aria-label=\"Subnet\"",
         "aria-label=\"Gateway\"",
+        "aria-label=\"Labels\"",
         "aria-label=\"Internal network\"",
         "Attach containers",
     ] {

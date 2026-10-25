@@ -241,6 +241,8 @@ pub struct Draft {
     pub gateway: String,
     pub internal: bool,
     pub attach: Vec<ContainerId>,
+    /// `key=value, key=value`, as typed.
+    pub labels: String,
 }
 
 impl Default for Draft {
@@ -252,6 +254,7 @@ impl Default for Draft {
             gateway: String::new(),
             internal: false,
             attach: Vec::new(),
+            labels: String::new(),
         }
     }
 }
@@ -261,6 +264,31 @@ pub enum Field {
     Name,
     Subnet,
     Gateway,
+    Labels,
+}
+
+/// Read `key=value, key=value` (commas or new lines between entries). A
+/// label needs a key; a value may be empty; a key given twice keeps the last.
+///
+/// # Errors
+/// The text the sheet shows under the field.
+pub fn parse_labels(text: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+    let mut labels = std::collections::BTreeMap::new();
+    for entry in text
+        .split([',', '\n'])
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+    {
+        let Some((key, value)) = entry.split_once('=') else {
+            return Err(format!("{entry} needs a value: write it as key=value"));
+        };
+        let key = key.trim();
+        if key.is_empty() || key.chars().any(char::is_whitespace) {
+            return Err(format!("{entry} has no valid key: write it as key=value"));
+        }
+        labels.insert(key.to_string(), value.trim().to_string());
+    }
+    Ok(labels)
 }
 
 /// One thing wrong with the draft. A `blank` error (nothing typed yet) keeps
@@ -355,6 +383,13 @@ pub fn validate(draft: &Draft, existing: &[Network]) -> Result<NetworkSpec, Vec<
             Err(err) => errors.push(error(Field::Gateway, err.to_string())),
         }
     }
+    let labels = match parse_labels(&draft.labels) {
+        Ok(labels) => labels,
+        Err(message) => {
+            errors.push(error(Field::Labels, message));
+            std::collections::BTreeMap::new()
+        }
+    };
     if !errors.is_empty() {
         return Err(errors);
     }
@@ -365,6 +400,7 @@ pub fn validate(draft: &Draft, existing: &[Network]) -> Result<NetworkSpec, Vec<
         gateway: gateway.map(|g| g.to_string()),
         internal: draft.internal,
         attach: draft.attach.clone(),
+        labels,
     })
 }
 
@@ -519,10 +555,6 @@ pub fn joinable<'a>(
 #[derive(Debug, Clone, PartialEq)]
 pub enum NetOp {
     Create(NetworkSpec),
-    /// Delete by id.
-    Remove {
-        id: String,
-    },
     Connect {
         network: String,
         container: ContainerId,
@@ -539,7 +571,6 @@ impl NetOp {
     pub fn action_id(&self) -> &'static str {
         match self {
             Self::Create(_) => "network.create",
-            Self::Remove { .. } => "network.delete",
             Self::Connect { .. } => "network.connect_container",
             Self::Disconnect { .. } => "network.disconnect",
         }
@@ -561,11 +592,6 @@ pub async fn run_net(
         NetOp::Create(spec) => {
             guard(cancel, client.create_network(&spec)).await?;
             Some(format!("Created network {}", spec.name))
-        }
-        // The confirm dialog says this result itself, from its summary.
-        NetOp::Remove { id } => {
-            guard(cancel, client.remove_network(&id)).await?;
-            None
         }
         NetOp::Connect { network, container } => {
             guard(cancel, client.connect_network(&network, &container)).await?;

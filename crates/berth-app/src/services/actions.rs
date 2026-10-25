@@ -61,7 +61,7 @@ pub fn pending_label(action_id: &str) -> &'static str {
         "container.delete" | "project.delete" => "Deleting…",
         "container.rename" => "Renaming…",
         "network.create" => "Creating…",
-        "network.delete" => "Deleting…",
+        "network.delete" | "image.delete" | "volume.delete" => "Deleting…",
         "network.connect_container" => "Connecting…",
         "network.disconnect" => "Disconnecting…",
         "container.apply_limits" => "Applying…",
@@ -554,6 +554,11 @@ enum Work {
         client: Arc<dyn berth_engine::EngineClient>,
         op: networks::NetOp,
     },
+    Remove {
+        client: Arc<dyn berth_engine::EngineClient>,
+        target: berth_core::ResourceRef,
+        force: bool,
+    },
 }
 
 struct Job {
@@ -608,6 +613,17 @@ impl Inner {
             Work::Network { client, op } => {
                 networks::run_net(client.as_ref(), &job.name, op.clone(), &cancel).await
             }
+            // The confirm dialog says this result itself, from its summary.
+            Work::Remove {
+                client,
+                target,
+                force,
+            } => edit::guard(
+                &cancel,
+                berth_engine::remove_resource(client.as_ref(), target, *force),
+            )
+            .await
+            .map(|()| edit::Done::default()),
         }
     }
 }
@@ -842,6 +858,44 @@ impl ActionsService {
                 name: name.to_string(),
                 project: None,
                 work: Work::Network { client, op },
+            },
+        );
+        Ok(())
+    }
+
+    /// Delete one image, volume or network (`EngineAction::Remove`, D25a).
+    /// The pending key's subject and action come from `target`; `name` is
+    /// what the activity entry calls it. Same contract as [`container`]:
+    /// `Err` carries the reason (an image in use, a network with containers
+    /// on it, a built-in network) and nothing is set pending.
+    ///
+    /// [`container`]: ActionsService::container
+    pub fn remove(
+        &self,
+        state: &mut AppState,
+        engine: &berth_core::EngineId,
+        target: &berth_core::ResourceRef,
+        name: &str,
+        force: bool,
+    ) -> Result<(), String> {
+        let key = PendingKey {
+            subject: target.subject(),
+            action: target.action_id(),
+        };
+        Self::check(state, &key.subject, key.action)?;
+        let client = self.client_for(engine)?;
+        self.launch(
+            state,
+            Job {
+                key,
+                engine: engine.clone(),
+                name: name.to_string(),
+                project: None,
+                work: Work::Remove {
+                    client,
+                    target: target.clone(),
+                    force,
+                },
             },
         );
         Ok(())

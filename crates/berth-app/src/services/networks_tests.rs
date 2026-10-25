@@ -3,7 +3,9 @@ use std::sync::Arc;
 use dioxus::prelude::*;
 use tokio_util::sync::CancellationToken;
 
-use berth_core::{ContainerId, EngineId, Network, Subject};
+use berth_core::{
+    ContainerId, EngineId, Network, ResourceRef, ResourceRef::Network as NetworkRef, Subject,
+};
 use berth_engine::EngineClient as _;
 
 use super::*;
@@ -428,13 +430,10 @@ fn networks_op_ids_are_the_action_ids_of_the_registry() {
         gateway: None,
         internal: false,
         attach: Vec::new(),
+        labels: std::collections::BTreeMap::new(),
     };
     let c = ContainerId("c".to_string());
     assert_eq!(NetOp::Create(spec).action_id(), "network.create");
-    assert_eq!(
-        NetOp::Remove { id: "i".into() }.action_id(),
-        "network.delete"
-    );
     assert_eq!(
         NetOp::Connect {
             network: "n".into(),
@@ -538,6 +537,13 @@ impl Rig {
             .in_runtime(|| service.network(&mut state, &default_engine(), id, name, op))
     }
 
+    fn remove(&mut self, target: &ResourceRef, name: &str) -> Result<(), String> {
+        let service = self.service.clone();
+        let mut state = self.state;
+        self.dom
+            .in_runtime(|| service.remove(&mut state, &default_engine(), target, name, false))
+    }
+
     async fn settle(&mut self) -> PendingKey {
         let done = tokio::time::timeout(std::time::Duration::from_secs(5), self.rx.recv())
             .await
@@ -619,6 +625,7 @@ fn spec(name: &str) -> NetworkSpec {
         gateway: None,
         internal: false,
         attach: Vec::new(),
+        labels: std::collections::BTreeMap::new(),
     }
 }
 
@@ -718,9 +725,10 @@ async fn networks_create_connect_disconnect_and_delete_run_through_the_service()
     );
     assert_eq!(
         model.action,
-        berth_core::EngineAction::RemoveNetwork {
+        berth_core::EngineAction::Remove {
             engine: default_engine(),
-            id: id.clone()
+            target: berth_core::ResourceRef::Network(id.clone()),
+            force: false,
         }
     );
     let launched = {
@@ -774,7 +782,7 @@ async fn networks_every_action_writes_an_activity_entry() {
 async fn networks_built_in_cannot_be_deleted_and_nothing_is_set_pending() {
     let mut rig = Rig::new();
     let bridge = rig.network_id("bridge");
-    let refused = rig.run(&bridge, "bridge", NetOp::Remove { id: bridge.clone() });
+    let refused = rig.remove(&NetworkRef(bridge.clone()), "bridge");
     assert_eq!(
         refused,
         Err("Built-in networks cannot be removed".to_string())
@@ -799,11 +807,7 @@ async fn networks_built_in_cannot_be_deleted_and_nothing_is_set_pending() {
 async fn networks_delete_is_refused_while_containers_are_on_it() {
     let mut rig = Rig::new();
     let shop = rig.network_id("shop-api_default");
-    let refused = rig.run(
-        &shop,
-        "shop-api_default",
-        NetOp::Remove { id: shop.clone() },
-    );
+    let refused = rig.remove(&NetworkRef(shop.clone()), "shop-api_default");
     let reason = refused.expect_err("in use");
     assert!(reason.ends_with("connected"), "{reason}");
     assert!(rig.pending().is_empty());
@@ -868,4 +872,142 @@ async fn networks_run_net_stops_when_cancelled() {
         .expect("networks")
         .iter()
         .all(|n| n.name != "web"));
+}
+
+// --- Labels ---
+
+#[test]
+fn networks_labels_parse_key_value_entries() {
+    let parsed = parse_labels("dev.berth.fixture=1, owner = me\ncolour=").expect("valid");
+    assert_eq!(
+        parsed.get("dev.berth.fixture").map(String::as_str),
+        Some("1")
+    );
+    assert_eq!(parsed.get("owner").map(String::as_str), Some("me"));
+    assert_eq!(parsed.get("colour").map(String::as_str), Some(""));
+    assert!(parse_labels("").expect("empty").is_empty());
+    assert!(parse_labels(" , ,").expect("blank entries").is_empty());
+    for bad in ["novalue", "=x", "a b=c"] {
+        let err = parse_labels(bad).expect_err(bad);
+        assert!(err.contains("key=value"), "{bad}: {err}");
+    }
+}
+
+#[test]
+fn networks_draft_carries_labels_into_the_spec_and_blames_the_field_for_a_bad_one() {
+    let mut d = draft("berthfx-net", "", "");
+    d.labels = "dev.berth.fixture=1".to_string();
+    let spec = validate(&d, &[]).expect("valid");
+    assert_eq!(
+        spec.labels.get("dev.berth.fixture").map(String::as_str),
+        Some("1")
+    );
+    d.labels = "oops".to_string();
+    let errors = validate(&d, &[]).expect_err("bad label");
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].field, Field::Labels);
+    assert!(!errors[0].blank);
+}
+
+// --- One remove action for every kind (D25a) ---
+
+#[tokio::test]
+async fn networks_remove_runs_image_volume_and_network_through_the_one_action() {
+    let mut rig = Rig::new();
+    let world = world();
+    let image = world.images_by_engine["colima:default"]
+        .iter()
+        .find(|i| i.used_by.is_empty())
+        .expect("an unused image")
+        .clone();
+    let volume = world.volumes_by_engine["colima:default"]
+        .iter()
+        .find(|v| v.used_by.is_empty())
+        .expect("an unused volume")
+        .clone();
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        state
+            .images
+            .set(world.images_by_engine["colima:default"].clone());
+        state
+            .volumes
+            .set(world.volumes_by_engine["colima:default"].clone());
+    });
+    let created = rig
+        .engine
+        .create_network(&spec("berthfx-net"))
+        .await
+        .expect("created");
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        state.networks.write().push(created.clone());
+    });
+    for (target, name, action) in [
+        (
+            ResourceRef::Image(image.id.clone()),
+            "an-image",
+            "image.delete",
+        ),
+        (
+            ResourceRef::Volume(volume.name.clone()),
+            volume.name.as_str(),
+            "volume.delete",
+        ),
+        (
+            NetworkRef(created.id.clone()),
+            "berthfx-net",
+            "network.delete",
+        ),
+    ] {
+        rig.remove(&target, name).expect("accepted");
+        let pending = rig.pending();
+        assert_eq!(
+            pending[0].0,
+            PendingKey {
+                subject: target.subject(),
+                action
+            },
+            "{action}"
+        );
+        assert_eq!(
+            pending[0].1,
+            PendingState::Running {
+                label: "Deleting…".to_string()
+            }
+        );
+        rig.settle().await;
+        assert!(rig.pending().is_empty(), "{action}");
+        let entries = rig
+            .store
+            .activity_query(&berth_store::ActivityFilter::default(), None, 20)
+            .expect("activity");
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.action == action && e.subject == target.subject()),
+            "{action} is recorded against its own subject"
+        );
+    }
+    assert!(rig
+        .engine
+        .images()
+        .await
+        .expect("images")
+        .iter()
+        .all(|i| i.id != image.id));
+    assert!(rig
+        .engine
+        .volumes()
+        .await
+        .expect("volumes")
+        .iter()
+        .all(|v| v.name != volume.name));
+    assert!(rig
+        .engine
+        .networks()
+        .await
+        .expect("networks")
+        .iter()
+        .all(|n| n.name != "berthfx-net"));
 }

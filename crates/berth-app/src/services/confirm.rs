@@ -10,7 +10,7 @@
 
 use berth_core::{
     ColimaOp, Container, ContainerAction, ContainerId, ContainerState, EffectKind, EffectLine,
-    EffectSummary, EngineAction, EngineId, Network, Subject, Volume,
+    EffectSummary, EngineAction, EngineId, Network, ResourceRef, Subject, Volume,
 };
 use dioxus::prelude::{ReadableExt, WritableExt};
 
@@ -285,7 +285,7 @@ pub fn network_delete_effect(network: &Network, project: Option<&str>) -> Effect
             format!("Project {project} creates it again the next time it starts."),
         ));
     }
-    summary("Delete", "network", "networks", 1, lines)
+    ResourceRef::Network(network.id.clone()).delete_effect(lines)
 }
 
 /// The confirm button's text, from the summary alone: "Delete container",
@@ -451,9 +451,10 @@ pub fn network_delete_model(state: &AppState, id: &str) -> Option<ConfirmModel> 
     Some(ConfirmModel {
         title: format!("Delete network {}?", network.name),
         effect: network_delete_effect(network, project.as_deref()),
-        action: EngineAction::RemoveNetwork {
+        action: EngineAction::Remove {
             engine,
-            id: network.id.clone(),
+            target: ResourceRef::Network(network.id.clone()),
+            force: false,
         },
         checkbox: None,
         targets: vec![Subject::Network(network.id.clone())],
@@ -622,13 +623,19 @@ pub fn run(
                 }
             }
         }
-        EngineAction::RemoveNetwork { engine, .. } => {
-            for target in &model.targets {
-                match target {
-                    Subject::Network(id) => {
-                        launch_network_delete(state, actions, engine, id, &mut out)
+        EngineAction::Remove {
+            engine,
+            target: kind,
+            force,
+        } => {
+            for subject in &model.targets {
+                match ResourceRef::from_subject(subject) {
+                    Some(target) if target.action_id() == kind.action_id() => {
+                        launch_remove(state, actions, engine, &target, *force, &mut out);
                     }
-                    _ => out.refused.push("This is not a network".to_string()),
+                    _ => out
+                        .refused
+                        .push(format!("This is not a {}", kind.noun_one())),
                 }
             }
         }
@@ -639,30 +646,49 @@ pub fn run(
     out
 }
 
-fn launch_network_delete(
+/// What the activity entry and the refusals call a resource: an image's
+/// first tag (else its id), a volume's name, a network's name.
+fn resource_name(state: &AppState, target: &ResourceRef) -> Option<String> {
+    match target {
+        ResourceRef::Image(id) => state
+            .images
+            .peek()
+            .iter()
+            .find(|i| i.id == *id)
+            .map(|i| i.repo_tags.first().cloned().unwrap_or_else(|| id.clone())),
+        ResourceRef::Volume(name) => state
+            .volumes
+            .peek()
+            .iter()
+            .find(|v| v.name == *name)
+            .map(|v| v.name.clone()),
+        ResourceRef::Network(id) => state
+            .networks
+            .peek()
+            .iter()
+            .find(|n| n.id == *id)
+            .map(|n| n.name.clone()),
+    }
+}
+
+fn launch_remove(
     state: &mut AppState,
     actions: &ActionsService,
     engine: &EngineId,
-    id: &str,
+    target: &ResourceRef,
+    force: bool,
     out: &mut Launched,
 ) {
-    let name = state
-        .networks
-        .peek()
-        .iter()
-        .find(|n| n.id == id)
-        .map(|n| n.name.clone());
-    let Some(name) = name else {
+    let Some(name) = resource_name(state, target) else {
         out.refused
-            .push("This network no longer exists".to_string());
+            .push(format!("This {} no longer exists", target.noun_one()));
         return;
     };
     let key = PendingKey {
-        subject: Subject::Network(id.to_string()),
-        action: "network.delete",
+        subject: target.subject(),
+        action: target.action_id(),
     };
-    let op = crate::services::networks::NetOp::Remove { id: id.to_string() };
-    match actions.network(state, engine, id, &name, op) {
+    match actions.remove(state, engine, target, &name, force) {
         Ok(()) => out.keys.push(key),
         Err(reason) => out.refused.push(reason),
     }
