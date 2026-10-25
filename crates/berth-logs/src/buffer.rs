@@ -44,7 +44,9 @@ impl LogBuffer {
     pub fn new(cap: usize) -> Self {
         let cap = cap.max(1);
         Self {
-            entries: VecDeque::with_capacity(cap.min(4096)),
+            // Reserved up front: growing a 100,000-entry ring by doubling copies megabytes in the
+            // middle of a batch. Untouched pages cost nothing until lines arrive.
+            entries: VecDeque::with_capacity(cap),
             cap,
             next_seq: 0,
             dropped: 0,
@@ -134,6 +136,11 @@ impl LogBuffer {
     #[must_use]
     pub fn dropped(&self) -> u64 {
         self.dropped
+    }
+
+    /// Counts lines that never reached the buffer (see `BatchDrops`) as dropped.
+    pub fn add_dropped(&mut self, lines: u64) {
+        self.dropped = self.dropped.saturating_add(lines);
     }
 
     #[must_use]

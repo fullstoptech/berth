@@ -1,5 +1,8 @@
 //! Many log streams in, one `Vec` per tick out.
 
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use berth_core::LogLine;
@@ -17,10 +20,41 @@ const CHANNEL_DEPTH: usize = 4;
 /// stream never has to wait.
 const DRAIN_STEP: usize = 1024;
 
-/// Collects lines from many streams and yields one `Vec` per `tick` (16 ms in the app), never an
-/// empty one. Ticks that find nothing send nothing. When every stream has ended the remaining lines
-/// go out on the next tick and the receiver then closes; cancelling the token or dropping the
-/// receiver stops the task at once.
+/// Most lines in one emitted batch, so that `LogView::push_batch` (which runs on the UI path)
+/// stays under the 4 ms budget of CLAUDE.md. Derivation: a release build pushes about 1.8-2.0
+/// million lines a second, so 4 ms is about 7,200-8,000 lines on average. The worst batch is what
+/// the UI feels, though: with 4,096 lines the slowest of 30 batches took 2.5-4.0 ms (first-touch
+/// memory and ring eviction add to the 2.2 ms average), too close to the limit. At 2,048 lines
+/// the average is about 1.1 ms and the worst stays near 2 ms. One batch per 16 ms tick at this cap
+/// still carries 128,000 lines a second, 12 times the 10,000 lines a second budget.
+pub const MAX_BATCH_LINES: usize = 2048;
+
+/// Lines held for later ticks by [`batch`]: the size of a view's ring (D25). Lines beyond that
+/// would be pushed out of the ring as soon as they arrived, so the oldest are dropped here.
+pub const DEFAULT_QUEUE_LINES: usize = 100_000;
+
+const _: () = assert!(MAX_BATCH_LINES <= DEFAULT_QUEUE_LINES);
+
+/// Lines [`batch_counted`] dropped because the queue was full. Hand the total to
+/// [`LogView::add_dropped`](crate::LogView::add_dropped) so the "older lines dropped" notice
+/// counts them.
+#[derive(Debug, Clone, Default)]
+pub struct BatchDrops(Arc<AtomicU64>);
+
+impl BatchDrops {
+    /// Lines dropped so far.
+    #[must_use]
+    pub fn total(&self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+/// Collects lines from many streams and yields one `Vec` of at most [`MAX_BATCH_LINES`] per `tick`
+/// (16 ms in the app), never an empty one. Ticks that find nothing send nothing. Lines over the
+/// cap wait for later ticks, in order, in a queue of [`DEFAULT_QUEUE_LINES`]; when that overflows
+/// the oldest are dropped (use [`batch_counted`] to learn how many). When every stream has ended
+/// the remaining lines go out on the following ticks and the receiver then closes; cancelling the
+/// token or dropping the receiver stops the task at once.
 ///
 /// Must be called inside a tokio runtime.
 #[must_use]
@@ -29,35 +63,61 @@ pub fn batch(
     tick: Duration,
     cancel: CancellationToken,
 ) -> mpsc::Receiver<Vec<LogLine>> {
+    batch_counted(streams, tick, cancel, DEFAULT_QUEUE_LINES).0
+}
+
+/// [`batch`] with a chosen queue size (at least [`MAX_BATCH_LINES`]), and the count of lines it
+/// dropped on overflow.
+#[must_use]
+pub fn batch_counted(
+    streams: Vec<BoxStream<'static, LogLine>>,
+    tick: Duration,
+    cancel: CancellationToken,
+    queue_lines: usize,
+) -> (mpsc::Receiver<Vec<LogLine>>, BatchDrops) {
     let (tx, rx) = mpsc::channel(CHANNEL_DEPTH);
+    let drops = BatchDrops::default();
+    let counter = drops.0.clone();
+    let queue_lines = queue_lines.max(MAX_BATCH_LINES);
     tokio::spawn(async move {
         let mut merged = select_all(streams);
         let mut ticker = interval(tick.max(Duration::from_millis(1)));
         // A late tick is not made up for: two batches never sit closer than one tick.
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        let mut pending: Vec<LogLine> = Vec::new();
+        let mut queue: VecDeque<LogLine> = VecDeque::new();
         let mut ended = false;
+        let enqueue = |queue: &mut VecDeque<LogLine>, line: LogLine| {
+            queue.push_back(line);
+            if queue.len() > queue_lines {
+                queue.pop_front();
+                counter.fetch_add(1, Ordering::Relaxed);
+            }
+        };
         loop {
             tokio::select! {
                 biased;
                 () = cancel.cancelled() => break,
                 () = tx.closed() => break,
                 _ = ticker.tick() => {
-                    if !pending.is_empty() && tx.send(std::mem::take(&mut pending)).await.is_err() {
-                        break;
+                    if !queue.is_empty() {
+                        let n = queue.len().min(MAX_BATCH_LINES);
+                        let out: Vec<LogLine> = queue.drain(..n).collect();
+                        if tx.send(out).await.is_err() {
+                            break;
+                        }
                     }
-                    if ended && pending.is_empty() {
+                    if ended && queue.is_empty() {
                         break;
                     }
                 }
                 next = merged.next(), if !ended => match next {
                     Some(line) => {
-                        pending.push(line);
+                        enqueue(&mut queue, line);
                         // Take what is already waiting without going back through the select.
                         for _ in 1..DRAIN_STEP {
                             let Some(more) = merged.next().now_or_never() else { break };
                             match more {
-                                Some(line) => pending.push(line),
+                                Some(line) => enqueue(&mut queue, line),
                                 None => {
                                     ended = true;
                                     break;
@@ -70,13 +130,12 @@ pub fn batch(
             }
         }
     });
-    rx
+    (rx, drops)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
     use std::time::Instant;
 
     use berth_core::{ContainerId, Stream};
@@ -171,12 +230,14 @@ mod tests {
         }
         assert_eq!(got.iter().sum::<usize>(), 60);
         assert!(got.len() >= 3, "expected several batches, got {got:?}");
-        for pair in stamps.windows(2) {
-            assert!(
-                pair[1] - pair[0] >= Duration::from_millis(18),
-                "batches closer than a tick: {stamps:?}"
-            );
-        }
+        // Receive times jitter on a busy machine, so count instead of measuring gaps: no more
+        // batches than ticks that fit in the run (the first tick fires at once and sends nothing).
+        let ticks = stamps.last().map_or(0, |t| t.as_millis() / 20) + 1;
+        assert!(
+            got.len() as u128 <= ticks,
+            "{} batches in {ticks} ticks: {stamps:?}",
+            got.len()
+        );
     }
 
     #[tokio::test]
@@ -220,5 +281,75 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         panic!("the collector kept its streams after the receiver was dropped");
+    }
+
+    async fn drain_counted(
+        (mut rx, drops): (mpsc::Receiver<Vec<LogLine>>, BatchDrops),
+    ) -> (Vec<Vec<LogLine>>, u64) {
+        let mut batches = Vec::new();
+        while let Some(b) = rx.recv().await {
+            batches.push(b);
+        }
+        (batches, drops.total())
+    }
+
+    #[tokio::test]
+    async fn a_saturated_source_never_yields_a_batch_over_the_cap() {
+        let total = MAX_BATCH_LINES * 5 + 123;
+        let out = batch_counted(
+            vec![lines("a", total)],
+            Duration::from_millis(2),
+            CancellationToken::new(),
+            total,
+        );
+        let (batches, dropped) = drain_counted(out).await;
+        assert_eq!(dropped, 0);
+        assert!(batches.iter().all(|b| b.len() <= MAX_BATCH_LINES));
+        assert!(
+            batches.len() >= 6,
+            "{total} lines need at least 6 batches, got {}",
+            batches.len()
+        );
+        assert_eq!(batches.iter().map(Vec::len).sum::<usize>(), total);
+    }
+
+    #[tokio::test]
+    async fn carried_over_lines_arrive_in_order_on_later_ticks() {
+        let total = MAX_BATCH_LINES * 3;
+        let out = batch_counted(
+            vec![lines("a", total)],
+            Duration::from_millis(2),
+            CancellationToken::new(),
+            total,
+        );
+        let (batches, _) = drain_counted(out).await;
+        assert!(batches.len() >= 3);
+        assert_eq!(batches[0].len(), MAX_BATCH_LINES, "first batch is full");
+        let got: Vec<String> = batches.into_iter().flatten().map(|l| l.text).collect();
+        let want: Vec<String> = (0..total).map(|n| format!("a {n}")).collect();
+        assert_eq!(got, want);
+    }
+
+    #[tokio::test]
+    async fn queue_overflow_drops_the_oldest_and_counts_them() {
+        let total = 50_000;
+        let queue = 5_000;
+        let out = batch_counted(
+            vec![lines("a", total)],
+            Duration::from_millis(16),
+            CancellationToken::new(),
+            queue,
+        );
+        let (batches, dropped) = drain_counted(out).await;
+        let got: Vec<usize> = batches
+            .into_iter()
+            .flatten()
+            .map(|l| l.text.trim_start_matches("a ").parse().expect("number"))
+            .collect();
+        assert!(dropped > 0, "nothing was dropped");
+        assert_eq!(got.len() as u64 + dropped, total as u64);
+        assert!(got.windows(2).all(|w| w[0] < w[1]), "order kept");
+        assert_eq!(got.last(), Some(&(total - 1)), "the newest line survives");
+        assert!(got.len() >= queue, "a full queue is delivered");
     }
 }

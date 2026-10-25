@@ -120,7 +120,7 @@ impl LogView {
             names,
             series,
             filter: LogFilter::everything(),
-            visible: VecDeque::new(),
+            visible: VecDeque::with_capacity(cap),
             expanded: HashSet::new(),
             search: None,
             follow: true,
@@ -276,6 +276,11 @@ impl LogView {
     #[must_use]
     pub fn dropped(&self) -> u64 {
         self.buffer.dropped()
+    }
+
+    /// Adds lines `batch_counted` dropped before they reached the view to the dropped count.
+    pub fn add_dropped(&mut self, lines: u64) {
+        self.buffer.add_dropped(lines);
     }
 
     #[must_use]
@@ -760,6 +765,16 @@ mod tests {
             (0, 1),
             "hidden lines are not appended rows"
         );
+    }
+
+    #[test]
+    fn lines_dropped_upstream_join_the_dropped_count() {
+        let mut view = LogView::new(2, BTreeMap::new());
+        view.push_batch(vec![out("a"), out("b"), out("c")]);
+        view.add_dropped(40);
+        assert_eq!(view.dropped(), 41);
+        view.clear();
+        assert_eq!(view.dropped(), 0);
     }
 
     #[test]
