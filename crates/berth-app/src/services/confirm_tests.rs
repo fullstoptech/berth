@@ -487,7 +487,7 @@ fn confirm_checkbox_decides_whether_anonymous_volumes_go() {
 #[tokio::test]
 async fn confirm_run_deletes_through_the_actions_service_and_the_result_repeats_the_count() {
     let mut rig = rig();
-    rig.select(&["old-builder-1"]);
+    rig.select(&["eager_hopper"]);
     rig.press_backspace();
     let Some(Overlay::Confirm(model)) = rig.overlays().into_iter().next() else {
         panic!("a confirm overlay");
@@ -525,7 +525,7 @@ async fn confirm_bulk_delete_runs_one_container_action_per_selected_container() 
     use berth_engine::EngineClient as _;
     let mut rig = rig();
     // A running one (needs force), an exited one and a third.
-    let names = ["shop-api-api-1", "shop-api-db-1", "old-builder-1"];
+    let names = ["shop-api-api-1", "shop-api-db-1", "eager_hopper"];
     rig.select(&names);
     rig.press_backspace();
     let Some(Overlay::Confirm(model)) = rig.overlays().into_iter().next() else {
@@ -593,7 +593,7 @@ async fn confirm_bulk_delete_runs_one_container_action_per_selected_container() 
 #[tokio::test]
 async fn confirm_bulk_delete_skips_a_container_that_vanished_behind_the_dialog() {
     let mut rig = rig();
-    rig.select(&["old-builder-1", "shop-api-db-1"]);
+    rig.select(&["eager_hopper", "shop-api-db-1"]);
     rig.press_backspace();
     let Some(Overlay::Confirm(model)) = rig.overlays().into_iter().next() else {
         panic!("a confirm overlay");
