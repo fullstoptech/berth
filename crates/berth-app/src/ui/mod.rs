@@ -42,6 +42,7 @@ pub mod status_dot;
 pub mod switch;
 pub mod table_header_cell;
 pub mod tabs;
+pub mod terminal;
 pub mod text_field;
 pub mod title_bar;
 pub mod toast;

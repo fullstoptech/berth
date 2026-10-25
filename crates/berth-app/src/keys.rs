@@ -265,6 +265,8 @@ pub fn dispatch(state: &mut AppState, action: ActionId) {
             bottom.open = true;
             bottom.tab = BottomTab::Logs;
         }
+        // ⌘T and the row's Terminal button (P3-T6).
+        "container.terminal" => crate::services::exec::dispatch_open(state),
         // ⌫ on the selected containers asks first (D33, P2-T8).
         "container.delete" | "bulk.delete" => open_delete_for_selection(state),
         // J/K and Space act on the visible list (P2-T7).

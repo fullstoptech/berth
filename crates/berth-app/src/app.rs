@@ -110,6 +110,20 @@ pub fn App() -> Element {
     let stats = boot.stats.clone();
     use_window_visibility(stats.clone());
     use_context_provider(|| stats);
+    // Terminal sessions (P3-T6): the view signals first, then the core that
+    // keeps the tab strip current.
+    let terminal_view = crate::services::exec::use_terminal_view();
+    use_context_provider(|| terminal_view);
+    let exec = use_hook(|| {
+        crate::services::exec::ExecCore::start(
+            state,
+            terminal_view,
+            boot.services.clients.clone(),
+            boot.services.store.clone(),
+            boot.services.cancel.clone(),
+        )
+    });
+    use_context_provider(|| exec);
 
     // BERTH_SCENE puts the UI into a frame's state for screenshots (D58).
     use_hook(move || {

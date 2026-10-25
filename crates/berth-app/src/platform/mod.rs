@@ -5,9 +5,9 @@ mod macos;
 mod other;
 
 #[cfg(target_os = "macos")]
-pub use macos::{config, use_menu_events, use_traffic_lights};
+pub use macos::{config, open_in_terminal_app, use_menu_events, use_traffic_lights, ExecTarget};
 #[cfg(not(target_os = "macos"))]
-pub use other::{config, use_menu_events, use_traffic_lights};
+pub use other::{config, open_in_terminal_app, use_menu_events, use_traffic_lights, ExecTarget};
 
 /// The window's inner size: 1440x900 (D8), or `BERTH_WINDOW=<w>x<h>` for
 /// shots of the narrower frames (for example `1024x700`). The minimum

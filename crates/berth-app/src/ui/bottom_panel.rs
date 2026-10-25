@@ -119,7 +119,11 @@ pub fn BottomPanel() -> Element {
                     }
                 }
             }
-            div { class: "bottom-body", role: "tabpanel" }
+            div { class: "bottom-body", role: "tabpanel",
+                if panel.tab == BottomTab::Terminal {
+                    super::terminal::TerminalBody {}
+                }
+            }
             if dragging {
                 div {
                     class: "resize-capture",

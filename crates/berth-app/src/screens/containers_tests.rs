@@ -1129,10 +1129,10 @@ fn containers_row_buttons_carry_tooltips_toggle_and_disabled_reasons() {
     );
     assert_eq!(tooltip(&running, RowAction::Restart).0, "Restart · ⌘R");
     assert_eq!(tooltip(&running, RowAction::Logs).0, "Logs · ⌘L");
-    // Terminal waits for its task and says so; Delete asks first (P2-T8).
+    // Terminal opens a shell (P3-T6); Delete asks first (P2-T8).
     let terminal = tooltip(&running, RowAction::Terminal);
-    assert!(terminal.1);
-    assert_eq!(terminal.0, "Terminal is not built yet");
+    assert!(!terminal.1);
+    assert_eq!(terminal.0, "Terminal · ⌘T");
     let delete = tooltip(&running, RowAction::Delete);
     assert!(!delete.1);
     assert_eq!(delete.0, "Delete \u{00b7} \u{232b}");

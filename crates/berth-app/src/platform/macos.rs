@@ -41,6 +41,132 @@ pub fn use_traffic_lights() {
 }
 
 // ---------------------------------------------------------------------
+// Open in Terminal app (D42): a 0700 `.command` file that runs
+// `docker exec -it` with DOCKER_HOST set, opened with the terminal app.
+// ---------------------------------------------------------------------
+
+/// A terminal app Berth can hand a session to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalApp {
+    pub name: &'static str,
+    pub bundle: std::path::PathBuf,
+}
+
+const TERMINAL_APPS: [(&str, &str); 4] = [
+    ("Terminal", "Terminal.app"),
+    ("iTerm", "iTerm.app"),
+    ("Ghostty", "Ghostty.app"),
+    ("WezTerm", "WezTerm.app"),
+];
+
+/// The terminal apps found under `roots` (D42: `/Applications` and
+/// `/System/Applications/Utilities`), in preference order per root.
+pub fn terminal_apps_in(roots: &[&std::path::Path]) -> Vec<TerminalApp> {
+    let mut found = Vec::new();
+    for root in roots {
+        for (name, bundle) in TERMINAL_APPS {
+            let path = root.join(bundle);
+            if path.exists() {
+                found.push(TerminalApp { name, bundle: path });
+            }
+        }
+    }
+    found
+}
+
+pub fn terminal_apps() -> Vec<TerminalApp> {
+    terminal_apps_in(&[
+        std::path::Path::new("/Applications"),
+        std::path::Path::new("/System/Applications/Utilities"),
+    ])
+}
+
+/// What to run in the terminal app.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecTarget {
+    pub docker_host: String,
+    pub container: String,
+    pub shell: String,
+    pub user: Option<String>,
+    pub workdir: Option<String>,
+}
+
+/// Single-quote one shell word.
+pub fn shell_quote(word: &str) -> String {
+    format!("'{}'", word.replace('\'', "'\\''"))
+}
+
+/// The `.command` file's text. It removes itself first, so nothing is left
+/// behind in the run directory.
+pub fn command_script(docker: &std::path::Path, target: &ExecTarget) -> String {
+    let mut line = format!("exec {} exec -it", shell_quote(&docker.to_string_lossy()));
+    if let Some(user) = target.user.as_deref().filter(|u| !u.is_empty()) {
+        line.push_str(&format!(" -u {}", shell_quote(user)));
+    }
+    if let Some(dir) = target.workdir.as_deref().filter(|d| !d.is_empty()) {
+        line.push_str(&format!(" -w {}", shell_quote(dir)));
+    }
+    line.push_str(&format!(
+        " {} {}",
+        shell_quote(&target.container),
+        shell_quote(&target.shell)
+    ));
+    format!(
+        "#!/bin/bash\nrm -f -- \"$0\"\nexport DOCKER_HOST={}\n{line}\n",
+        shell_quote(&target.docker_host)
+    )
+}
+
+/// Write the script (mode 0700, in Berth's run directory) and open it with
+/// the first terminal app found. Returns the app's name.
+pub async fn open_in_terminal_app(target: ExecTarget) -> Result<&'static str, String> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let apps = terminal_apps();
+    let app = apps
+        .first()
+        .ok_or_else(|| "No terminal app was found in /Applications".to_string())?;
+    let search = berth_sys::SearchPath::from_process()
+        .with_login_shell()
+        .await;
+    let docker = search
+        .find("docker")
+        .ok_or_else(|| "The docker command was not found on this Mac".to_string())?;
+    let open = search
+        .find("open")
+        .ok_or_else(|| "The open command was not found".to_string())?;
+    let dir = berth_sys::paths::runtime_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+        .map_err(|e| e.to_string())?;
+    let file = dir.join(format!("exec-{}.command", uuid::Uuid::now_v7()));
+    {
+        let mut out = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o700)
+            .open(&file)
+            .map_err(|e| e.to_string())?;
+        out.write_all(command_script(&docker, &target).as_bytes())
+            .map_err(|e| e.to_string())?;
+    }
+    let status = tokio::process::Command::new(open)
+        .arg("-a")
+        .arg(&app.bundle)
+        .arg(&file)
+        .kill_on_drop(true)
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(app.name)
+    } else {
+        let _ = std::fs::remove_file(&file);
+        Err(format!("{} could not be opened", app.name))
+    }
+}
+
+// ---------------------------------------------------------------------
 // App menu (D39). `menu_spec` is the data; `build_menu` turns it into
 // muda objects on the main thread; `menu_action` maps a clicked item id
 // back to what Berth does. Edit carries the predefined items so Cmd+C,
@@ -272,6 +398,52 @@ pub fn use_menu_events(state: AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_app_script_sets_the_host_and_quotes_every_word() {
+        let target = ExecTarget {
+            docker_host: "unix:///Users/me/.colima/default/docker.sock".to_string(),
+            container: "abc123".to_string(),
+            shell: "bash".to_string(),
+            user: Some("root".to_string()),
+            workdir: Some("/my app/it's".to_string()),
+        };
+        let script = command_script(std::path::Path::new("/opt/x y/docker"), &target);
+        assert!(
+            script.starts_with("#!/bin/bash\nrm -f -- \"$0\"\n"),
+            "{script}"
+        );
+        assert!(
+            script.contains("export DOCKER_HOST='unix:///Users/me/.colima/default/docker.sock'\n")
+        );
+        assert!(
+            script.contains(
+                "exec '/opt/x y/docker' exec -it -u 'root' -w '/my app/it'\\''s' 'abc123' 'bash'\n"
+            ),
+            "{script}"
+        );
+        let plain = ExecTarget {
+            user: None,
+            workdir: None,
+            ..target
+        };
+        let script = command_script(std::path::Path::new("/d"), &plain);
+        assert!(
+            script.contains("exec '/d' exec -it 'abc123' 'bash'\n"),
+            "{script}"
+        );
+    }
+
+    #[test]
+    fn terminal_app_list_offers_only_installed_apps() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        std::fs::create_dir(dir.path().join("Terminal.app")).expect("app");
+        std::fs::create_dir(dir.path().join("Ghostty.app")).expect("app");
+        let apps = terminal_apps_in(&[dir.path()]);
+        let names: Vec<_> = apps.iter().map(|a| a.name).collect();
+        assert_eq!(names, ["Terminal", "Ghostty"]);
+        assert!(terminal_apps_in(&[std::path::Path::new("/no/such/root")]).is_empty());
+    }
 
     #[test]
     fn shell_menu_bar_has_the_six_menus_of_d39() {

@@ -857,8 +857,15 @@ fn row_buttons(c: &Container, view: &StateView<'_>) -> Vec<RowButton> {
             RowAction::Terminal,
             "terminal",
             format!("Terminal for {}", c.name),
-            tooltip_for("Terminal", "container.terminal"),
-            Some("Terminal is not built yet".to_string()),
+            tooltip_for(
+                if is_active(c.state) {
+                    "Terminal"
+                } else {
+                    "Start and open terminal"
+                },
+                "container.terminal",
+            ),
+            crate::services::exec::terminal_disabled_reason(c.state),
             false,
         ),
         button(
@@ -1212,6 +1219,10 @@ fn ContainerRowHost(id: ContainerId, show_uptime: bool, show_engine: bool) -> El
                 RowAction::Logs => {
                     select_only(&mut state, &id);
                     crate::keys::dispatch(&mut state, "container.logs");
+                }
+                RowAction::Terminal => {
+                    select_only(&mut state, &id);
+                    crate::keys::dispatch(&mut state, "container.terminal");
                 }
                 other => run_container_action(&mut state, actions.as_ref(), &id, &other),
             },
