@@ -5,14 +5,38 @@
 /// How long activity is kept (D65).
 pub const KEEP: chrono::Duration = chrono::Duration::days(30);
 
-/// Build the entry for one engine event. `subject_name`/`project` come
-/// from whatever the caller already knows (event attributes carry the
-/// container name on the bollard path).
+/// The action text that may be stored and shown, or `None` for an event
+/// that is not recorded. Docker appends the command to exec events
+/// (`exec_start: <command>`) and health checks and exec commands can carry
+/// credentials, so exec events are dropped entirely; `health_status` keeps
+/// only the status word. Any other text after a colon is cut. Accepts the
+/// raw Docker action and the stored `type.action` form alike.
+pub fn clean_action(action: &str) -> Option<String> {
+    let (head, rest) = action
+        .split_once(':')
+        .map_or((action, ""), |(head, rest)| (head, rest));
+    let head = head.trim();
+    let last = head.rsplit('.').next().unwrap_or(head);
+    if last.starts_with("exec_") || last == "exec" {
+        return None;
+    }
+    if last == "health_status" {
+        if let Some(status) = rest.split_whitespace().next() {
+            return Some(format!("{head}: {status}"));
+        }
+    }
+    Some(head.to_string())
+}
+
+/// Build the entry for one engine event, or `None` when the event is not
+/// recorded (see [`clean_action`]). `subject_name`/`project` come from
+/// whatever the caller already knows (event attributes carry the container
+/// name on the bollard path); attributes themselves are never stored.
 pub fn entry_for_event(
     event: &berth_core::EngineEvent,
     subject_name: String,
     project: Option<berth_core::ProjectId>,
-) -> berth_core::ActivityEntry {
+) -> Option<berth_core::ActivityEntry> {
     let (action, subject) = match &event.kind {
         berth_core::EventKind::Container { id, action } => (
             format!("container.{action}"),
@@ -35,7 +59,8 @@ pub fn entry_for_event(
             berth_core::Subject::Engine(event.engine.clone()),
         ),
     };
-    berth_core::ActivityEntry {
+    let action = clean_action(&action)?;
+    Some(berth_core::ActivityEntry {
         id: uuid::Uuid::now_v7(),
         ts: event.at,
         engine: event.engine.clone(),
@@ -46,7 +71,7 @@ pub fn entry_for_event(
         subject_name,
         project,
         outcome: berth_core::Outcome::Ok,
-    }
+    })
 }
 
 /// Build the entry for an action Berth itself took (row buttons, palette,
@@ -164,7 +189,8 @@ mod tests {
     fn services_activity_recorded_entries_reach_subscribers_and_the_store() {
         let store = berth_store::Store::open_in_memory().expect("store");
         let mut rx = subscribe();
-        let entry = entry_for_event(&container_event(), "tap-web-1".to_string(), None);
+        let entry =
+            entry_for_event(&container_event(), "tap-web-1".to_string(), None).expect("recorded");
         record(&store, &entry);
         let mut seen = None;
         while let Ok(got) = rx.try_recv() {
@@ -174,6 +200,61 @@ mod tests {
         }
         assert_eq!(seen.as_ref(), Some(&entry), "tap delivered the entry");
         assert_eq!(load_recent(&store, 10), vec![entry]);
+    }
+
+    fn event_with(action: &str, attrs: &[(&str, &str)]) -> berth_core::EngineEvent {
+        let mut event = container_event();
+        event.kind = berth_core::EventKind::Container {
+            id: berth_core::ContainerId("abc123".to_string()),
+            action: action.to_string(),
+        };
+        event.attributes = attrs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect();
+        event
+    }
+
+    #[test]
+    fn services_activity_exec_events_are_never_recorded() {
+        let command = "psql postgres://app:s3cret@db/app -c 'select 1'";
+        for action in ["exec_create", "exec_start", "exec_die", "exec_detach"] {
+            let raw = format!("{action}: {command}");
+            let event = event_with(&raw, &[("name", "db-1"), ("execID", "e1")]);
+            assert_eq!(
+                entry_for_event(&event, "db-1".to_string(), None),
+                None,
+                "{raw}"
+            );
+        }
+        // Without a command suffix (exec_die) too.
+        let event = event_with("exec_die", &[("exitCode", "0")]);
+        assert_eq!(entry_for_event(&event, "db-1".to_string(), None), None);
+    }
+
+    #[test]
+    fn services_activity_health_status_keeps_only_the_status_word() {
+        let event = event_with("health_status: unhealthy", &[("name", "db-1")]);
+        let entry = entry_for_event(&event, "db-1".to_string(), None).expect("recorded");
+        assert_eq!(entry.action, "container.health_status: unhealthy");
+        // Nothing but the status survives, even if more text follows it.
+        assert_eq!(
+            clean_action("container.health_status: healthy extra=TOKEN=abc"),
+            Some("container.health_status: healthy".to_string())
+        );
+        assert_eq!(
+            clean_action("container.die: whatever follows"),
+            Some("container.die".to_string())
+        );
+        assert_eq!(
+            clean_action("container.die"),
+            Some("container.die".to_string())
+        );
+        assert_eq!(
+            clean_action("container.exec_start: ls"),
+            None,
+            "the stored form is cleaned too"
+        );
     }
 
     #[test]
@@ -191,7 +272,8 @@ mod tests {
 
     #[test]
     fn services_activity_event_maps_to_an_engine_entry() {
-        let entry = entry_for_event(&container_event(), "web-1".to_string(), None);
+        let entry =
+            entry_for_event(&container_event(), "web-1".to_string(), None).expect("recorded");
         assert_eq!(entry.action, "container.die");
         assert_eq!(entry.origin, berth_core::ActivityOrigin::Engine);
         assert_eq!(entry.actor, berth_core::Actor::Local);
@@ -211,7 +293,8 @@ mod tests {
     fn services_activity_records_and_prunes_by_age() {
         let store = berth_store::Store::open_in_memory().expect("store");
         let now = chrono::Utc::now();
-        let mut old = entry_for_event(&container_event(), "old-1".to_string(), None);
+        let mut old =
+            entry_for_event(&container_event(), "old-1".to_string(), None).expect("recorded");
         old.ts = now - chrono::Duration::days(31);
         let mut fresh = entry_for_action(
             berth_core::EngineId("colima:default".to_string()),

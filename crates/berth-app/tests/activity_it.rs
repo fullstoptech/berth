@@ -183,5 +183,9 @@ async fn activity_it_restart_adds_a_berth_entry_and_engine_entries_within_2s() {
         want(&stored),
         "the same entries are in the store: {stored:?}"
     );
+    assert!(
+        !stored.iter().any(|(_, a)| a.contains("exec")),
+        "exec events (health checks) never reach the store: {stored:?}"
+    );
     assert!(restored, "fixture left running");
 }

@@ -350,9 +350,13 @@ fn activity_action_and_origin_labels() {
     assert_eq!(action_label("project.pull_images"), "project pull images");
     assert_eq!(action_label("oddity"), "oddity");
     assert_eq!(
-        action_label("container.exec_start: wget -qO- http://127.0.0.1/"),
-        "exec start",
-        "the exec command stays out of the column"
+        action_label("container.health_status: unhealthy"),
+        "health status: unhealthy"
+    );
+    assert_eq!(
+        action_label("container.die: psql postgres://u:pw@h/db"),
+        "die",
+        "a command after a colon is never shown"
     );
     assert_eq!(origin_label(&ActivityOrigin::Engine), "Engine");
     assert_eq!(origin_label(&ActivityOrigin::Berth), "Berth");
@@ -492,6 +496,10 @@ async fn settle(dom: &mut VirtualDom, until: impl Fn(&str) -> bool) -> String {
 async fn activity_screen_shows_history_then_entries_recorded_while_open() {
     let store = std::sync::Arc::new(berth_store::Store::open_in_memory().expect("store"));
     svc::record(&store, &ev(0, "colima:default", "from-history"));
+    // A row stored before exec events were dropped: its command must not show.
+    let mut legacy = ev(1, "colima:default", "legacy-exec");
+    legacy.action = "container.exec_start: psql postgres://u:legacy-secret@h/db".to_string();
+    store.activity_push(&legacy).expect("push legacy");
     let services = Services {
         store: std::sync::Arc::clone(&store),
         clients: crate::services::engines::client_map(),
@@ -502,6 +510,8 @@ async fn activity_screen_shows_history_then_entries_recorded_while_open() {
 
     let html = settle(&mut dom, |h| h.contains("from-history")).await;
     assert!(html.contains("from-history"), "history loaded: {html}");
+    assert!(!html.contains("legacy-exec"), "exec rows are skipped");
+    assert!(!html.contains("legacy-secret"));
 
     svc::record(&store, &ev(5, "colima:default", "arrived-live"));
     let html = settle(&mut dom, |h| h.contains("arrived-live")).await;

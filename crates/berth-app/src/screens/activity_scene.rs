@@ -116,7 +116,12 @@ fn history(m: &Maker) -> Vec<ActivityEntry> {
         m.event(3, DEFAULT, "container.die", "shop-api-worker-1"),
         m.event(3, DEFAULT, "container.kill", "shop-api-worker-1"),
         m.berth(3, "container.restart", "shop-api-worker-1", Outcome::Ok),
-        m.event(41, DEFAULT, "container.health_status", "analytics-ingest-1"),
+        m.event(
+            41,
+            DEFAULT,
+            "container.health_status: unhealthy",
+            "analytics-ingest-1",
+        ),
         m.berth(
             63,
             "container.stop",
@@ -179,7 +184,7 @@ fn held(m: &Maker) -> Vec<ActivityEntry> {
             m.event(
                 0,
                 DEFAULT,
-                "container.health_status",
+                "container.health_status: healthy",
                 names[i % names.len()],
             )
         })

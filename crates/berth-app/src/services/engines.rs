@@ -186,10 +186,9 @@ pub async fn run_engine(
                 .get("name")
                 .cloned()
                 .unwrap_or_else(|| subject_name_for(&event.kind));
-            activity::record(
-                &store,
-                &activity::entry_for_event(&event, subject_name, None),
-            );
+            if let Some(entry) = activity::entry_for_event(&event, subject_name, None) {
+                activity::record(&store, &entry);
+            }
             let update = match &event.kind {
                 berth_core::EventKind::Container { id, action } => {
                     container_update(client.as_ref(), id, action).await

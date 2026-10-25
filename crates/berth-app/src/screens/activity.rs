@@ -314,15 +314,16 @@ pub fn format_time(ts: DateTime<Local>, now: DateTime<Local>) -> String {
 }
 
 /// Action column: `container.die` reads "die"; other types keep their
-/// type, `image.pull` reads "image pull".
+/// type, `image.pull` reads "image pull"; a health status keeps its word
+/// ("health status: unhealthy"). Rows stored before commands were dropped
+/// may still carry one after a colon: it is never shown.
 pub fn action_label(action: &str) -> String {
-    // Docker names exec events "exec_start: <command>"; the command stays
-    // in the tooltip, not the column.
-    let action = action.split_once(": ").map_or(action, |(head, _)| head);
+    let action = activity::clean_action(action).unwrap_or_default();
+    let label = |rest: &str| rest.replace('_', " ");
     match action.split_once('.') {
-        Some(("container", rest)) => rest.replace('_', " "),
-        Some((ty, rest)) => format!("{ty} {}", rest.replace('_', " ")),
-        None => action.replace('_', " "),
+        Some(("container", rest)) => label(rest),
+        Some((ty, rest)) => format!("{ty} {}", label(rest)),
+        None => label(&action),
     }
 }
 
@@ -378,6 +379,7 @@ fn entry_row(
     }
     let origin = origin_label(&entry.origin);
     let action = action_label(&entry.action);
+    let action_title = activity::clean_action(&entry.action).unwrap_or_default();
     let icon = subject_icon(&entry.subject);
     let failed_reason = match &entry.outcome {
         berth_core::Outcome::Ok => None,
@@ -391,7 +393,7 @@ fn entry_row(
             span {
                 class: "activity-cell activity-action",
                 role: "cell",
-                title: "{entry.action}",
+                title: "{action_title}",
                 "{action}"
             }
             span { class: "activity-cell activity-subject", role: "cell",
@@ -451,6 +453,10 @@ async fn load_history(store: std::sync::Arc<berth_store::Store>, mut feed: Signa
     let history = tokio::task::spawn_blocking(move || activity::load_recent(&store, MAX_LOADED))
         .await
         .unwrap_or_default();
+    // Rows stored before exec events were dropped carry commands: skip them.
+    let history = history
+        .into_iter()
+        .filter(|e| activity::clean_action(&e.action).is_some());
     feed.write().extend(history);
 }
 
