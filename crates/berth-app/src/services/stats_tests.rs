@@ -417,3 +417,29 @@ async fn stats_pruning_drops_histories_nothing_feeds_any_more() {
     assert!(service.history(&key(1)).is_empty());
     assert_eq!(service.history(&key(2)).len(), 1);
 }
+
+/// D26 closes streams for a hidden or minimised window only. An inactive
+/// window (another app in front) and a covered one are still shown, so
+/// their CPU and Memory keep moving.
+#[test]
+fn stats_streams_run_for_an_inactive_or_covered_window_and_stop_for_hidden_or_minimised() {
+    use super::{streams_allowed, WindowFacts};
+    // The native facts say nothing about focus or coverage, so an inactive
+    // or covered window is exactly this case.
+    assert!(streams_allowed(WindowFacts {
+        minimized: false,
+        shown: true
+    }));
+    assert!(!streams_allowed(WindowFacts {
+        minimized: true,
+        shown: true
+    }));
+    assert!(!streams_allowed(WindowFacts {
+        minimized: false,
+        shown: false
+    }));
+    assert!(!streams_allowed(WindowFacts {
+        minimized: true,
+        shown: false
+    }));
+}
