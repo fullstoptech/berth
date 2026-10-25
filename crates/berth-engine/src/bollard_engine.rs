@@ -177,49 +177,32 @@ impl BollardEngine {
     /// created (never started) container, so no process ever runs in it.
     /// The image is never pulled here (the caller confirms that, P1-T6);
     /// a missing helper image is a Docker error naming it.
-    async fn helper_container(&self, volume: &str, read_only: bool) -> Result<String, EngineError> {
+    ///
+    /// The returned guard removes the container when it is dropped, so a
+    /// cancelled or dropped operation leaves nothing behind (D28).
+    async fn helper_container(
+        &self,
+        volume: &str,
+        read_only: bool,
+    ) -> Result<HelperGuard, EngineError> {
         if self.docker.inspect_image(HELPER_IMAGE).await.is_err() {
             return Err(EngineError::Docker(format!(
                 "helper image {HELPER_IMAGE} is not on this engine; pull it first"
             )));
         }
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos());
-        let name = format!("berthfx-scratch-helper-{nanos:x}");
-        let spec = berth_core::ContainerSpec {
-            name,
-            image: berth_core::ImageRef {
-                reference: HELPER_IMAGE.to_string(),
-                id: None,
-            },
-            command: Some(vec!["sleep".to_string(), "300".to_string()]),
-            entrypoint: None,
-            env: Vec::new(),
-            ports: Vec::new(),
-            mounts: vec![berth_core::Mount {
-                kind: berth_core::MountKind::Volume,
-                source: volume.to_string(),
-                destination: HELPER_MOUNT.to_string(),
-                read_only,
-                volume_name: Some(volume.to_string()),
-            }],
-            networks: Vec::new(),
-            labels: [("dev.berth.fixture".to_string(), "1".to_string())]
-                .into_iter()
-                .collect(),
-            restart: berth_core::RestartPolicy::No,
-            limits: berth_core::Limits::default(),
-            platform: None,
-            working_dir: None,
-            user: None,
-            healthcheck: None,
-            cap_add: Vec::new(),
-            cap_drop: Vec::new(),
-            network_aliases: std::collections::BTreeMap::new(),
-        };
-        let id = self.create_from_spec(&spec, false).await?;
-        Ok(id.0)
+        let spec = helper_spec(&helper_name(), volume, read_only);
+        let options = CreateContainerOptionsBuilder::new()
+            .name(&spec.name)
+            .build();
+        let created = self
+            .docker
+            .create_container(Some(options), helper_create_body(&spec))
+            .await
+            .map_err(|e| self.err(e))?;
+        Ok(HelperGuard {
+            docker: self.docker.clone(),
+            id: Some(created.id),
+        })
     }
 
     /// Resolve a `FileTarget` to (container id, in-container path,
@@ -229,12 +212,13 @@ impl BollardEngine {
         target: &berth_core::FileTarget,
         path: &str,
         read_only: bool,
-    ) -> Result<(String, String, Option<String>), EngineError> {
+    ) -> Result<(String, String, Option<HelperGuard>), EngineError> {
         match target {
             berth_core::FileTarget::Container(id) => Ok((id.0.clone(), path.to_string(), None)),
             berth_core::FileTarget::Volume(volume) => {
                 let helper = self.helper_container(volume, read_only).await?;
-                Ok((helper.clone(), helper_path(path), Some(helper)))
+                let id = helper.id().to_string();
+                Ok((id, helper_path(path), Some(helper)))
             }
         }
     }
@@ -242,6 +226,92 @@ impl BollardEngine {
 
 const HELPER_IMAGE: &str = "alpine:3";
 const HELPER_MOUNT: &str = "/__berth_vol";
+/// The label every helper container carries (D28). Fixtures use
+/// `dev.berth.fixture`; a helper never does, so test cleanup cannot mistake
+/// one for the other.
+const HELPER_LABEL: &str = "dev.berth.helper";
+
+fn helper_name() -> String {
+    format!("berth-helper-{}", uuid::Uuid::now_v7().simple())
+}
+
+fn helper_spec(name: &str, volume: &str, read_only: bool) -> berth_core::ContainerSpec {
+    berth_core::ContainerSpec {
+        name: name.to_string(),
+        image: berth_core::ImageRef {
+            reference: HELPER_IMAGE.to_string(),
+            id: None,
+        },
+        command: Some(vec!["sleep".to_string(), "300".to_string()]),
+        entrypoint: None,
+        env: Vec::new(),
+        ports: Vec::new(),
+        mounts: vec![berth_core::Mount {
+            kind: berth_core::MountKind::Volume,
+            source: volume.to_string(),
+            destination: HELPER_MOUNT.to_string(),
+            read_only,
+            volume_name: Some(volume.to_string()),
+        }],
+        networks: Vec::new(),
+        labels: [(HELPER_LABEL.to_string(), "1".to_string())]
+            .into_iter()
+            .collect(),
+        restart: berth_core::RestartPolicy::No,
+        limits: berth_core::Limits::default(),
+        platform: None,
+        working_dir: None,
+        user: None,
+        healthcheck: None,
+        cap_add: Vec::new(),
+        cap_drop: Vec::new(),
+        network_aliases: std::collections::BTreeMap::new(),
+    }
+}
+
+/// The create body of a helper: the spec's, with `auto_remove` so an
+/// engine that ever starts it removes it on exit.
+fn helper_create_body(spec: &berth_core::ContainerSpec) -> ContainerCreateBody {
+    let mut body = spec_to_create_body(spec);
+    let host = body.host_config.get_or_insert_with(HostConfig::default);
+    host.auto_remove = Some(true);
+    body
+}
+
+/// Owns one helper container. [`HelperGuard::remove`] removes it and waits;
+/// dropping the guard without that (a cancelled stream, a dropped future, a
+/// panic) force-removes it from a spawned task (D28).
+struct HelperGuard {
+    docker: bollard::Docker,
+    id: Option<String>,
+}
+
+impl HelperGuard {
+    fn id(&self) -> &str {
+        self.id.as_deref().unwrap_or_default()
+    }
+
+    async fn remove(mut self) {
+        if let Some(id) = self.id.take() {
+            let options = RemoveContainerOptionsBuilder::new().force(true).build();
+            let _ = self.docker.remove_container(&id, Some(options)).await;
+        }
+    }
+}
+
+impl Drop for HelperGuard {
+    fn drop(&mut self) {
+        let Some(id) = self.id.take() else { return };
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        let docker = self.docker.clone();
+        runtime.spawn(async move {
+            let options = RemoveContainerOptionsBuilder::new().force(true).build();
+            let _ = docker.remove_container(&id, Some(options)).await;
+        });
+    }
+}
 
 fn helper_path(path: &str) -> String {
     let rel = path.trim_matches('/');
@@ -935,7 +1005,7 @@ impl EngineClient for BollardEngine {
                 }
             }
             if let Some(helper) = helper {
-                let _ = engine.remove_by_id(&helper, true).await;
+                helper.remove().await;
             }
         });
         channel_stream(rx)
@@ -957,7 +1027,7 @@ impl EngineClient for BollardEngine {
             .await
             .map_err(|e| self.err(e));
         if let Some(helper) = helper {
-            let _ = self.remove_by_id(&helper, true).await;
+            helper.remove().await;
         }
         result
     }
@@ -1521,6 +1591,25 @@ mod tests {
 
     fn fallback() -> chrono::DateTime<chrono::Utc> {
         chrono::DateTime::from_timestamp(7, 0).expect("ts")
+    }
+
+    #[test]
+    fn helper_create_config_has_the_helper_label_not_the_fixture_label() {
+        let name = helper_name();
+        assert!(name.starts_with("berth-helper-"), "{name}");
+        assert_ne!(name, helper_name(), "every helper gets its own name");
+        let body = helper_create_body(&helper_spec(&name, "some-volume", true));
+        let labels = body.labels.expect("labels");
+        assert_eq!(
+            labels.get("dev.berth.helper").map(String::as_str),
+            Some("1")
+        );
+        assert!(!labels.contains_key("dev.berth.fixture"), "{labels:?}");
+        let host = body.host_config.expect("host config");
+        assert_eq!(host.auto_remove, Some(true));
+        let mounts = host.mounts.expect("mounts");
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].read_only, Some(true));
     }
 
     #[test]
