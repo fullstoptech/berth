@@ -1128,7 +1128,9 @@ pub mod problems {
         pub failure_lines: Vec<String>,    // <= 20 error lines of the last failed compose command (D82): port clash, name in use, network, build, dependency, pull denied
     }
     pub struct ProblemInput {
-        pub now: chrono::DateTime<chrono::Utc>, pub engine: berth_core::Engine,   // one engine per call; the service calls evaluate per engine (D27) pub host_arch: berth_core::Arch,
+        pub now: chrono::DateTime<chrono::Utc>,
+        pub engine: berth_core::Engine,   // one engine per call; the service calls evaluate per engine (D27)
+        pub host_arch: berth_core::Arch,  // the Mac's arch (exec_format compares it with the image's)
         pub containers: Vec<ContainerFacts>, pub projects: Vec<ProjectFacts>,
         pub disk: Option<berth_core::DiskUsage>, pub taken_ports: Vec<u16>,
     }
