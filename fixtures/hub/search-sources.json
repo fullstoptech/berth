@@ -1,0 +1,356 @@
+{
+  "total": 52490,
+  "results": [
+    {
+      "id": "library/redis",
+      "name": "redis",
+      "slug": "redis",
+      "type": "image",
+      "publisher": {
+        "id": "33ef574274c011e4bea40242ac11001b",
+        "name": "library"
+      },
+      "created_at": "2014-06-05T20:04:50Z",
+      "updated_at": "2026-10-22T15:07:32.939794Z",
+      "short_description": "Redis is the world\u2019s fastest data platform for caching, vector search, and NoSQL databases.",
+      "source": "store",
+      "star_count": 13626,
+      "rate_plans": [
+        {
+          "id": "library/redis",
+          "repositories": [
+            {
+              "name": "redis",
+              "namespace": "library",
+              "description": "Redis is the world\u2019s fastest data platform for caching, vector search, and NoSQL databases.",
+              "type": "image",
+              "pull_count": "1B+",
+              "is_automated": false,
+              "is_official": true,
+              "is_trusted": false,
+              "last_pushed_at": "2026-10-22T15:07:32.939794Z",
+              "last_pulled_at": "2026-10-24T23:59:57.529351Z",
+              "archived": false
+            }
+          ],
+          "operating_systems": [
+            {
+              "name": "linux",
+              "label": "Linux"
+            },
+            {
+              "name": "windows",
+              "label": "Windows"
+            },
+            {
+              "name": "unknown",
+              "label": "unknown"
+            }
+          ],
+          "architectures": [
+            {
+              "name": "arm64",
+              "label": "ARM 64"
+            },
+            {
+              "name": "mips64le",
+              "label": "mips64le"
+            },
+            {
+              "name": "riscv64",
+              "label": "riscv64"
+            },
+            {
+              "name": "s390x",
+              "label": "IBM Z"
+            },
+            {
+              "name": "unknown",
+              "label": "unknown"
+            },
+            {
+              "name": "386",
+              "label": "386"
+            },
+            {
+              "name": "amd64",
+              "label": "x86-64"
+            },
+            {
+              "name": "arm",
+              "label": "arm"
+            },
+            {
+              "name": "ppc64le",
+              "label": "ppc64le"
+            }
+          ]
+        }
+      ],
+      "logo_url": {
+        "large": "https://djeqr6to3dedg.cloudfront.net/repo-logos/library/redis/live/logo-1763770365681.png",
+        "small": "https://djeqr6to3dedg.cloudfront.net/repo-logos/library/redis/live/logo-1763770365681.png"
+      },
+      "extension_reviewed": false,
+      "categories": [
+        {
+          "slug": "databases-and-storage",
+          "name": "Databases & storage"
+        }
+      ],
+      "archived": false,
+      "media_types": [
+        "application/octet-stream",
+        "application/vnd.docker.container.image.v1+json",
+        "application/vnd.docker.distribution.manifest.list.v2+json",
+        "application/vnd.docker.distribution.manifest.v1+prettyjws",
+        "application/vnd.oci.image.index.v1+json"
+      ],
+      "content_types": [
+        "unrecognized",
+        "image"
+      ]
+    },
+    {
+      "id": "redis/redis-stack-server",
+      "name": "redis/redis-stack-server",
+      "slug": "redis/redis-stack-server",
+      "type": "image",
+      "publisher": {
+        "id": "57a4fc1e74c011e4bea40242ac11001b",
+        "name": "Redis"
+      },
+      "created_at": "2022-03-07T08:17:03.011155Z",
+      "updated_at": "2025-11-03T13:49:53.94028Z",
+      "short_description": "redis-stack-server installs a Redis server with additional database capabilities",
+      "source": "verified_publisher",
+      "star_count": 104,
+      "rate_plans": [
+        {
+          "id": "redis/redis-stack-server",
+          "repositories": [
+            {
+              "name": "redis-stack-server",
+              "namespace": "redis",
+              "description": "redis-stack-server installs a Redis server with additional database capabilities",
+              "type": "image",
+              "pull_count": "10M+",
+              "is_automated": false,
+              "is_official": false,
+              "is_trusted": false,
+              "last_pushed_at": "2025-11-03T13:49:53.94028Z",
+              "last_pulled_at": "2026-10-25T01:07:55.084619Z",
+              "archived": false
+            }
+          ],
+          "operating_systems": [
+            {
+              "name": "linux",
+              "label": "Linux"
+            }
+          ],
+          "architectures": [
+            {
+              "name": "amd64",
+              "label": "x86-64"
+            },
+            {
+              "name": "arm64",
+              "label": "ARM 64"
+            }
+          ]
+        }
+      ],
+      "logo_url": {
+        "large": "https://www.gravatar.com/avatar/d97b18081fdbcb9838acfeaa4335e3d3?s=80&r=g&d=mm",
+        "small": "https://www.gravatar.com/avatar/d97b18081fdbcb9838acfeaa4335e3d3?s=80&r=g&d=mm"
+      },
+      "extension_reviewed": false,
+      "categories": [
+        {
+          "slug": "databases-and-storage",
+          "name": "Databases & storage"
+        },
+        {
+          "slug": "monitoring-and-observability",
+          "name": "Monitoring & observability"
+        },
+        {
+          "slug": "security",
+          "name": "Security"
+        }
+      ],
+      "archived": false,
+      "media_types": [
+        "application/vnd.docker.container.image.v1+json",
+        "application/vnd.docker.distribution.manifest.list.v2+json"
+      ],
+      "content_types": [
+        "image"
+      ]
+    },
+    {
+      "id": "dtagdevsec/redis",
+      "name": "dtagdevsec/redis",
+      "slug": "dtagdevsec/redis",
+      "type": "image",
+      "publisher": {
+        "id": "2b27fca474c011e4bea40242ac11001b",
+        "name": "Deutsche Telekom Security GmbH"
+      },
+      "created_at": "2018-06-13T14:56:56.696295Z",
+      "updated_at": "2026-06-19T13:14:04.431714Z",
+      "short_description": "T-Pot Redis",
+      "source": "open_source",
+      "star_count": 0,
+      "rate_plans": [
+        {
+          "id": "dtagdevsec/redis",
+          "repositories": [
+            {
+              "name": "redis",
+              "namespace": "dtagdevsec",
+              "description": "T-Pot Redis",
+              "type": "image",
+              "pull_count": "1M+",
+              "is_automated": false,
+              "is_official": false,
+              "is_trusted": false,
+              "last_pushed_at": "2026-06-19T13:14:04.431714Z",
+              "last_pulled_at": "2026-10-24T23:11:49.047186Z",
+              "archived": false
+            }
+          ],
+          "operating_systems": [
+            {
+              "name": "unknown",
+              "label": "unknown"
+            },
+            {
+              "name": "linux",
+              "label": "Linux"
+            }
+          ],
+          "architectures": [
+            {
+              "name": "amd64",
+              "label": "x86-64"
+            },
+            {
+              "name": "arm64",
+              "label": "ARM 64"
+            },
+            {
+              "name": "unknown",
+              "label": "unknown"
+            }
+          ]
+        }
+      ],
+      "logo_url": {},
+      "extension_reviewed": false,
+      "categories": [
+        {
+          "slug": "databases-and-storage",
+          "name": "Databases & storage"
+        },
+        {
+          "slug": "message-queues",
+          "name": "Message queues"
+        },
+        {
+          "slug": "security",
+          "name": "Security"
+        }
+      ],
+      "archived": false,
+      "media_types": [
+        "application/vnd.oci.image.index.v1+json"
+      ],
+      "content_types": [
+        "image"
+      ]
+    },
+    {
+      "id": "bitnami/redis",
+      "name": "bitnami/redis",
+      "slug": "bitnami/redis",
+      "type": "image",
+      "publisher": {
+        "id": "d028386af9cc44c28214360d7c682d8a",
+        "name": "bitnami"
+      },
+      "created_at": "2015-06-16T00:39:13.718406Z",
+      "updated_at": "2026-10-23T16:23:27.504489Z",
+      "short_description": "Bitnami Secure Image for redis",
+      "source": "community",
+      "star_count": 367,
+      "rate_plans": [
+        {
+          "id": "bitnami/redis",
+          "repositories": [
+            {
+              "name": "redis",
+              "namespace": "bitnami",
+              "description": "Bitnami Secure Image for redis",
+              "type": "image",
+              "pull_count": "1B+",
+              "is_automated": true,
+              "is_official": false,
+              "is_trusted": true,
+              "last_pushed_at": "2026-10-23T16:23:27.504489Z",
+              "last_pulled_at": "2026-10-24T23:59:57.355037Z",
+              "archived": false
+            }
+          ],
+          "operating_systems": [
+            {
+              "name": "linux",
+              "label": "Linux"
+            }
+          ],
+          "architectures": [
+            {
+              "name": "amd64",
+              "label": "x86-64"
+            },
+            {
+              "name": "arm64",
+              "label": "ARM 64"
+            }
+          ]
+        }
+      ],
+      "logo_url": {
+        "large": "https://www.gravatar.com/avatar/85bcf547a6bf62b855df2c682af81a4e?s=80&r=g&d=mm",
+        "small": "https://www.gravatar.com/avatar/85bcf547a6bf62b855df2c682af81a4e?s=80&r=g&d=mm"
+      },
+      "extension_reviewed": false,
+      "categories": [
+        {
+          "slug": "databases-and-storage",
+          "name": "Databases & storage"
+        },
+        {
+          "slug": "message-queues",
+          "name": "Message queues"
+        },
+        {
+          "slug": "monitoring-and-observability",
+          "name": "Monitoring & observability"
+        }
+      ],
+      "archived": false,
+      "media_types": [
+        "application/vnd.docker.distribution.manifest.list.v2+json",
+        "application/vnd.oci.image.config.v1+json",
+        "application/vnd.oci.image.index.v1+json",
+        "application/vnd.vmware.tac.metadata.config.v1+json"
+      ],
+      "content_types": [
+        "image",
+        "unrecognized"
+      ]
+    }
+  ]
+}
