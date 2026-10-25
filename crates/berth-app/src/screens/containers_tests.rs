@@ -228,6 +228,68 @@ fn containers_scene_selected_1024_drops_uptime_and_engine_below_1200() {
     );
 }
 
+/// The pixel width a track list entry asks for at least: `76px` or
+/// `minmax(120px, 1.3fr)`.
+fn track_min_px(track: &str) -> f32 {
+    let inner = track
+        .strip_prefix("minmax(")
+        .map_or(track, |t| t.split(',').next().unwrap_or(t));
+    inner
+        .trim()
+        .trim_end_matches("px")
+        .parse()
+        .unwrap_or_else(|_| panic!("a px track, got {track}"))
+}
+
+#[test]
+fn containers_1024_columns_measure_what_the_frame_measures() {
+    // "Containers / selected / 1024": main is 1024 - 220 wide, rows pad 16
+    // on each side and columns sit 12 apart. The frame's Name, Image, Ports
+    // and Status measure 120, 134, 112 and 138 px, which fills the row.
+    let media = CONTAINERS_CSS
+        .split("@media (max-width: 1199px)")
+        .nth(2)
+        .expect("a narrow-width block for the table");
+    let line = media
+        .lines()
+        .find(|l| l.trim_start().starts_with("--ct-cols:"))
+        .expect("a column list");
+    let list = line
+        .trim()
+        .trim_start_matches("--ct-cols:")
+        .trim_end_matches(';')
+        .trim();
+    // Split on spaces outside parentheses.
+    let mut tracks = Vec::new();
+    let mut depth = 0;
+    let mut current = String::new();
+    for ch in list.chars() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            _ => {}
+        }
+        if ch == ' ' && depth == 0 {
+            tracks.push(std::mem::take(&mut current));
+        } else {
+            current.push(ch);
+        }
+    }
+    tracks.push(current);
+    assert_eq!(tracks.len(), 8, "{tracks:?}");
+    let mins: Vec<f32> = tracks.iter().map(|t| track_min_px(t)).collect();
+    // Name, image, ports, status are the flexible tracks.
+    assert_eq!(
+        [mins[2], mins[3], mins[4], mins[7]],
+        [120.0, 134.0, 112.0, 138.0]
+    );
+    let available = 1024.0 - 220.0 - 32.0 - 12.0 * 7.0;
+    assert!(
+        (mins.iter().sum::<f32>() - available).abs() < 0.5,
+        "minimums {mins:?} fill {available} px exactly"
+    );
+}
+
 #[test]
 fn containers_scene_loading_shows_eight_skeleton_rows_and_the_uptime_column() {
     let html = markup("Containers / loading / 1440");

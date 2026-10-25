@@ -163,7 +163,9 @@
   .ct-table.ct-has-uptime,
   .ct-table.ct-has-engine,
   .ct-table.ct-has-uptime.ct-has-engine {
-    --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px minmax(144px, 1fr);
+    /* "Containers / selected / 1024": the four flexible columns measure
+       120, 134, 112 and 138 px at 1024, which is their sum of minimums. */
+    --ct-cols: 16px 8px minmax(120px, 1.3fr) minmax(134px, 1fr) minmax(112px, 0.9fr) 76px 84px minmax(138px, 1fr);
   }
   .ct-table .ct-uptime,
   .ct-table .ct-engine {
