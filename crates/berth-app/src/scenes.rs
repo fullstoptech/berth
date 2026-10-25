@@ -649,6 +649,37 @@ fn logs_paused(state: &mut AppState) {
     logs_scene(state, true);
 }
 
+/// "Dev / edit recreate" (P3-T7, no frame): the edit and recreate sheet of
+/// the Compose `shop-api-api-1` with a port moved and an env value
+/// replaced, so the diff, the loss warning and the Compose offer show.
+fn edit_recreate_sheet(state: &mut AppState) {
+    use crate::state::Overlay;
+    load_mock_world(state);
+    state.section.set(Section::Containers);
+    let Some(api) = state
+        .containers
+        .peek()
+        .iter()
+        .find(|c| c.name == "shop-api-api-1")
+        .cloned()
+    else {
+        return;
+    };
+    state
+        .selection
+        .set(Selection::Containers(vec![api.id.clone()]));
+    state.overlays.write().push(Overlay::EditRecreate(api.id));
+    provide_context(crate::sheets::edit_recreate::DevEditDraft(|draft| {
+        if let Some(port) = draft.ports.first().map(|(id, _)| *id) {
+            draft.set_port(port, "3001:3000");
+        }
+        if let Some(env) = draft.env.first().map(|row| row.id) {
+            draft.set_env_value(env, "a-new-value");
+        }
+        draft.memory = "256m".to_string();
+    }));
+}
+
 /// Activity has no frame; mock history on every engine (P2-T10).
 fn activity_scene(state: &mut AppState, paused: bool) {
     let world = berth_engine::MockWorld::bundled();
@@ -867,6 +898,10 @@ const SCENES: &[Scene] = &[
         frame: "Containers / engine stopped / 1440",
         setup: containers_engine_stopped,
     },
+    Scene {
+        frame: "Dev / edit recreate",
+        setup: edit_recreate_sheet,
+    },
 ];
 
 pub fn scenes() -> &'static [Scene] {
@@ -916,7 +951,7 @@ mod tests {
         assert!(find("Projects / empty / 1440").is_some());
         assert!(find("Components / primitives").is_some());
         assert!(find("Containers / selected / 1440").is_some());
-        assert_eq!(scenes().len(), 21);
+        assert_eq!(scenes().len(), 22);
         assert!(find("No such frame").is_none());
     }
 

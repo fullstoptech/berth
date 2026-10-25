@@ -25,6 +25,7 @@ use crate::services::confirm;
 use crate::services::detail::{DetailEntry, DetailStore, Loaded};
 use crate::services::group_ops::is_active;
 use crate::services::Services;
+use crate::sheets::edit_recreate::{menu_click, RenameBar};
 use crate::state::{AppState, Overlay, Selection};
 use crate::ui::json_tree::{initially_open, match_count, node_count};
 use crate::ui::{
@@ -157,6 +158,7 @@ pub fn ContainerDetailPanel(id: ContainerId, #[props(default)] initial_tab: Deta
     let actions = try_consume_context::<ActionsService>();
     let mut tab = use_signal(move || initial_tab);
     let mut menu_open = use_signal(|| false);
+    let mut renaming = use_signal(|| false);
     let mut more_tabs_open = use_signal(|| false);
 
     // The list row without its live stats: a stats tick must not redraw
@@ -217,6 +219,8 @@ pub fn ContainerDetailPanel(id: ContainerId, #[props(default)] initial_tab: Deta
     let header_actions = actions.clone();
     let fix_actions = actions.clone();
     let header_container = c.clone();
+    let menu_container = c.clone();
+    let menu_actions = actions.clone();
     let menu_id = id.clone();
 
     rsx! {
@@ -244,8 +248,17 @@ pub fn ContainerDetailPanel(id: ContainerId, #[props(default)] initial_tab: Deta
                     menu_open.set(false);
                     if item == "copy-id" {
                         copy_to_clipboard(&menu_id.0);
+                    } else if menu_click(&mut state, menu_actions.as_ref(), store, &menu_container, &item) {
+                        renaming.set(true);
                     }
                 },
+            }
+            if *renaming.read() {
+                RenameBar {
+                    key: "{id.0}",
+                    container: c.clone(),
+                    onclose: move |()| renaming.set(false),
+                }
             }
             if let Some((key, message)) = failure {
                 div { class: "cd-failure",

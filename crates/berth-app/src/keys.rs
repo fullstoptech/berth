@@ -269,6 +269,8 @@ pub fn dispatch(state: &mut AppState, action: ActionId) {
         "container.terminal" => crate::services::exec::dispatch_open(state),
         // F8 and Shift+F8 reach the active log view (P3-T2).
         "logs.next_error" | "logs.prev_error" => crate::ui::log_view::dispatch(action),
+        // ⌘E opens the edit and recreate sheet of the selected container (P3-T7).
+        "container.edit" => crate::sheets::edit_recreate::open_for_selection(state),
         // ⌫ on the selected containers asks first (D33, P2-T8).
         "container.delete" | "bulk.delete" => open_delete_for_selection(state),
         // J/K and Space act on the visible list (P2-T7).

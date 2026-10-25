@@ -536,14 +536,15 @@ fn inspector_stats_tab_mounts_the_stats_panel() {
 }
 
 #[test]
-fn inspector_header_menu_lists_the_later_items_disabled_with_their_task() {
+fn inspector_header_menu_works_for_the_edit_items_and_defers_save_as_image() {
     let menu = header_menu();
     let by_id = |id: &str| menu.iter().find(|e| e.id == id).expect(id).clone();
-    for id in ["edit", "duplicate", "recreate", "rename", "save-image"] {
-        let reason = by_id(id).disabled_reason.expect("disabled");
-        assert!(reason.starts_with("Built in P"), "{id}: {reason}");
+    for id in ["edit", "duplicate", "recreate", "rename", "copy-id"] {
+        assert!(by_id(id).disabled_reason.is_none(), "{id} works");
     }
-    assert!(by_id("copy-id").disabled_reason.is_none());
+    assert_eq!(by_id("edit").kbd_letter.as_deref(), Some("E"));
+    let reason = by_id("save-image").disabled_reason.expect("disabled");
+    assert!(reason.starts_with("Built in P"), "{reason}");
 }
 
 #[test]

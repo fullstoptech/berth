@@ -247,6 +247,8 @@ fn OverlayStack() -> Element {
                     crate::screens::palette::PaletteScreen {}
                 } else if let Overlay::Confirm(model) = overlay {
                     crate::ui::ConfirmOverlay { key: "{model.title}", model: model.clone() }
+                } else if let Overlay::EditRecreate(id) = overlay {
+                    crate::sheets::edit_recreate::EditRecreateSheet { key: "{id.0}", id: id.clone() }
                 } else {
                     div {
                         class: "overlay-card",

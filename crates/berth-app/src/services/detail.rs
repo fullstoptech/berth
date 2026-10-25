@@ -190,6 +190,16 @@ impl DetailStore {
             .insert(container.id.clone(), DetailEntry::Ready(Box::new(loaded)));
     }
 
+    /// Forget that `id`'s detail was asked for, so the next [`ensure`]
+    /// reads it again (after a change the list row does not show, such as
+    /// new limits). The stored detail stays until the new one replaces it.
+    ///
+    /// [`ensure`]: DetailStore::ensure
+    pub fn invalidate(&self, id: &ContainerId) {
+        let mut requested = self.requested;
+        requested.write().remove(id);
+    }
+
     /// Ask for `container`'s detail unless one was already asked for its
     /// current signature. Safe to call on every render.
     pub fn ensure(&self, services: &Services, container: &Container) {

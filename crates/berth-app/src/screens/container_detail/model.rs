@@ -298,18 +298,19 @@ fn is_toggle(action: &str) -> bool {
     matches!(action, "container.start" | "container.stop")
 }
 
-/// The ⋯ menu: the later tasks' items are present and disabled with the
-/// task that enables them (D34: disabled stays visible, with a reason).
+/// The ⋯ menu: Edit, Duplicate, Recreate with latest image and Rename work
+/// (P3-T7); the later tasks' items stay present and disabled with the task
+/// that enables them (D34: disabled stays visible, with a reason).
 #[must_use]
 pub fn header_menu() -> Vec<MenuEntry> {
     let later = |id: &str, label: &str, task: &str| {
         MenuEntry::new(id, label).disabled(format!("Built in {task}"))
     };
     vec![
-        later("edit", "Edit…", "P3-T7").kbd("E"),
-        later("duplicate", "Duplicate", "P3-T7"),
-        later("recreate", "Recreate with latest image", "P3-T7"),
-        later("rename", "Rename…", "P3-T7"),
+        MenuEntry::new("edit", "Edit…").kbd("E"),
+        MenuEntry::new("duplicate", "Duplicate"),
+        MenuEntry::new("recreate", "Recreate with latest image"),
+        MenuEntry::new("rename", "Rename…"),
         later("save-image", "Save as image…", "P8-T4"),
         MenuEntry::new("copy-id", "Copy container ID")
             .icon("copy")
