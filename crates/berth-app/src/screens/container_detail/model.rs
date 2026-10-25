@@ -100,10 +100,9 @@ impl DetailTab {
         match self {
             Self::Logs => Some("P3-T2"),
             Self::Terminal => Some("P3-T6"),
-            Self::Stats => Some("P3-T4"),
             Self::Files => Some("P3-T8"),
             Self::Limits => Some("P3-T7"),
-            Self::Overview | Self::Inspect | Self::Env | Self::Mounts => None,
+            Self::Overview | Self::Inspect | Self::Env | Self::Mounts | Self::Stats => None,
         }
     }
 }

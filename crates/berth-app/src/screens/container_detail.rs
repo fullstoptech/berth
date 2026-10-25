@@ -338,6 +338,9 @@ fn tab_body(
     problems: Vec<ProblemView>,
     onfix: impl FnMut(String) + 'static,
 ) -> Element {
+    if tab == DetailTab::Stats {
+        return rsx! { crate::ui::metric_tile::StatsPanel { id: c.id.clone() } };
+    }
     if let Some(task) = tab.built_in() {
         return rsx! {
             div { class: "cd-placeholder",
