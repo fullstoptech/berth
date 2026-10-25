@@ -67,9 +67,7 @@ scene_modules! {
     volumes,
 }
 
-pub(crate) use containers::seed_details;
 pub(crate) use dev::{DevFilesPanel, DevStatsPanel};
-pub(crate) use images::seed_images;
 #[cfg(test)]
 pub(crate) use projects::loose_projects;
 
@@ -157,6 +155,12 @@ fn mock_problems(containers: &[berth_core::Container]) -> Vec<berth_core::Proble
         .collect()
 }
 
+/// Fill the stores a scene's screens read from, after its setup ran.
+pub(crate) fn seed_stores(state: &AppState, views: &crate::providers::ScreenViews) {
+    containers::seed_details(state, views.details);
+    images::seed_images(state, views.images);
+}
+
 pub fn scenes() -> &'static [Scene] {
     static ALL: std::sync::OnceLock<Vec<Scene>> = std::sync::OnceLock::new();
     ALL.get_or_init(registry)
@@ -178,24 +182,18 @@ fn frame_width(frame: &str) -> Option<f64> {
 fn SceneRoot(frame: String) -> Element {
     let mut state = use_app_state();
     use_context_provider(|| state);
-    crate::screens::containers::provide_containers_view();
-    crate::screens::volumes::provide_volumes_view();
-    let dock = crate::ui::dock::use_dock_view(state);
+    let views = crate::providers::provide_screen_views(state);
     crate::services::exec::provide_scene_terminals();
-    let details = crate::services::detail::provide_detail_store();
-    let images = crate::services::images::provide_image_store();
-    crate::services::engine_dashboard::provide_dashboard_store();
     let setup_frame = frame.clone();
     use_hook(move || {
         // A frame is drawn at the width its name ends with.
         if let Some(width) = frame_width(&setup_frame) {
-            let mut window_w = dock.window_w;
+            let mut window_w = views.dock.window_w;
             window_w.set(width);
         }
         if let Some(scene) = find(&setup_frame) {
             (scene.setup)(&mut state);
-            seed_details(&state, details);
-            seed_images(&state, images);
+            seed_stores(&state, &views);
         }
     });
     rsx! { Shell {} }

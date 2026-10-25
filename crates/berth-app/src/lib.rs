@@ -4,6 +4,8 @@ pub mod assets;
 pub mod bridge;
 pub mod keys;
 pub mod platform;
+pub mod providers;
+pub mod routes;
 pub mod scenes;
 pub mod screens;
 pub mod services;
