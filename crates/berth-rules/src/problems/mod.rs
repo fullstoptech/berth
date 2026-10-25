@@ -27,6 +27,8 @@ mod testkit;
 mod tests;
 mod unhealthy;
 
+pub use bind_missing::strict_binds;
+
 #[derive(Debug, Clone)]
 pub struct ContainerFacts {
     pub container: berth_core::Container,
@@ -45,6 +47,9 @@ pub struct ProjectFacts {
     /// <= 20 error lines of the last failed compose command (D82): port clash, name in use, network, build,
     /// dependency, pull denied.
     pub failure_lines: Vec<String>,
+    /// AD35: (service, absolute source) of each long-syntax bind with `create_host_path: false`
+    /// whose source is missing. The service stats them (D36: stat only, no walk).
+    pub missing_binds: Vec<(String, std::path::PathBuf)>,
 }
 
 #[derive(Debug, Clone)]

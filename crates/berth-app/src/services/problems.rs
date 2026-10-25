@@ -281,6 +281,23 @@ fn read_project_texts(project: &Project) -> (Option<String>, Option<String>) {
     (compose, read(&folder.join(".env")))
 }
 
+/// AD35: the strict binds (`create_host_path: false`) of the Compose text whose source is not
+/// there. One `stat` each, no walk (D36). Blocking.
+fn missing_binds(
+    project: &Project,
+    compose_text: Option<&str>,
+) -> Vec<(String, std::path::PathBuf)> {
+    let (Some(folder), Some(text)) = (&project.folder, compose_text) else {
+        return Vec::new();
+    };
+    berth_rules::problems::strict_binds(folder, text)
+        .into_iter()
+        .filter(|(_, source)| {
+            matches!(std::fs::metadata(source), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+        })
+        .collect()
+}
+
 async fn project_facts(
     projects: Vec<Project>,
     mut failures: HashMap<ProjectId, Vec<String>>,
@@ -292,6 +309,7 @@ async fn project_facts(
                 let (compose_text, env_text) = read_project_texts(&project);
                 ProjectFacts {
                     failure_lines: failures.remove(&project.id).unwrap_or_default(),
+                    missing_binds: missing_binds(&project, compose_text.as_deref()),
                     project,
                     compose_text,
                     env_text,

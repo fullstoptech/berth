@@ -333,6 +333,57 @@ async fn problems_a_compose_failure_becomes_a_project_problem() {
     );
 }
 
+const STRICT_BIND: &str = "services:
+  web:
+    image: alpine:3
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+        bind:
+          create_host_path: false
+";
+
+#[tokio::test]
+async fn problems_a_strict_bind_whose_folder_is_missing_is_found_by_a_stat_before_any_command_fails(
+) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("compose.yaml"), STRICT_BIND).expect("compose");
+    let world = world();
+    let client = mock_client(&world);
+    let mut snap = snapshot(&world);
+    let project = snap
+        .projects
+        .iter_mut()
+        .find(|p| p.name == "shop-api")
+        .expect("shop-api");
+    project.folder = Some(dir.path().to_path_buf());
+    project.compose_files = vec![dir.path().join("compose.yaml")];
+    assert!(snap.failures.is_empty(), "no Compose command has failed");
+
+    let found = check_engine(Some(&client), &empty_cache(), snap.clone(), Utc::now()).await;
+    let wanted = dir.path().join("data").to_string_lossy().into_owned();
+    assert!(
+        found.iter().any(|p| matches!(
+            &p.kind,
+            ProblemKind::BindPathMissing { path } if *path == wanted
+        )),
+        "{:?}",
+        found.iter().map(|p| &p.kind).collect::<Vec<_>>()
+    );
+
+    // The folder appears: the problem is gone on the next pass.
+    std::fs::create_dir(dir.path().join("data")).expect("data");
+    let found = check_engine(Some(&client), &empty_cache(), snap, Utc::now()).await;
+    assert!(
+        !found
+            .iter()
+            .any(|p| matches!(p.kind, ProblemKind::BindPathMissing { .. })),
+        "{:?}",
+        found.iter().map(|p| &p.kind).collect::<Vec<_>>()
+    );
+}
+
 // ---------------------------------------------------------------------
 // Log batches
 // ---------------------------------------------------------------------

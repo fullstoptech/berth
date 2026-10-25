@@ -262,6 +262,13 @@ fn gather() -> ProblemInput {
     assert!(ok, "docker inspect failed: {err}");
     let inspected: Vec<Value> = serde_json::from_str(&json).expect("inspect json");
 
+    let compose_text = std::fs::read_to_string(&compose).expect("compose text");
+    // What the problems service does (AD35): stat each strict bind of the Compose file.
+    let missing_binds = berth_rules::problems::strict_binds(&folder, &compose_text)
+        .into_iter()
+        .filter(|(_, path)| !path.exists())
+        .collect();
+
     ProblemInput {
         now: chrono::Utc::now(),
         engine: engine(),
@@ -280,10 +287,11 @@ fn gather() -> ProblemInput {
                 status: ProjectStatus::Failing,
                 pinned: false,
             },
-            compose_text: Some(std::fs::read_to_string(&compose).expect("compose text")),
+            compose_text: Some(compose_text),
             env_text: None,
             compose_error: None,
             failure_lines,
+            missing_binds,
         }],
         disk: None,
         taken_ports: Vec::new(),

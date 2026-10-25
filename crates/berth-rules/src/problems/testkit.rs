@@ -98,6 +98,7 @@ pub fn project_facts(name: &str, compose: Option<&str>, failure: &[String]) -> P
         env_text: None,
         compose_error: None,
         failure_lines: failure.to_vec(),
+        missing_binds: Vec::new(),
     }
 }
 

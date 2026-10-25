@@ -161,11 +161,10 @@ fn service_of(state: &AppState, p: &Problem) -> Option<String> {
     }
 }
 
-/// The problems the broken set raises that the list does not have yet. `badmount` has no container
-/// (Compose cannot create it), so it is only known from the lines of a Compose command that tried
-/// to make it, and a project keeps the lines of its last failed command only: it is asked for
-/// separately.
-fn missing(state: &AppState, bind: bool) -> Vec<&'static str> {
+/// The problems of the broken set that the list does not have yet. `badmount` has no container
+/// (Compose cannot create it); the service finds it by a stat of the Compose file's strict binds
+/// (AD35), so a pass lists it without any Compose command having failed.
+fn missing(state: &AppState) -> Vec<&'static str> {
     let problems = state.problems.peek();
     let on = |wanted: &dyn Fn(&ProblemKind) -> bool, service: &str| {
         problems
@@ -202,11 +201,9 @@ fn missing(state: &AppState, bind: bool) -> Vec<&'static str> {
     if !on(&|k| matches!(k, ProblemKind::Unhealthy), "unhealthy") {
         out.push("Unhealthy for unhealthy");
     }
-    if bind
-        && !problems.iter().any(|p| {
-            matches!(&p.kind, ProblemKind::BindPathMissing { path } if path == "/nonexistent-berthfx-path")
-        })
-    {
+    if !problems.iter().any(|p| {
+        matches!(&p.kind, ProblemKind::BindPathMissing { path } if path == "/nonexistent-berthfx-path")
+    }) {
         out.push("BindPathMissing for badmount");
     }
     out
@@ -247,6 +244,22 @@ async fn problems_it_the_broken_fixtures_list_seven_problems_and_fixes_work() {
         .in_runtime(|| broken_project(&app.state))
         .expect("the broken project");
 
+    // 2a. A cold start: before any Compose command, one pass already lists the missing bind
+    //     folder (a stat of the Compose file, AD35).
+    until(
+        &mut dom,
+        &app,
+        "BindPathMissing is listed before any Compose command ran",
+        60,
+        |state| {
+            state.problems.peek().iter().any(|p| {
+                matches!(&p.kind, ProblemKind::BindPathMissing { path } if path == "/nonexistent-berthfx-path")
+            })
+        },
+    )
+    .await;
+    assert!(app.actions.compose_failure_lines(&project.id).is_empty());
+
     // 2. Start project: Compose stops at the image that does not exist; its lines feed the rules.
     dom.in_scope(ScopeId::APP, || {
         let mut state = app.state;
@@ -267,13 +280,13 @@ async fn problems_it_the_broken_fixtures_list_seven_problems_and_fixes_work() {
         app.actions.compose_failure_lines(&project.id).len()
     );
 
-    // 3. The panel's list: six of the set's seven problems (badmount comes in step 6).
+    // 3. The panel's list: all seven problems of the set.
     until(
         &mut dom,
         &app,
-        "the six problems are listed",
+        "the seven problems are listed",
         120,
-        |state| missing(state, false).is_empty(),
+        |state| missing(state).is_empty(),
     )
     .await;
     let listed: Vec<Problem> = dom.in_runtime(|| app.state.problems.peek().clone());
@@ -414,60 +427,6 @@ async fn problems_it_the_broken_fixtures_list_seven_problems_and_fixes_work() {
     )
     .await;
     println!("the unhealthy problem cleared after its restart");
-
-    // 6. The seventh: Compose cannot make `badmount` (its folder is missing). That is told by
-    //    Compose when something tries; the lines of that command replace the earlier failure's.
-    dom.in_scope(ScopeId::APP, || {
-        let mut state = app.state;
-        app.actions
-            .project_command(
-                &mut state,
-                &project,
-                berth_core::ComposeCommand::Up {
-                    services: vec!["badmount".to_string()],
-                    build: false,
-                },
-            )
-            .expect("Up of one service is allowed");
-    });
-    until(
-        &mut dom,
-        &app,
-        "badmount's Compose failure is kept",
-        120,
-        |_| {
-            app.actions
-                .compose_failure_lines(&project.id)
-                .iter()
-                .any(|l| l.contains("bind source path does not exist"))
-        },
-    )
-    .await;
-    until(
-        &mut dom,
-        &app,
-        "the bind path problem is listed",
-        60,
-        |state| {
-            missing(state, true)
-                .iter()
-                .all(|m| !m.starts_with("BindPath"))
-        },
-    )
-    .await;
-    let after: Vec<String> = dom.in_runtime(|| {
-        app.state
-            .problems
-            .peek()
-            .iter()
-            .map(|p| format!("{:?}", p.kind))
-            .collect()
-    });
-    println!("after badmount: {after:#?}");
-    assert!(
-        !after.iter().any(|k| k.contains("ImageNotFound")),
-        "the earlier failure's lines were replaced by the last command's"
-    );
 
     app.cancel.cancel();
     let _ = &app.services;

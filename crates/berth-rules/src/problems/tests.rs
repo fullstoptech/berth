@@ -1,7 +1,7 @@
 //! One positive and one negative test per rule, against `fixtures/problems/<kind>/`, plus the
 //! cross-rule checks (engine filter, duplicates, masking, past tense).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use berth_core::{
     Arch, ColimaOp, ComposeCommand, ContainerAction, ContainerState, EffectSummary, EngineAction,
@@ -9,10 +9,10 @@ use berth_core::{
     PortMapping, Problem, ProblemKind, Proto, Severity, Subject, VmType,
 };
 
-use super::evaluate;
 use super::testkit::{
     container, engine, facts, fixture, input, lines, project_facts, project_id, with_inspect,
 };
+use super::{evaluate, strict_binds};
 use super::{ContainerFacts, ProblemInput, ProjectFacts};
 use crate::diff;
 
@@ -735,6 +735,129 @@ fn problems_bind_missing_is_raised_once_when_both_sources_say_it() {
     ));
 
     assert_eq!(evaluate(&i).len(), 1);
+}
+
+fn with_missing_bind(mut facts: ProjectFacts, service: &str, path: &str) -> ProjectFacts {
+    facts
+        .missing_binds
+        .push((service.to_string(), PathBuf::from(path)));
+    facts
+}
+
+#[test]
+fn problems_bind_missing_from_a_stat_needs_no_failed_command() {
+    let mut i = input();
+    i.projects.push(with_missing_bind(
+        broken_project("bind_missing", &[]),
+        "badmount",
+        "/nonexistent-berthfx-path",
+    ));
+
+    let p = only(evaluate(&i));
+
+    assert_eq!(
+        p.kind,
+        ProblemKind::BindPathMissing {
+            path: "/nonexistent-berthfx-path".to_string()
+        }
+    );
+    assert_eq!(p.subject, Subject::Project(project_id("berthfx-broken")));
+    assert!(p.explanation.contains("badmount"), "{}", p.explanation);
+}
+
+#[test]
+fn problems_bind_missing_is_one_problem_per_path() {
+    let mut i = input();
+    let facts = with_missing_bind(
+        with_missing_bind(broken_project("bind_missing", &[]), "a", "/nope/one"),
+        "b",
+        "/nope/two",
+    );
+    i.projects.push(facts);
+
+    let mut paths: Vec<String> = evaluate(&i)
+        .into_iter()
+        .filter_map(|p| match p.kind {
+            ProblemKind::BindPathMissing { path } => Some(path),
+            _ => None,
+        })
+        .collect();
+    paths.sort();
+
+    assert_eq!(paths, ["/nope/one", "/nope/two"]);
+}
+
+#[test]
+fn problems_bind_missing_from_a_stat_and_from_compose_output_is_raised_once() {
+    let mut i = input();
+    i.projects.push(with_missing_bind(
+        broken_project(
+            "bind_missing",
+            &lines("bind_missing", "compose_failure.txt"),
+        ),
+        "badmount",
+        "/nonexistent-berthfx-path",
+    ));
+
+    assert_eq!(evaluate(&i).len(), 1);
+}
+
+#[test]
+fn problems_bind_missing_from_a_stat_and_from_the_engines_error_is_raised_once() {
+    let mut i = input();
+    i.containers.push(with_inspect(
+        broken_facts("badmount", ContainerState::Created),
+        &fixture("bind_missing", "inspect.json"),
+    ));
+    i.projects.push(with_missing_bind(
+        broken_project("bind_missing", &[]),
+        "badmount",
+        "/nonexistent-berthfx-path",
+    ));
+
+    assert_eq!(evaluate(&i).len(), 1);
+}
+
+#[test]
+fn problems_strict_binds_reads_only_long_syntax_binds_that_refuse_to_create() {
+    let compose = "services:
+  web:
+    image: alpine:3
+    volumes:
+      - type: bind
+        source: ./strict
+        target: /a
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./lenient
+        target: /b
+      - type: bind
+        source: ./explicit-true
+        target: /c
+        bind: { create_host_path: true }
+      - ./short:/d
+      - type: volume
+        source: named
+        target: /e
+      - type: bind
+        source: ${DATA}/env
+        target: /f
+        bind: { create_host_path: false }
+      - type: bind
+        source: /abs/strict
+        target: /g
+        bind: { create_host_path: false }
+";
+
+    let found = strict_binds(Path::new("/work/shop"), compose);
+
+    assert_eq!(
+        found,
+        [
+            ("web".to_string(), PathBuf::from("/work/shop/strict")),
+            ("web".to_string(), PathBuf::from("/abs/strict")),
+        ]
+    );
 }
 
 #[test]
