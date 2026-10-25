@@ -237,6 +237,11 @@ pub async fn run_engine(
         if cancel.is_cancelled() {
             return;
         }
+        // Events between now and the reconnect are lost: mark the gap (P2-T10).
+        activity::record(
+            &store,
+            &activity::entry_for_gap(engine.clone(), chrono::Utc::now()),
+        );
         if tx
             .send(EngineUpdate::Disconnected {
                 engine: engine.clone(),
@@ -1243,6 +1248,47 @@ mod tests {
         );
         cancel.cancel();
         let _ = tokio::time::timeout(std::time::Duration::from_secs(2), task).await;
+    }
+
+    #[tokio::test]
+    async fn services_activity_stream_end_records_a_gap_marker_for_that_engine() {
+        let store = Arc::new(berth_store::Store::open_in_memory().expect("store"));
+        let test_engine = TestEngine::new(&default_engine_id());
+        test_engine
+            .end_first_events
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let client: Arc<dyn berth_engine::EngineClient> = Arc::new(test_engine);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(run_engine(
+            client,
+            Arc::clone(&store),
+            Vec::new(),
+            false,
+            tx,
+            cancel.clone(),
+            std::time::Duration::from_millis(10),
+        ));
+        loop {
+            if matches!(recv(&mut rx).await, EngineUpdate::Disconnected { .. }) {
+                break;
+            }
+        }
+        cancel.cancel();
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), task).await;
+        let entries = store
+            .activity_query(&berth_store::ActivityFilter::default(), None, 10)
+            .expect("activity");
+        let gaps: Vec<_> = entries
+            .iter()
+            .filter(|e| e.action == activity::GAP_ACTION)
+            .collect();
+        assert_eq!(gaps.len(), 1, "{entries:?}");
+        assert_eq!(gaps[0].engine, default_engine_id());
+        assert_eq!(
+            gaps[0].subject,
+            berth_core::Subject::Engine(default_engine_id())
+        );
     }
 
     #[tokio::test]

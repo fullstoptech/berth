@@ -225,6 +225,9 @@ pub fn Shell() -> Element {
                             if *state.dev_gallery.read() {
                                 crate::ui::PrimitivesGallery {}
                             }
+                            if *state.section.read() == crate::state::Section::Activity {
+                                crate::screens::activity::ActivityScreen {}
+                            }
                         }
                         if show_inspector {
                             Inspector {}

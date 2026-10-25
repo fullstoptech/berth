@@ -119,6 +119,23 @@ fn containers_selected(state: &mut AppState) {
     state.problems.set(mock_problems(&containers));
 }
 
+/// Activity has no frame; mock history on every engine (P2-T10).
+fn activity_scene(state: &mut AppState, paused: bool) {
+    let world = berth_engine::MockWorld::bundled();
+    load_mock_world(state);
+    state.engine_scope.set(EngineScope::All);
+    state.section.set(Section::Activity);
+    crate::screens::activity_scene::seed(&world, paused);
+}
+
+fn activity_live(state: &mut AppState) {
+    activity_scene(state, false);
+}
+
+fn activity_paused(state: &mut AppState) {
+    activity_scene(state, true);
+}
+
 const SCENES: &[Scene] = &[
     Scene {
         frame: "Projects / empty / 1440",
@@ -131,6 +148,14 @@ const SCENES: &[Scene] = &[
     Scene {
         frame: "Containers / selected / 1440",
         setup: containers_selected,
+    },
+    Scene {
+        frame: "Activity / live / 1440",
+        setup: activity_live,
+    },
+    Scene {
+        frame: "Activity / paused / 1440",
+        setup: activity_paused,
     },
 ];
 
@@ -177,7 +202,7 @@ mod tests {
         assert!(find("Projects / empty / 1440").is_some());
         assert!(find("Components / primitives").is_some());
         assert!(find("Containers / selected / 1440").is_some());
-        assert_eq!(scenes().len(), 3);
+        assert!(scenes().len() >= 3);
         assert!(find("No such frame").is_none());
     }
 

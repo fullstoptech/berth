@@ -73,10 +73,63 @@ pub fn entry_for_action(
     }
 }
 
+/// The action of a gap marker: the engine's event stream ended, so events
+/// between this entry and the reconnect are missing (D65, P2-T10).
+pub const GAP_ACTION: &str = "engine.disconnected";
+
+/// Build the gap marker for an engine whose event stream ended at `at`.
+pub fn entry_for_gap(
+    engine: berth_core::EngineId,
+    at: chrono::DateTime<chrono::Utc>,
+) -> berth_core::ActivityEntry {
+    berth_core::ActivityEntry {
+        id: uuid::Uuid::now_v7(),
+        ts: at,
+        subject: berth_core::Subject::Engine(engine.clone()),
+        subject_name: engine.0.clone(),
+        engine,
+        actor: berth_core::Actor::Local,
+        origin: berth_core::ActivityOrigin::Engine,
+        action: GAP_ACTION.to_string(),
+        project: None,
+        outcome: berth_core::Outcome::Ok,
+    }
+}
+
+/// Every entry that reached the store, for the live Activity feed. A
+/// process-wide tap keeps `record` (the single write path) unchanged for
+/// its callers; a slow receiver gets `Lagged` and reloads from the store.
+fn tap() -> &'static tokio::sync::broadcast::Sender<berth_core::ActivityEntry> {
+    static TAP: std::sync::OnceLock<tokio::sync::broadcast::Sender<berth_core::ActivityEntry>> =
+        std::sync::OnceLock::new();
+    TAP.get_or_init(|| tokio::sync::broadcast::channel(1024).0)
+}
+
+/// Follow entries as they are recorded. Subscribe before loading history
+/// so nothing falls between the two (the feed de-duplicates by id).
+pub fn subscribe() -> tokio::sync::broadcast::Receiver<berth_core::ActivityEntry> {
+    tap().subscribe()
+}
+
 /// Best-effort write: activity must never fail the action it describes.
 pub fn record(store: &berth_store::Store, entry: &berth_core::ActivityEntry) {
-    if let Err(err) = store.activity_push(entry) {
-        tracing::warn!(%err, action = %entry.action, "activity write failed");
+    match store.activity_push(entry) {
+        // No receiver is the normal case (Activity screen closed).
+        Ok(()) => drop(tap().send(entry.clone())),
+        Err(err) => tracing::warn!(%err, action = %entry.action, "activity write failed"),
+    }
+}
+
+/// The newest `limit` entries, newest first. Best-effort: a failed read
+/// is an empty feed, not a crash. Blocking SQLite call: run it off the UI
+/// thread.
+pub fn load_recent(store: &berth_store::Store, limit: usize) -> Vec<berth_core::ActivityEntry> {
+    match store.activity_query(&berth_store::ActivityFilter::default(), None, limit) {
+        Ok(entries) => entries,
+        Err(err) => {
+            tracing::warn!(%err, "activity read failed");
+            Vec::new()
+        }
     }
 }
 
@@ -105,6 +158,35 @@ mod tests {
             },
             attributes: std::collections::BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn services_activity_recorded_entries_reach_subscribers_and_the_store() {
+        let store = berth_store::Store::open_in_memory().expect("store");
+        let mut rx = subscribe();
+        let entry = entry_for_event(&container_event(), "tap-web-1".to_string(), None);
+        record(&store, &entry);
+        let mut seen = None;
+        while let Ok(got) = rx.try_recv() {
+            if got.id == entry.id {
+                seen = Some(got);
+            }
+        }
+        assert_eq!(seen.as_ref(), Some(&entry), "tap delivered the entry");
+        assert_eq!(load_recent(&store, 10), vec![entry]);
+    }
+
+    #[test]
+    fn services_activity_gap_entry_marks_the_engine_without_failing() {
+        let engine = berth_core::EngineId("ssh:hetzner-1".to_string());
+        let at = chrono::DateTime::from_timestamp(500, 0).expect("ts");
+        let gap = entry_for_gap(engine.clone(), at);
+        assert_eq!(gap.action, GAP_ACTION);
+        assert_eq!(gap.origin, berth_core::ActivityOrigin::Engine);
+        assert_eq!(gap.subject, berth_core::Subject::Engine(engine.clone()));
+        assert_eq!(gap.engine, engine);
+        assert_eq!(gap.ts, at);
+        assert_eq!(gap.outcome, berth_core::Outcome::Ok);
     }
 
     #[test]
