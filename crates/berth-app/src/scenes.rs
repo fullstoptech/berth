@@ -192,10 +192,12 @@ fn activity_paused(state: &mut AppState) {
     activity_scene(state, true);
 }
 
-/// Dark; the worker selected as in "Containers / selected", the palette
-/// open on the query "rest".
+/// Dark; nothing selected (so no inspector, and the table keeps its Uptime
+/// column), the palette open on the query "rest". The bare verb still picks
+/// the container that needs the most attention, the restarting worker.
 fn palette_open(state: &mut AppState) {
     containers_selected(state);
+    state.selection.set(Selection::None);
     crate::screens::palette::set_initial_query("rest");
     state.overlays.write().push(crate::state::Overlay::Palette);
 }

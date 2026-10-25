@@ -428,10 +428,22 @@ mod tests {
         assert!(html.contains("Container · Restarting"));
         assert!(html.contains("5 containers"));
         assert!(html.contains("Asks to confirm · stops 15 containers"));
-        // The first row is active and carries its shortcut; the input holds
-        // the frame's query and the footer shows the key hints.
+        // The first row is active; the input holds the frame's query and
+        // the footer shows the key hints. Nothing is selected, so ⌘R (which
+        // acts on the selection) is not claimed on the row; the search tests
+        // cover the selected case.
         assert!(html.contains("palette-item palette-item-active"));
-        assert!(html.contains("⌘R") || html.contains("Ctrl+R"));
+        assert!(!html.contains("⌘R") && !html.contains("Ctrl+R"), "{html}");
+        // Nothing selected behind the palette: no selected row, no docked
+        // inspector, so the table keeps its Uptime column (frame).
+        assert!(
+            !page.contains("class=\"ct-row ct-selected"),
+            "a row is selected"
+        );
+        assert!(
+            page.contains(">Uptime<"),
+            "inspector docked behind the palette"
+        );
         assert!(html.contains("initial_value=\"rest\""), "{html}");
         for hint in ["Navigate", "Run", "Close"] {
             assert!(html.contains(hint), "{hint}");
