@@ -32,6 +32,40 @@ fn project<'a>(w: &'a berth_engine::MockWorld, name: &str) -> &'a berth_core::Pr
         .expect("project in the mock world")
 }
 
+// --- The empty body: centred, or two columns with a first-run card ---
+
+#[test]
+fn projects_empty_body_is_centred_without_a_first_run_card() {
+    let html = strip_style(&dioxus_ssr::render_element(rsx! { EmptyBody {} }));
+    assert!(html.contains("class=\"projects-empty\""), "{html}");
+    assert!(!html.contains("has-first-run"), "{html}");
+    assert!(!html.contains("projects-first-run"), "{html}");
+    assert!(html.contains("No projects yet"), "{html}");
+    assert!(html.contains("Drop a folder here"), "{html}");
+    // The real scene has no card today, so it is the centred case.
+    let page = scene("Projects / empty / 1440");
+    assert!(page.contains("class=\"projects-empty\""), "{page}");
+    assert!(!page.contains("has-first-run"), "{page}");
+}
+
+#[test]
+fn projects_empty_body_moves_left_when_a_first_run_card_is_given() {
+    let html = strip_style(&dioxus_ssr::render_element(rsx! {
+        EmptyBody { first_run: Some(rsx! { div { class: "placeholder-card", "First-run checks" } }) }
+    }));
+    assert!(
+        html.contains("class=\"projects-empty has-first-run\""),
+        "{html}"
+    );
+    // The block comes first (left), the card in its slot after it (right).
+    let block = html.find("projects-empty-column").expect("block");
+    let card = html.find("projects-first-run").expect("card slot");
+    assert!(block < card, "{html}");
+    assert!(html.contains("placeholder-card"), "{html}");
+    assert!(html.contains("First-run checks"), "{html}");
+    assert!(html.contains("No projects yet"), "{html}");
+}
+
 // --- The three scenes ---
 
 fn assert_default_rows(html: &str) {

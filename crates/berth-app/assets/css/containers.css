@@ -137,6 +137,25 @@
 .ct-stopped .inline-message {
   justify-content: center;
 }
+/* Frame "Containers / engine stopped": the group sits 24 px below the
+   centre of the space under the banner. */
+.ct-stopped {
+  padding-top: var(--space-48);
+}
+/* The same frame puts icon, title, body, button and hint centres 46, 32,
+   36 and 62 px apart; scoped here because EmptyState is shared. */
+.ct-stopped .empty-state-icon {
+  margin-bottom: var(--space-16);
+}
+.ct-stopped .empty-state-title {
+  margin-bottom: var(--space-4);
+}
+.ct-stopped .empty-state-action {
+  margin-top: var(--space-4);
+}
+.ct-stopped .empty-state-hint {
+  margin-top: var(--space-32);
+}
 
 /* Table: header and rows share one grid. Columns after the dot:
    name, image, ports, CPU, memory, [uptime], [engine], status. */
@@ -148,8 +167,11 @@
   margin-top: var(--space-8);
   --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px minmax(144px, 1fr);
 }
+/* With Uptime and no inspector (frames "Containers / loading", "confirm
+   delete", "Palette") Name, Image, Ports and Status measure 244, 204, 121
+   and 276 px at 1440, so Status starts at x = 1148. */
 .ct-table.ct-has-uptime {
-  --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px 56px minmax(144px, 1fr);
+  --ct-cols: 16px 8px minmax(110px, 2fr) minmax(90px, 1.7fr) minmax(88px, 1fr) 76px 84px 56px minmax(144px, 2.3fr);
 }
 .ct-table.ct-has-engine {
   --ct-cols: 16px 8px minmax(110px, 1.3fr) minmax(90px, 1fr) minmax(88px, 0.9fr) 76px 84px minmax(70px, 0.6fr) minmax(144px, 1fr);

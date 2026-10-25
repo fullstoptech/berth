@@ -394,10 +394,24 @@
   justify-content: center;
   padding: var(--space-24);
 }
-/* The frame sets the column left of centre: its right half is the First-run
-   checks card (P6). Until the card lands the column keeps that slot free. */
+/* The screen's bottom padding is for the table; an empty body fills to the
+   status bar so its content is centred in the area under the header. */
+.projects-screen:has(> .projects-empty) {
+  padding-bottom: 0;
+}
+/* The empty state is centred, horizontally and vertically, in the main
+   area under the header (owner decision). With the First-run checks card
+   (P6) the block moves left and the card sits on its right, as in the
+   frame "Projects / empty / 1440": block 400 px, card 418 px, 72 px apart. */
+.projects-empty.has-first-run {
+  gap: calc(var(--space-48) + var(--space-24));
+}
+.projects-first-run {
+  width: 418px;
+  max-width: 100%;
+  flex: none;
+}
 .projects-empty-column {
-  margin-right: 40%;
   display: flex;
   flex-direction: column;
   align-items: center;

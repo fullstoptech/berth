@@ -326,10 +326,19 @@ fn EngineStoppedBanner(engine: berth_core::Engine) -> Element {
     }
 }
 
+/// The empty body: the empty state and drop zone, centred in the main area.
+/// With a first-run card in `first_run` (P6 fills the slot) the block moves
+/// left and the card sits on its right, as in the frame; nothing fills the
+/// slot today, so it renders centred.
 #[component]
-fn EmptyBody() -> Element {
+fn EmptyBody(#[props(default)] first_run: Option<Element>) -> Element {
+    let class = if first_run.is_some() {
+        "projects-empty has-first-run"
+    } else {
+        "projects-empty"
+    };
     rsx! {
-        div { class: "projects-empty", "aria-label": EMPTY_LABEL, role: "region",
+        div { class, "aria-label": EMPTY_LABEL, role: "region",
             div { class: "projects-empty-column",
                 EmptyState {
                     title: "No projects yet".to_string(),
@@ -346,6 +355,9 @@ fn EmptyBody() -> Element {
                     span { "Drop a folder here" }
                     span { class: "drop-zone-hint", "or press {crate::actions::mod_label()}O" }
                 }
+            }
+            if let Some(card) = first_run {
+                div { class: "projects-first-run", {card} }
             }
         }
     }
