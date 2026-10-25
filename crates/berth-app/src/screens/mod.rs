@@ -23,5 +23,3 @@ pub mod recent_activity;
 pub(crate) mod table_tiers;
 pub mod volume_browser;
 pub mod volumes;
-#[cfg(test)]
-pub(crate) mod volumes_tiers;

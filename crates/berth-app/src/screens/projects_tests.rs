@@ -518,7 +518,8 @@ fn projects_attention_orders_errors_first_newest_first_and_names_the_subject() {
 use super::super::css_tracks as css;
 use crate::text_scale::STEPS;
 
-use super::super::table_tiers::{projects_lists, projects_tier_at, projects_tracks_at, View};
+use super::super::table_tiers::projects::{projects_lists, projects_tier_at, projects_tracks_at};
+use super::super::table_tiers::View;
 
 /// The track list of tier `n` (0 the full list, 1 without Engine and
 /// Branch, 2 also without Ports, 3 also without Path).

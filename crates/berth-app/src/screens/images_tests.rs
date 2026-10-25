@@ -6,7 +6,8 @@ use super::*;
 
 use crate::scenes;
 use crate::screens::css_tracks as css;
-use crate::screens::table_tiers::{images_least_need, images_state_at, ImageCol, View};
+use crate::screens::table_tiers::images::{images_least_need, images_state_at, ImageCol};
+use crate::screens::table_tiers::View;
 use crate::state::{AppState, Overlay, Selection};
 use crate::text_scale::STEPS;
 

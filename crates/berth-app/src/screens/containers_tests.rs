@@ -233,7 +233,8 @@ fn containers_scene_selected_1024_drops_uptime_and_engine_below_1200() {
 }
 
 use super::super::css_tracks as css;
-use super::super::table_tiers::{containers_state_at, Col, View};
+use super::super::table_tiers::containers::{containers_state_at, Col};
+use super::super::table_tiers::View;
 use crate::text_scale::STEPS;
 
 /// The body of the table's block for the viewports under 1200 px.
