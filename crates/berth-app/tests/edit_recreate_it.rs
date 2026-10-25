@@ -27,9 +27,7 @@ use tokio_util::sync::CancellationToken;
 
 use berth_app::services::actions::{apply_finished, ActionsService, ContainerTarget, EditOp};
 use berth_app::services::engines::client_map;
-use berth_app::sheets::edit_recreate::model::{
-    failure_text, offer, spec_from_detail, Draft, Offer,
-};
+use berth_app::sheets::edit_recreate::model::{failure_text, offer, Draft, Offer};
 use berth_app::state::{use_app_state, AppState, PendingKey, PendingState};
 use berth_core::{ContainerDetail, ContainerState, Subject};
 use berth_engine::EngineClient;
@@ -51,6 +49,7 @@ const SCRATCH: &str = "berthfx-scratch-limits";
 const PORT_A: &str = "127.0.0.1:56971:80";
 const PORT_B: &str = "127.0.0.1:56972:80";
 const PROBE_TAG: &str = "berthfx/pull-probe:1";
+const NET: &str = "berthfx-scratch-limits-net";
 
 fn docker(bin: &std::path::Path, host: &str, args: &[&str]) -> std::process::Output {
     std::process::Command::new(bin)
@@ -88,6 +87,17 @@ impl Rig {
 
     /// Start the scratch container: nginx on `PORT_A`, labelled as a fixture.
     fn start_scratch(&self, image: &str, command: &[&str], publish: Option<&str>) {
+        self.start_scratch_with(&[], image, command, publish);
+    }
+
+    /// The same with extra `docker run` flags (user, workdir, health, caps).
+    fn start_scratch_with(
+        &self,
+        extra: &[&str],
+        image: &str,
+        command: &[&str],
+        publish: Option<&str>,
+    ) {
         remove_scratch_containers(&self.bin, &self.host);
         let mut args = vec![
             "run",
@@ -100,6 +110,7 @@ impl Rig {
         if let Some(port) = publish {
             args.extend(["-p", port]);
         }
+        args.extend(extra);
         args.push(image);
         args.extend(command);
         let out = docker(&self.bin, &self.host, &args);
@@ -158,6 +169,23 @@ impl Rig {
 fn clean(bin: &std::path::Path, host: &str) {
     remove_scratch_containers(bin, host);
     let _ = docker(bin, host, &["rmi", PROBE_TAG]);
+    // The scratch network, only when it carries the fixture label.
+    let listed = docker(
+        bin,
+        host,
+        &[
+            "network",
+            "ls",
+            "-q",
+            "--filter",
+            "label=dev.berth.fixture=1",
+            "--filter",
+            &format!("name={NET}"),
+        ],
+    );
+    for id in text(&listed).lines() {
+        let _ = docker(bin, host, &["network", "rm", id.trim()]);
+    }
 }
 
 /// Containers only: named `berthfx-scratch-limits…` and labelled as fixtures.
@@ -266,7 +294,7 @@ async fn edit_recreate_it_memory_256_mb_applies_live() {
     let id = detail.container.id.clone();
 
     // The Limits tab's path: the draft of the container's spec, memory 256m.
-    let base = spec_from_detail(&detail);
+    let base = berth_core::ContainerSpec::from_detail(&detail);
     let mut draft = Draft::from_spec(&base);
     draft.memory = "256m".to_string();
     let new = draft.to_spec(&base).expect("a valid draft");
@@ -289,7 +317,7 @@ async fn edit_recreate_it_memory_256_mb_applies_live() {
     assert_eq!(after.container.state, ContainerState::Running);
     assert_eq!(after.limits.memory, Some(bytesize::ByteSize(268_435_456)));
     // And a CPU limit and the restart policy go the same way.
-    let base = spec_from_detail(&after);
+    let base = berth_core::ContainerSpec::from_detail(&after);
     let mut draft = Draft::from_spec(&base);
     draft.cpus = "0.5".to_string();
     draft.restart = berth_app::sheets::edit_recreate::model::RestartKind::UnlessStopped;
@@ -310,15 +338,84 @@ async fn edit_recreate_it_memory_256_mb_applies_live() {
 
 #[tokio::test]
 #[ignore = "needs the live Colima engine; run with BERTH_IT=1"]
-async fn edit_recreate_it_a_changed_port_recreates_and_the_new_port_shows() {
+async fn edit_recreate_it_a_changed_port_recreates_and_the_run_settings_survive() {
     let Some((mut rig, _guard)) = rig().await else {
         return;
     };
-    rig.start_scratch("nginx:alpine", &[], Some(PORT_A));
+    // A container with a user, a working directory, a health check, an
+    // added capability and an alias on a user network (D16).
+    let net = docker(
+        &rig.bin,
+        &rig.host,
+        &["network", "create", "--label", "dev.berth.fixture=1", NET],
+    );
+    assert!(
+        net.status.success(),
+        "{}",
+        String::from_utf8_lossy(&net.stderr)
+    );
+    rig.start_scratch_with(
+        &[
+            "--user",
+            "1000:1000",
+            "--workdir",
+            "/tmp",
+            "--cap-add",
+            "NET_ADMIN",
+            "--health-cmd",
+            "true",
+            "--health-interval",
+            "20s",
+            "--health-retries",
+            "4",
+            "--network",
+            NET,
+            "--network-alias",
+            "svc-alias",
+        ],
+        "alpine:3",
+        &["sleep", "600"],
+        Some(PORT_A),
+    );
+    let inspect_line = |rig: &Rig| {
+        rig.cli(&[
+            "inspect",
+            "-f",
+            "{{.Config.User}}|{{.Config.WorkingDir}}|{{.Config.Healthcheck.Test}} {{.Config.Healthcheck.Retries}}|{{.HostConfig.CapAdd}}",
+            SCRATCH,
+        ])
+    };
+    let aliases = |rig: &Rig| {
+        rig.cli(&[
+            "inspect",
+            "-f",
+            "{{(index .NetworkSettings.Networks \"berthfx-scratch-limits-net\").Aliases}}",
+            SCRATCH,
+        ])
+    };
+    let before = inspect_line(&rig);
+    println!("edit_recreate_it: before={before}");
+    assert!(
+        before.starts_with("1000:1000|/tmp|[CMD-SHELL true] 4|[CAP_NET_ADMIN]"),
+        "{before}"
+    );
+    assert!(aliases(&rig).contains("svc-alias"), "{}", aliases(&rig));
+
     let detail = rig.scratch().await;
     let old_id = detail.container.id.clone();
+    assert_eq!(
+        berth_core::ContainerSpec::uncarried(&detail),
+        Vec::<String>::new(),
+        "nothing here is beyond the spec"
+    );
 
-    let base = spec_from_detail(&detail);
+    let base = berth_core::ContainerSpec::from_detail(&detail);
+    println!("edit_recreate_it: spec aliases={:?}", base.network_aliases);
+    assert_eq!(base.user.as_deref(), Some("1000:1000"));
+    assert_eq!(base.working_dir.as_deref(), Some("/tmp"));
+    // Docker reports the capability with its CAP_ prefix.
+    assert_eq!(base.cap_add, ["CAP_NET_ADMIN"]);
+    assert!(base.healthcheck.is_some());
     assert_eq!(base.ports.len(), 1);
     let mut draft = Draft::from_spec(&base);
     let row = draft.ports[0].0;
@@ -343,6 +440,7 @@ async fn edit_recreate_it_a_changed_port_recreates_and_the_new_port_shows() {
             &detail,
             EditOp::Recreate {
                 spec: Box::new(new),
+                pull: false,
             },
         )
         .await;
@@ -371,6 +469,23 @@ async fn edit_recreate_it_a_changed_port_recreates_and_the_new_port_shows() {
     println!("edit_recreate_it: docker ps ports={ports}");
     assert!(ports.contains("127.0.0.1:56972->80/tcp"), "{ports}");
     assert!(!ports.contains("56971"), "{ports}");
+    // The four run settings (and the alias) came through the recreate.
+    let after = inspect_line(&rig);
+    println!(
+        "edit_recreate_it: nets={}",
+        rig.cli(&[
+            "inspect",
+            "-f",
+            "{{json .NetworkSettings.Networks}}",
+            SCRATCH
+        ])
+    );
+    println!("edit_recreate_it: after={after}");
+    assert!(
+        after.starts_with("1000:1000|/tmp|[CMD-SHELL true] 4|[CAP_NET_ADMIN]"),
+        "{after}"
+    );
+    assert!(aliases(&rig).contains("svc-alias"), "{}", aliases(&rig));
     // One container by that name, running, with the new id; no backup left.
     let names = rig.cli(&[
         "ps",
@@ -383,9 +498,11 @@ async fn edit_recreate_it_a_changed_port_recreates_and_the_new_port_shows() {
         "{{.Names}}",
     ]);
     assert_eq!(names, SCRATCH, "no -berth-old left behind");
-    let after = rig.scratch().await;
-    assert_eq!(after.container.id, new_id);
-    assert_eq!(after.container.state, ContainerState::Running);
+    let current = rig.scratch().await;
+    assert_eq!(current.container.id, new_id);
+    assert_eq!(current.container.state, ContainerState::Running);
+    assert_eq!(current.user.as_deref(), Some("1000:1000"));
+    assert_eq!(current.working_dir.as_deref(), Some("/tmp"));
 }
 
 #[tokio::test]
@@ -398,7 +515,7 @@ async fn edit_recreate_it_a_missing_image_fails_and_the_old_container_keeps_runn
     let detail = rig.scratch().await;
     let old_id = detail.container.id.clone();
 
-    let base = spec_from_detail(&detail);
+    let base = berth_core::ContainerSpec::from_detail(&detail);
     let mut draft = Draft::from_spec(&base);
     draft.image = "berthfx/does-not-exist:1".to_string();
     let new = draft.to_spec(&base).expect("a valid draft");
@@ -409,6 +526,7 @@ async fn edit_recreate_it_a_missing_image_fails_and_the_old_container_keeps_runn
             &detail,
             EditOp::Recreate {
                 spec: Box::new(new),
+                pull: false,
             },
         )
         .await;
@@ -500,7 +618,16 @@ async fn edit_recreate_it_latest_image_leaves_the_container_alone_when_the_pull_
     rig.start_scratch(PROBE_TAG, &["sleep", "600"], None);
     let detail = rig.scratch().await;
     let old_id = detail.container.id.clone();
-    let done = rig.run(&detail, EditOp::RecreateLatest).await;
+    let spec = berth_core::ContainerSpec::from_detail(&detail);
+    let done = rig
+        .run(
+            &detail,
+            EditOp::Recreate {
+                spec: Box::new(spec),
+                pull: true,
+            },
+        )
+        .await;
     let message = done.result.clone().expect_err("the pull fails");
     println!("edit_recreate_it: pull failure={message:?}");
     assert!(message.contains("Could not pull"), "{message}");
@@ -524,7 +651,16 @@ async fn edit_recreate_it_latest_image_pulls_then_recreates() {
     rig.start_scratch("alpine:3", &["sleep", "600"], None);
     let detail = rig.scratch().await;
     let old_id = detail.container.id.clone();
-    let done = rig.run(&detail, EditOp::RecreateLatest).await;
+    let spec = berth_core::ContainerSpec::from_detail(&detail);
+    let done = rig
+        .run(
+            &detail,
+            EditOp::Recreate {
+                spec: Box::new(spec),
+                pull: true,
+            },
+        )
+        .await;
     assert_eq!(done.result, Ok(()));
     let new_id = done.replaced_by.clone().expect("a new container");
     assert_ne!(new_id, old_id);

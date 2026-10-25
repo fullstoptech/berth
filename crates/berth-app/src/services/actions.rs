@@ -62,7 +62,6 @@ pub fn pending_label(action_id: &str) -> &'static str {
         "container.rename" => "Renaming…",
         "container.apply_limits" => "Applying…",
         "container.recreate" => "Recreating…",
-        "container.recreate_latest" => "Pulling and recreating…",
         "container.duplicate" => "Duplicating…",
         "project.rebuild" => "Rebuilding…",
         "project.pull_images" => "Pulling…",

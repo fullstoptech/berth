@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use berth_core::{ContainerId, ContainerSpec, Limits, RestartPolicy};
 
-use crate::sheets::edit_recreate::model::{duplicate_spec, spec_from_detail};
+use crate::sheets::edit_recreate::model::duplicate_spec;
 
 /// What an edit does to one container.
 #[derive(Debug, Clone, PartialEq)]
@@ -21,10 +21,12 @@ pub enum EditOp {
         limits: Limits,
         restart: RestartPolicy,
     },
-    /// Replace the container by one made from this spec.
-    Recreate { spec: Box<ContainerSpec> },
-    /// Pull the container's image again, then recreate it as it is.
-    RecreateLatest,
+    /// Replace the container by one made from this spec, after pulling its
+    /// image again when `pull` is set ("Recreate with latest image", D18).
+    Recreate {
+        spec: Box<ContainerSpec>,
+        pull: bool,
+    },
     /// A new container from the same settings, named `<name>-copy`.
     /// Created, not started: it may want the ports the original holds.
     Duplicate,
@@ -56,7 +58,6 @@ impl EditOp {
         match self {
             Self::ApplyLimits { .. } => "container.apply_limits",
             Self::Recreate { .. } => "container.recreate",
-            Self::RecreateLatest => "container.recreate_latest",
             Self::Duplicate => "container.duplicate",
         }
     }
@@ -91,21 +92,19 @@ pub async fn run_edit(
                 message: Some(format!("Limits applied to {name}")),
             })
         }
-        EditOp::Recreate { spec } => {
+        EditOp::Recreate {
+            spec,
+            pull: pull_first,
+        } => {
+            if pull_first {
+                pull(client, &spec, cancel).await?;
+            }
             let new = guard(cancel, client.recreate(id, &spec)).await?;
+            // The sheet says the result itself; the latest-image dialog's
+            // watcher says it from the same summary.
             Ok(Done {
                 replaced_by: Some(new),
-                message: Some(format!("Recreated {name}")),
-            })
-        }
-        EditOp::RecreateLatest => {
-            let detail = guard(cancel, client.container(id)).await?;
-            let spec = spec_from_detail(&detail);
-            pull(client, &spec, cancel).await?;
-            let new = guard(cancel, client.recreate(id, &spec)).await?;
-            Ok(Done {
-                replaced_by: Some(new),
-                message: None,
+                message: (!pull_first).then(crate::services::confirm::recreate_result),
             })
         }
         EditOp::Duplicate => {
@@ -116,7 +115,7 @@ pub async fn run_edit(
                 .map(|c| c.name)
                 .collect();
             let taken: Vec<&str> = taken.iter().map(String::as_str).collect();
-            let copy = duplicate_spec(&spec_from_detail(&detail), &taken);
+            let copy = duplicate_spec(&ContainerSpec::from_detail(&detail), &taken);
             let copy_name = copy.name.clone();
             guard(cancel, client.create(&copy, false)).await?;
             Ok(Done {

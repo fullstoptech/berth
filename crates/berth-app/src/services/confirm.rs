@@ -197,18 +197,15 @@ pub fn upload_title(dir: &str, name: &str) -> String {
     format!("Upload {name} to {dir}?")
 }
 
-/// What recreating a container does (P3-T7): the loss warning of the edit
-/// sheet and the dialog of "Recreate with latest image" read this one
-/// summary. `not_carried` names settings the new container cannot take
-/// over; `from_image` says its working directory, user or health check
-/// come from the image.
+/// What recreating a container does (P3-T7, D18): the loss warning of the
+/// edit sheet, the dialog of "Recreate with latest image", the activity
+/// entry and the result all read this one summary. Settings the spec
+/// cannot carry never get here: Recreate is disabled for them (D16).
 #[must_use]
 pub fn recreate_effect(
     container: &Container,
     volumes: &[Volume],
     latest_image: bool,
-    not_carried: &[String],
-    from_image: bool,
 ) -> EffectSummary {
     let mut lines = Vec::new();
     if latest_image {
@@ -230,26 +227,17 @@ pub fn recreate_effect(
         EffectKind::Goes,
         "Files written inside the container, outside volumes, are lost.",
     ));
-    if !not_carried.is_empty() {
-        lines.push(line(
-            EffectKind::Goes,
-            format!("Not carried over: {}.", not_carried.join(", ")),
-        ));
-    }
-    if from_image {
-        lines.push(line(
-            EffectKind::Changes,
-            "Working directory, user and health check come from the image.",
-        ));
-    }
-    if container.compose_project.is_some() {
-        lines.push(line(
-            EffectKind::Goes,
-            "Its Compose service name stops resolving for other containers until Compose recreates it.",
-        ));
-    }
     lines.extend(kept_lines(&[container], volumes));
     summary("Recreate", "container", "containers", 1, lines)
+}
+
+/// The result of one recreate, in words ("Recreated 1 container").
+#[must_use]
+pub fn recreate_result() -> String {
+    result_label(
+        &summary("Recreate", "container", "containers", 1, Vec::new()),
+        1,
+    )
 }
 
 /// What stopping or restarting a Colima engine does to its containers.
@@ -393,27 +381,26 @@ pub fn kill_model(state: &AppState, id: &ContainerId) -> Option<ConfirmModel> {
     })
 }
 
-/// The dialog of "Recreate with latest image": the image is pulled, then
-/// the container is recreated from its own settings. The action is the
-/// pull; `run` recreates each container target after it (PLAN §6 has no
-/// recreate action, so the pull stands for the whole step).
+/// The dialog of "Recreate with latest image": one `EngineAction::Recreate`
+/// with `pull: true` (D18). The spec is read when the dialog opens, like
+/// the targets.
 #[must_use]
 pub fn recreate_latest_model(
     state: &AppState,
     id: &ContainerId,
-    not_carried: &[String],
-    from_image: bool,
+    spec: berth_core::ContainerSpec,
 ) -> Option<ConfirmModel> {
     let containers = state.containers.peek();
     let volumes = state.volumes.peek();
     let container = containers.iter().find(|c| c.id == *id)?;
     Some(ConfirmModel {
         title: format!("Recreate {} with the latest image?", container.name),
-        effect: recreate_effect(container, &volumes, true, not_carried, from_image),
-        action: EngineAction::PullImage {
+        effect: recreate_effect(container, &volumes, true),
+        action: EngineAction::Recreate {
             engine: container.engine.clone(),
-            reference: container.image.reference.clone(),
-            platform: None,
+            id: container.id.clone(),
+            spec,
+            pull: true,
         },
         checkbox: None,
         targets: vec![Subject::Container(container.id.clone())],
@@ -556,17 +543,16 @@ pub fn run(
                 None => out.refused.push(format!("Engine {profile} is gone")),
             }
         }
-        // Pull-then-recreate of container targets (P3-T7); an image
-        // target is the Images screen's plain pull (P4).
-        EngineAction::PullImage { .. } => {
+        // Edit and recreate, and recreate with the latest image (D18).
+        EngineAction::Recreate { id, spec, pull, .. } => {
             for target in &model.targets {
                 match target {
-                    Subject::Container(id) => {
-                        launch_recreate_latest(state, actions, id, &mut out);
+                    Subject::Container(target_id) if target_id == id => {
+                        launch_recreate(state, actions, target_id, spec, *pull, &mut out);
                     }
                     _ => out
                         .refused
-                        .push("Pulling an image cannot run from here yet".to_string()),
+                        .push("This is not the container to recreate".to_string()),
                 }
             }
         }
@@ -577,10 +563,12 @@ pub fn run(
     out
 }
 
-fn launch_recreate_latest(
+fn launch_recreate(
     state: &mut AppState,
     actions: &ActionsService,
     id: &ContainerId,
+    spec: &berth_core::ContainerSpec,
+    pull: bool,
     out: &mut Launched,
 ) {
     let target = state
@@ -594,9 +582,12 @@ fn launch_recreate_latest(
             .push("This container no longer exists".to_string());
         return;
     };
-    let op = crate::services::edit::EditOp::RecreateLatest;
+    let op = crate::services::edit::EditOp::Recreate {
+        spec: Box::new(spec.clone()),
+        pull,
+    };
     let key = PendingKey {
-        subject: Subject::Container(id.clone()),
+        subject: Subject::Container(target.id.clone()),
         action: op.action_id(),
     };
     match actions.edit(state, &target, op) {

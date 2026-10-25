@@ -7,10 +7,10 @@ use std::collections::HashMap;
 use bollard::container::LogOutput;
 use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecOptions, StartExecResults};
 use bollard::models::{
-    ContainerCreateBody, ContainerUpdateBody, EndpointSettings, HostConfig, Ipam, IpamConfig,
-    Mount, MountType, NetworkConnectRequest, NetworkCreateRequest, NetworkDisconnectRequest,
-    NetworkingConfig, PortBinding, PortMap, RestartPolicy as BollardRestart, RestartPolicyNameEnum,
-    VolumeCreateRequest,
+    ContainerCreateBody, ContainerUpdateBody, EndpointSettings, HealthConfig, HostConfig, Ipam,
+    IpamConfig, Mount, MountType, NetworkConnectRequest, NetworkCreateRequest,
+    NetworkDisconnectRequest, NetworkingConfig, PortBinding, PortMap,
+    RestartPolicy as BollardRestart, RestartPolicyNameEnum, VolumeCreateRequest,
 };
 use bollard::query_parameters::{
     CreateContainerOptionsBuilder, CreateImageOptionsBuilder, DataUsageOptions,
@@ -149,7 +149,16 @@ impl BollardEngine {
         // Docker only honours one endpoint at create time reliably; the
         // first network rides in NetworkingConfig, the rest connect here.
         for network in spec.networks.iter().skip(1) {
-            if let Err(e) = self.connect_network(network, &id).await {
+            let config = NetworkConnectRequest {
+                container: id.0.clone(),
+                endpoint_config: Some(endpoint_for(spec, network)),
+            };
+            if let Err(e) = self
+                .docker
+                .connect_network(network, config)
+                .await
+                .map_err(|e| self.err(e))
+            {
                 let _ = self.remove_by_id(&id.0, true).await;
                 return Err(e);
             }
@@ -202,6 +211,12 @@ impl BollardEngine {
             restart: berth_core::RestartPolicy::No,
             limits: berth_core::Limits::default(),
             platform: None,
+            working_dir: None,
+            user: None,
+            healthcheck: None,
+            cap_add: Vec::new(),
+            cap_drop: Vec::new(),
+            network_aliases: std::collections::BTreeMap::new(),
         };
         let id = self.create_from_spec(&spec, false).await?;
         Ok(id.0)
@@ -1189,6 +1204,28 @@ fn proto_name(p: berth_core::Proto) -> &'static str {
     }
 }
 
+/// The endpoint a container gets on `network`: its aliases there (D16).
+fn endpoint_for(spec: &berth_core::ContainerSpec, network: &str) -> EndpointSettings {
+    EndpointSettings {
+        aliases: spec.network_aliases.get(network).cloned(),
+        ..Default::default()
+    }
+}
+
+fn health_config(h: &berth_core::HealthCheck) -> HealthConfig {
+    let nanos = |secs: Option<u64>| {
+        secs.map(|s| i64::try_from(s.saturating_mul(1_000_000_000)).unwrap_or(i64::MAX))
+    };
+    HealthConfig {
+        test: Some(h.test.clone()),
+        interval: nanos(h.interval_s),
+        timeout: nanos(h.timeout_s),
+        retries: h.retries.map(i64::from),
+        start_period: nanos(h.start_period_s),
+        start_interval: None,
+    }
+}
+
 /// Hand-built `HostConfig` + body from a core spec (D40 in the task text:
 /// host_config built by hand, no compose machinery involved).
 fn spec_to_create_body(spec: &berth_core::ContainerSpec) -> ContainerCreateBody {
@@ -1238,13 +1275,16 @@ fn spec_to_create_body(spec: &berth_core::ContainerSpec) -> ContainerCreateBody 
     };
     let networking_config = spec.networks.first().map(|first| NetworkingConfig {
         endpoints_config: Some(
-            [(first.clone(), EndpointSettings::default())]
+            [(first.clone(), endpoint_for(spec, first))]
                 .into_iter()
                 .collect(),
         ),
     });
     ContainerCreateBody {
         image: Some(spec.image.reference.clone()),
+        working_dir: spec.working_dir.clone(),
+        user: spec.user.clone(),
+        healthcheck: spec.healthcheck.as_ref().map(health_config),
         cmd: spec.command.clone(),
         entrypoint: spec.entrypoint.clone(),
         env: Some(spec.env.iter().map(|(k, v)| format!("{k}={v}")).collect()),
@@ -1274,6 +1314,12 @@ fn spec_to_create_body(spec: &berth_core::ContainerSpec) -> ContainerCreateBody 
                 .limits
                 .memory_swap
                 .map(|b| i64::try_from(b.0).unwrap_or(i64::MAX)),
+            cap_add: (!spec.cap_add.is_empty()).then(|| spec.cap_add.clone()),
+            cap_drop: (!spec.cap_drop.is_empty()).then(|| spec.cap_drop.clone()),
+            // The first network is the container's own, as `docker run
+            // --network` makes it: Docker only applies that endpoint's
+            // aliases when the network mode names it.
+            network_mode: spec.networks.first().cloned(),
             ..Default::default()
         }),
         networking_config,
@@ -1549,7 +1595,99 @@ mod tests {
                 memory_swap: None,
             },
             platform: None,
+            working_dir: Some("/srv/app".to_string()),
+            user: Some("1000:1000".to_string()),
+            healthcheck: Some(berth_core::HealthCheck {
+                test: vec!["CMD".to_string(), "true".to_string()],
+                interval_s: Some(30),
+                timeout_s: Some(3),
+                retries: Some(5),
+                start_period_s: Some(10),
+            }),
+            cap_add: vec!["NET_ADMIN".to_string()],
+            cap_drop: vec!["MKNOD".to_string()],
+            network_aliases: [("berthfx-net-unit".to_string(), vec!["svc".to_string()])]
+                .into_iter()
+                .collect(),
         }
+    }
+
+    /// D16: detail (the inspect mapper) to spec to the create body keeps
+    /// every run setting.
+    #[test]
+    fn spec_to_create_body_carries_the_run_settings_from_an_inspect() {
+        let inspect: bollard::models::ContainerInspectResponse =
+            serde_json::from_value(serde_json::json!({
+                "Id": "0123456789abcdef0123456789abcdef",
+                "Name": "/web",
+                "State": { "Status": "running" },
+                "Config": {
+                    "Image": "nginx:alpine",
+                    "User": "1000:1000",
+                    "WorkingDir": "/srv/app",
+                    "Cmd": ["nginx", "-g", "daemon off;"],
+                    "Env": ["A=1"],
+                    "Healthcheck": {
+                        "Test": ["CMD", "curl", "-f", "http://localhost"],
+                        "Interval": 30_000_000_000_i64,
+                        "Timeout": 3_000_000_000_i64,
+                        "Retries": 5,
+                        "StartPeriod": 10_000_000_000_i64
+                    }
+                },
+                "HostConfig": {
+                    "CapAdd": ["NET_ADMIN"],
+                    "CapDrop": ["MKNOD"],
+                    "RestartPolicy": { "Name": "unless-stopped" }
+                },
+                "NetworkSettings": { "Networks": {
+                    "shop_default": { "Aliases": ["web", "0123456789ab"] }
+                } }
+            }))
+            .expect("an inspect response");
+        let detail = crate::mappers::detail(&berth_core::EngineId("e".to_string()), &inspect);
+        let spec = berth_core::ContainerSpec::from_detail(&detail);
+        let body = spec_to_create_body(&spec);
+        assert_eq!(body.user.as_deref(), Some("1000:1000"));
+        assert_eq!(body.working_dir.as_deref(), Some("/srv/app"));
+        let health = body.healthcheck.expect("healthcheck");
+        assert_eq!(
+            health.test,
+            Some(vec![
+                "CMD".to_string(),
+                "curl".to_string(),
+                "-f".to_string(),
+                "http://localhost".to_string()
+            ])
+        );
+        assert_eq!(health.interval, Some(30_000_000_000));
+        assert_eq!(health.timeout, Some(3_000_000_000));
+        assert_eq!(health.retries, Some(5));
+        assert_eq!(health.start_period, Some(10_000_000_000));
+        let host = body.host_config.expect("host config");
+        assert_eq!(host.cap_add, Some(vec!["NET_ADMIN".to_string()]));
+        assert_eq!(host.cap_drop, Some(vec!["MKNOD".to_string()]));
+        // The first network is the container's network mode, or Docker
+        // would ignore its aliases.
+        assert_eq!(host.network_mode.as_deref(), Some("shop_default"));
+        // The aliases ride on the first network's endpoint; the container's
+        // own short id (Docker adds it) does not.
+        let endpoints = body
+            .networking_config
+            .expect("networking")
+            .endpoints_config
+            .expect("endpoints");
+        assert_eq!(
+            endpoints
+                .get("shop_default")
+                .and_then(|e| e.aliases.clone()),
+            Some(vec!["web".to_string()])
+        );
+        assert_eq!(
+            endpoint_for(&spec, "other").aliases,
+            None,
+            "a network without aliases gets none"
+        );
     }
 
     #[test]

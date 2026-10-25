@@ -13,149 +13,33 @@ use std::net::IpAddr;
 use bytesize::ByteSize;
 
 use berth_core::{
-    needs_recreate, spec_diff, ContainerDetail, ContainerSpec, ImageRef, Limits, Mount, MountKind,
-    PortMapping, Proto, RestartPolicy,
+    needs_recreate, spec_diff, ContainerSpec, ImageRef, Limits, Mount, MountKind, PortMapping,
+    Proto, RestartPolicy,
 };
 
 // ---------------------------------------------------------------------
-// Spec from a detail
+// Compose and what a recreate cannot carry (D16, D17)
 // ---------------------------------------------------------------------
 
-/// The published ports of a container: the configured `HostConfig`
-/// bindings of the raw inspect when it has them (a stopped container has
-/// no live ones), else the live ports that have a host side. Exposed-only
-/// ports are left out: an empty binding in a create request would publish
-/// them on a random host port.
+/// The label Compose puts on every container it manages.
+pub const COMPOSE_PROJECT_LABEL: &str = "com.docker.compose.project";
+
+/// Is this container managed by Compose (D17)?
 #[must_use]
-pub fn published_ports(detail: &ContainerDetail) -> Vec<PortMapping> {
-    let configured = detail
-        .inspect
-        .pointer("/HostConfig/PortBindings")
-        .and_then(serde_json::Value::as_object);
-    let Some(configured) = configured else {
-        return detail
-            .container
-            .ports
-            .iter()
-            .filter(|p| p.host_port.is_some())
-            .cloned()
-            .collect();
-    };
-    let mut out = Vec::new();
-    for (key, bindings) in configured {
-        let (port, proto) = key.split_once('/').unwrap_or((key.as_str(), "tcp"));
-        let Ok(container_port) = port.parse::<u16>() else {
-            continue;
-        };
-        let proto = match proto {
-            "udp" => Proto::Udp,
-            "sctp" => Proto::Sctp,
-            _ => Proto::Tcp,
-        };
-        let Some(bindings) = bindings.as_array() else {
-            continue;
-        };
-        for binding in bindings {
-            let text = |name: &str| {
-                binding
-                    .get(name)
-                    .and_then(serde_json::Value::as_str)
-                    .filter(|s| !s.is_empty())
-            };
-            out.push(PortMapping {
-                host_ip: text("HostIp").and_then(|ip| ip.parse().ok()),
-                host_port: text("HostPort").and_then(|p| p.parse().ok()),
-                container_port,
-                proto,
-            });
-        }
-    }
-    out
+pub fn is_compose_managed(spec: &ContainerSpec) -> bool {
+    spec.labels.contains_key(COMPOSE_PROJECT_LABEL)
 }
 
-/// What Edit and recreate starts from. The command and entrypoint are the
-/// container's own (the image's defaults included), so a recreate keeps
-/// what runs.
-#[must_use]
-pub fn spec_from_detail(detail: &ContainerDetail) -> ContainerSpec {
-    let c = &detail.container;
-    let non_empty = |v: &Option<Vec<String>>| v.clone().filter(|v| !v.is_empty());
-    let platform = match &c.platform {
-        Some(arch @ (berth_core::Arch::Aarch64 | berth_core::Arch::X86_64)) => {
-            Some(format!("linux/{}", arch.docker_name()))
-        }
-        _ => None,
-    };
-    ContainerSpec {
-        name: c.name.clone(),
-        image: c.image.clone(),
-        command: non_empty(&detail.cmd),
-        entrypoint: non_empty(&detail.entrypoint),
-        env: detail
-            .env
-            .iter()
-            .map(|var| (var.key.clone(), var.value.clone()))
-            .collect(),
-        ports: published_ports(detail),
-        mounts: c.mounts.clone(),
-        networks: c.networks.clone(),
-        labels: c.labels.clone(),
-        restart: detail.restart,
-        limits: detail.limits.clone(),
-        platform,
-    }
-}
+/// Why a Compose-managed container is not recreated here.
+pub const COMPOSE_REASON: &str = "Compose would replace a container recreated outside it on the next up, and its service-name alias would be lost.";
 
-/// Settings Docker holds for the container that a [`ContainerSpec`] cannot
-/// carry: a recreate drops them. Only what the raw inspect shows as set.
+/// The reason Recreate is disabled for settings the spec cannot carry.
 #[must_use]
-pub fn not_carried(detail: &ContainerDetail) -> Vec<String> {
-    let host = |name: &str| detail.inspect.pointer(&format!("/HostConfig/{name}"));
-    let non_empty_list = |name: &str| {
-        host(name)
-            .and_then(serde_json::Value::as_array)
-            .is_some_and(|a| !a.is_empty())
-    };
-    let non_empty_map = |name: &str| {
-        host(name)
-            .and_then(serde_json::Value::as_object)
-            .is_some_and(|a| !a.is_empty())
-    };
-    let mut out = Vec::new();
-    if host("Privileged").and_then(serde_json::Value::as_bool) == Some(true) {
-        out.push("privileged mode".to_string());
-    }
-    for (name, label) in [
-        ("CapAdd", "added capabilities"),
-        ("CapDrop", "dropped capabilities"),
-        ("Devices", "devices"),
-        ("ExtraHosts", "extra hosts"),
-        ("Ulimits", "ulimits"),
-        ("SecurityOpt", "security options"),
-        ("Dns", "DNS servers"),
-    ] {
-        if non_empty_list(name) {
-            out.push(label.to_string());
-        }
-    }
-    for (name, label) in [("Tmpfs", "tmpfs mounts"), ("Sysctls", "sysctls")] {
-        if non_empty_map(name) {
-            out.push(label.to_string());
-        }
-    }
-    out
-}
-
-/// True when the container sets a working directory, user or health check
-/// of its own, which the new container takes from the image instead.
-#[must_use]
-pub fn takes_from_image(detail: &ContainerDetail) -> bool {
-    let has_healthcheck = detail
-        .inspect
-        .pointer("/Config/Healthcheck/Test")
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|t| !t.is_empty());
-    detail.working_dir.is_some() || detail.user.is_some() || has_healthcheck
+pub fn uncarried_reason(names: &[String]) -> String {
+    format!(
+        "A recreate would drop this container's {}. Berth cannot carry them yet.",
+        names.join(", ")
+    )
 }
 
 // ---------------------------------------------------------------------
@@ -946,6 +830,62 @@ pub fn offer(old: &ContainerSpec, new: &ContainerSpec) -> Offer {
     } else {
         Offer::ApplyLimits
     }
+}
+
+/// Why Recreate is not offered even though the change needs one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Block {
+    /// A Compose-managed container is never recreated outside Compose (D17).
+    Compose,
+    /// Settings the spec cannot carry would be dropped (D16 backstop).
+    Uncarried(Vec<String>),
+}
+
+impl Block {
+    #[must_use]
+    pub fn reason(&self) -> String {
+        match self {
+            Self::Compose => format!("Compose manages this container. {COMPOSE_REASON}"),
+            Self::Uncarried(names) => uncarried_reason(names),
+        }
+    }
+}
+
+/// What stops a recreate of this container, if anything. Compose first:
+/// it never recreates, whatever else holds.
+#[must_use]
+pub fn recreate_block(base: &ContainerSpec, uncarried: &[String]) -> Option<Block> {
+    if is_compose_managed(base) {
+        Some(Block::Compose)
+    } else if uncarried.is_empty() {
+        None
+    } else {
+        Some(Block::Uncarried(uncarried.to_vec()))
+    }
+}
+
+/// The limits and restart policy in words, memory in binary units
+/// labelled MB (D19): "CPUs 0.5 · Memory 256 MB · Restart unless-stopped".
+#[must_use]
+pub fn limits_summary(spec: &ContainerSpec) -> String {
+    let none = || "no limit".to_string();
+    let cpus = spec.limits.cpus.map_or_else(none, |c| format!("{c}"));
+    let memory = spec
+        .limits
+        .memory
+        .map_or_else(none, berth_core::fmt::memory);
+    let swap = spec
+        .limits
+        .memory_swap
+        .map_or_else(none, berth_core::fmt::memory);
+    let restart = match spec.restart {
+        RestartPolicy::No => "no".to_string(),
+        RestartPolicy::Always => "always".to_string(),
+        RestartPolicy::UnlessStopped => "unless-stopped".to_string(),
+        RestartPolicy::OnFailure { max_retries: 0 } => "on-failure".to_string(),
+        RestartPolicy::OnFailure { max_retries } => format!("on-failure:{max_retries}"),
+    };
+    format!("CPUs {cpus} · Memory {memory} · Memory plus swap {swap} · Restart {restart}")
 }
 
 /// One line of the diff the sheet shows.

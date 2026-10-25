@@ -537,7 +537,9 @@ fn inspector_stats_tab_mounts_the_stats_panel() {
 
 #[test]
 fn inspector_header_menu_works_for_the_edit_items_and_defers_save_as_image() {
-    let menu = header_menu();
+    let mut loose = container("shop-api-worker-1");
+    loose.labels.clear();
+    let menu = header_menu(&loose);
     let by_id = |id: &str| menu.iter().find(|e| e.id == id).expect(id).clone();
     for id in ["edit", "duplicate", "recreate", "rename", "copy-id"] {
         assert!(by_id(id).disabled_reason.is_none(), "{id} works");
@@ -545,6 +547,25 @@ fn inspector_header_menu_works_for_the_edit_items_and_defers_save_as_image() {
     assert_eq!(by_id("edit").kbd_letter.as_deref(), Some("E"));
     let reason = by_id("save-image").disabled_reason.expect("disabled");
     assert!(reason.starts_with("Built in P"), "{reason}");
+}
+
+#[test]
+fn inspector_header_menu_never_offers_recreate_for_a_compose_container() {
+    let worker = container("shop-api-worker-1");
+    assert!(worker.labels.contains_key("com.docker.compose.project"));
+    let menu = header_menu(&worker);
+    let recreate = menu.iter().find(|e| e.id == "recreate").expect("recreate");
+    assert_eq!(
+        recreate.disabled_reason.as_deref(),
+        Some("Managed by Compose")
+    );
+    // Edit still opens the sheet, which offers Apply limits.
+    assert!(menu
+        .iter()
+        .find(|e| e.id == "edit")
+        .expect("edit")
+        .disabled_reason
+        .is_none());
 }
 
 #[test]

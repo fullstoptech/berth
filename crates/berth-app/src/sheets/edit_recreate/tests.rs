@@ -9,9 +9,9 @@ use std::collections::BTreeMap;
 
 use super::model::{
     diff_rows, duplicate_name, duplicate_spec, failure_text, format_memory, format_mount,
-    format_port, join_command, not_carried, offer, parse_memory, parse_mount, parse_port,
-    published_ports, removes_a_limit, rename_problem, spec_from_detail, split_command,
-    takes_from_image, Draft, Field, Offer,
+    format_port, is_compose_managed, join_command, limits_summary, offer, parse_memory,
+    parse_mount, parse_port, recreate_block, removes_a_limit, rename_problem, split_command, Block,
+    Draft, Field, Offer,
 };
 use super::*;
 use crate::services::detail::{mask_inspect, provide_detail_store, Loaded};
@@ -38,10 +38,27 @@ fn container(name: &str) -> Container {
 }
 
 fn loaded_of(c: &Container) -> Loaded {
+    loaded_with(c, None)
+}
+
+/// A detail edit for a test (compared as equal, like `Edits`).
+#[derive(Clone, Copy)]
+struct Tweak(fn(&mut berth_core::ContainerDetail));
+
+impl PartialEq for Tweak {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+fn loaded_with(c: &Container, tweak: Option<Tweak>) -> Loaded {
     let engine = berth_engine::MockEngine::bundled(&c.engine);
     let mut detail =
         futures::executor::block_on(engine.container(&c.id)).expect("the mock knows it");
     detail.container = c.clone();
+    if let Some(tweak) = tweak {
+        (tweak.0)(&mut detail);
+    }
     let inspect = mask_inspect(detail.inspect.clone());
     Loaded {
         detail,
@@ -50,12 +67,22 @@ fn loaded_of(c: &Container) -> Loaded {
     }
 }
 
+/// A Compose service.
 fn api() -> Container {
     container("shop-api-api-1")
 }
 
+/// The same container with nothing of Compose about it.
+fn loose() -> Container {
+    let mut c = api();
+    c.labels.clear();
+    c.compose_project = None;
+    c.service = None;
+    c
+}
+
 fn api_spec() -> ContainerSpec {
-    spec_from_detail(&loaded_of(&api()).detail)
+    berth_core::ContainerSpec::from_detail(&loaded_of(&api()).detail)
 }
 
 // ---------------------------------------------------------------------
@@ -77,6 +104,7 @@ impl PartialEq for Edits {
 struct Sheet {
     container: Container,
     edits: Option<Edits>,
+    tweak: Option<Tweak>,
     pending: BTreeMap<PendingKey, PendingState>,
 }
 
@@ -85,12 +113,18 @@ impl Sheet {
         Self {
             container: container.clone(),
             edits: None,
+            tweak: None,
             pending: BTreeMap::new(),
         }
     }
 
     fn edited(mut self, edits: fn(&mut Draft)) -> Self {
         self.edits = Some(Edits(edits));
+        self
+    }
+
+    fn detail_tweaked(mut self, tweak: fn(&mut berth_core::ContainerDetail)) -> Self {
+        self.tweak = Some(Tweak(tweak));
         self
     }
 
@@ -122,7 +156,10 @@ fn SheetRoot(sheet: Sheet) -> Element {
             .set(world().containers_for(&seeded.container.engine));
         state.engines.set(world().engines);
         state.pending.set(seeded.pending.clone());
-        store.seed(&seeded.container, loaded_of(&seeded.container));
+        store.seed(
+            &seeded.container,
+            loaded_with(&seeded.container, seeded.tweak),
+        );
     });
     rsx! { EditRecreateSheet { id: sheet.container.id.clone() } }
 }
@@ -169,7 +206,7 @@ fn edit_recreate_sheet_unchanged_offers_nothing_and_says_why() {
 
 #[test]
 fn edit_recreate_sheet_limits_only_change_offers_apply_limits() {
-    let html = render(Sheet::of(&api()).edited(|d| {
+    let html = render(Sheet::of(&loose()).edited(|d| {
         d.memory = "256m".to_string();
         d.restart = RestartKind::Always;
     }));
@@ -183,7 +220,7 @@ fn edit_recreate_sheet_limits_only_change_offers_apply_limits() {
 
 #[test]
 fn edit_recreate_sheet_port_change_offers_recreate_with_the_diff_and_the_loss_warning() {
-    let html = render(Sheet::of(&api()).edited(|d| {
+    let html = render(Sheet::of(&loose()).edited(|d| {
         let id = d.ports[0].0;
         d.set_port(id, "3001:3000");
     }));
@@ -199,9 +236,9 @@ fn edit_recreate_sheet_port_change_offers_recreate_with_the_diff_and_the_loss_wa
 
 #[test]
 fn edit_recreate_sheet_env_values_are_masked_in_the_form_and_the_diff() {
-    let current = loaded_of(&api());
+    let current = loaded_of(&loose());
     let key = current.detail.env[0].key.clone();
-    let html = render(Sheet::of(&api()).edited(|d| {
+    let html = render(Sheet::of(&loose()).edited(|d| {
         let id = d.env[0].id;
         d.set_env_value(id, SECRET);
     }));
@@ -219,7 +256,7 @@ fn edit_recreate_sheet_env_values_are_masked_in_the_form_and_the_diff() {
 
 #[test]
 fn edit_recreate_sheet_failed_recreate_says_the_old_container_was_kept() {
-    let c = api();
+    let c = loose();
     let html = render(
         Sheet::of(&c)
             .edited(|d| d.image = "berthfx/does-not-exist:1".to_string())
@@ -240,7 +277,7 @@ fn edit_recreate_sheet_failed_recreate_says_the_old_container_was_kept() {
 
 #[test]
 fn edit_recreate_sheet_running_recreate_shows_its_label_on_the_button() {
-    let c = api();
+    let c = loose();
     let html = render(
         Sheet::of(&c)
             .edited(|d| d.image = "nginx:alpine".to_string())
@@ -259,20 +296,106 @@ fn edit_recreate_sheet_running_recreate_shows_its_label_on_the_button() {
 fn edit_recreate_sheet_compose_service_offers_to_write_compose_yaml_disabled_until_p5_t3() {
     let html = render(Sheet::of(&api()));
     assert!(html.contains("Write to compose.yaml instead"), "{html}");
-    assert!(html.contains("data-tooltip=\"Built in P5-T3\""), "{html}");
+    assert!(html.contains("Built in P5-T3."), "{html}");
+    assert!(
+        html.contains("Compose would replace a container recreated outside it"),
+        "{html}"
+    );
+    assert!(
+        html.contains("its service-name alias would be lost"),
+        "{html}"
+    );
     assert!(html.contains("shop-api"), "{html}");
     // A loose container has no such offer.
-    let loose = world()
-        .containers
-        .into_iter()
-        .find(|c| c.compose_project.is_none())
-        .expect("a loose container in the mock world");
-    assert!(!render(Sheet::of(&loose)).contains("Write to compose.yaml"));
+    assert!(!render(Sheet::of(&loose())).contains("Write to compose.yaml"));
+}
+
+#[test]
+fn edit_recreate_a_compose_container_never_offers_recreate() {
+    // A port change would need a recreate: the button stays Apply limits,
+    // disabled, with Compose's reason; no loss warning, no Recreate label.
+    let html = render(Sheet::of(&api()).edited(|d| {
+        let id = d.ports[0].0;
+        d.set_port(id, "3001:3000");
+    }));
+    assert!(!html.contains("Recreate container"), "{html}");
+    assert_eq!(primary_label(&html), "Apply limits", "{html}");
+    assert!(html.contains("Compose manages this container."), "{html}");
+    assert!(!html.contains("What a recreate loses"), "{html}");
+    // The diff still shows what was edited.
+    assert!(html.contains("3001"), "{html}");
+    // A limits-only change on the same container applies.
+    let limits = render(Sheet::of(&api()).edited(|d| d.memory = "256m".to_string()));
+    assert_eq!(primary_label(&limits), "Apply limits", "{limits}");
+    assert!(
+        !limits.contains("data-tooltip=\"Compose manages"),
+        "{limits}"
+    );
+    assert!(
+        limits.contains("memory=256 MB"),
+        "256m reads 256 MB: {limits}"
+    );
+    // The pure rule: Compose first, then uncarried settings.
+    let spec = api_spec();
+    assert!(is_compose_managed(&spec));
+    assert_eq!(recreate_block(&spec, &[]), Some(Block::Compose));
+    assert_eq!(
+        recreate_block(&spec, &["devices".to_string()]),
+        Some(Block::Compose)
+    );
+}
+
+#[test]
+fn edit_recreate_uncarried_settings_disable_recreate_with_their_names_as_the_reason() {
+    fn privileged_with_devices(detail: &mut berth_core::ContainerDetail) {
+        detail.inspect = serde_json::json!({
+            "HostConfig": { "Privileged": true, "Devices": [{ "PathOnHost": "/dev/fuse" }] }
+        });
+    }
+    let sheet = Sheet::of(&loose()).detail_tweaked(privileged_with_devices);
+    let html = render(sheet.clone().edited(|d| d.image = "nginx:1.27".to_string()));
+    assert_eq!(primary_label(&html), "Recreate container", "{html}");
+    assert!(html.contains("privileged mode, devices"), "{html}");
+    assert!(
+        html.contains("A recreate would drop this container&#39;s privileged mode, devices")
+            || html.contains("A recreate would drop this container's privileged mode, devices"),
+        "{html}"
+    );
+    assert!(!html.contains("What a recreate loses"), "{html}");
+    // A limits-only change is still fine: nothing is recreated.
+    let live = render(sheet.edited(|d| d.memory = "256m".to_string()));
+    assert_eq!(primary_label(&live), "Apply limits", "{live}");
+    assert!(!live.contains("A recreate would drop"), "{live}");
+    // The pure rule.
+    assert_eq!(
+        recreate_block(&api_spec_loose(), &["devices".to_string()]),
+        Some(Block::Uncarried(vec!["devices".to_string()]))
+    );
+    assert_eq!(recreate_block(&api_spec_loose(), &[]), None);
+}
+
+fn api_spec_loose() -> ContainerSpec {
+    berth_core::ContainerSpec::from_detail(&loaded_of(&loose()).detail)
+}
+
+#[test]
+fn edit_recreate_the_limits_tab_shows_memory_in_binary_units() {
+    fn with_256_mb(detail: &mut berth_core::ContainerDetail) {
+        detail.limits.memory = Some(ByteSize(268_435_456));
+    }
+    let html = render_limits(Sheet::of(&api()).detail_tweaked(with_256_mb));
+    assert!(html.contains("Memory 256 MB"), "{html}");
+    assert!(!html.contains("268 MB"), "{html}");
+    let spec = berth_core::ContainerSpec::from_detail(
+        &loaded_with(&api(), Some(Tweak(with_256_mb))).detail,
+    );
+    assert!(limits_summary(&spec).contains("Memory 256 MB"));
+    assert!(limits_summary(&api_spec()).contains("Memory no limit"));
 }
 
 #[test]
 fn edit_recreate_sheet_a_bad_field_is_marked_and_blocks_the_button() {
-    let html = render(Sheet::of(&api()).edited(|d| d.memory = "lots".to_string()));
+    let html = render(Sheet::of(&loose()).edited(|d| d.memory = "lots".to_string()));
     assert!(html.contains("Write a size such as 256m or 1.5g"), "{html}");
     assert!(
         html.contains("data-tooltip=\"Fix the fields marked in red first\""),
@@ -380,7 +503,7 @@ fn edit_recreate_diff_never_shows_an_env_value() {
 #[test]
 fn edit_recreate_spec_from_detail_carries_what_runs() {
     let loaded = loaded_of(&api());
-    let spec = spec_from_detail(&loaded.detail);
+    let spec = berth_core::ContainerSpec::from_detail(&loaded.detail);
     assert_eq!(spec.name, "shop-api-api-1");
     assert_eq!(spec.image.reference, "shop-api-api:latest");
     assert_eq!(
@@ -412,7 +535,7 @@ fn edit_recreate_published_ports_come_from_the_configured_bindings_and_skip_expo
             "8080/tcp": null,
         } }
     });
-    let ports = published_ports(&detail);
+    let ports = berth_core::published_ports(&detail);
     let text: Vec<String> = ports.iter().map(format_port).collect();
     assert!(text.contains(&"127.0.0.1:56080:80".to_string()), "{text:?}");
     assert!(text.contains(&"5353:53/udp".to_string()), "{text:?}");
@@ -430,38 +553,9 @@ fn edit_recreate_published_ports_come_from_the_configured_bindings_and_skip_expo
         container_port: 9999,
         proto: Proto::Tcp,
     });
-    let ports = published_ports(&live);
+    let ports = berth_core::published_ports(&live);
     assert_eq!(ports.len(), 1);
     assert_eq!(ports[0].container_port, 3000);
-}
-
-#[test]
-fn edit_recreate_not_carried_names_what_a_spec_cannot_hold() {
-    let mut detail = loaded_of(&api()).detail;
-    assert!(not_carried(&detail).is_empty());
-    detail.inspect = serde_json::json!({
-        "HostConfig": {
-            "Privileged": true,
-            "CapAdd": ["NET_ADMIN"],
-            "Devices": [],
-            "ExtraHosts": ["db:10.0.0.2"],
-            "Tmpfs": { "/run": "" },
-        }
-    });
-    let lost = not_carried(&detail);
-    for expected in [
-        "privileged mode",
-        "added capabilities",
-        "extra hosts",
-        "tmpfs mounts",
-    ] {
-        assert!(lost.contains(&expected.to_string()), "{expected}: {lost:?}");
-    }
-    assert!(!lost.contains(&"devices".to_string()), "{lost:?}");
-    assert!(
-        takes_from_image(&detail),
-        "the api container has a working dir"
-    );
 }
 
 // ---------------------------------------------------------------------
@@ -530,6 +624,18 @@ fn rich_spec() -> ContainerSpec {
             memory_swap: Some(ByteSize(512 << 20)),
         },
         platform: Some("linux/arm64".to_string()),
+        working_dir: Some("/srv".to_string()),
+        user: Some("1000".to_string()),
+        healthcheck: Some(berth_core::HealthCheck {
+            test: vec!["CMD".to_string(), "true".to_string()],
+            interval_s: Some(30),
+            timeout_s: None,
+            retries: Some(3),
+            start_period_s: None,
+        }),
+        cap_add: vec!["NET_ADMIN".to_string()],
+        cap_drop: vec!["MKNOD".to_string()],
+        network_aliases: BTreeMap::from([("shop_default".to_string(), vec!["web".to_string()])]),
     }
 }
 
@@ -866,23 +972,28 @@ fn edit_recreate_status_prefers_running_over_failed_and_ignores_other_containers
 fn edit_recreate_primary_button_says_what_it_does_and_why_not() {
     let idle = EditStatus::Idle;
     assert_eq!(
-        primary_button(Offer::ApplyLimits, false, &idle),
+        primary_button(Offer::ApplyLimits, false, &idle, None),
         ("Apply limits".to_string(), None)
     );
     assert_eq!(
-        primary_button(Offer::Recreate, false, &idle),
+        primary_button(Offer::Recreate, false, &idle, None),
         ("Recreate container".to_string(), None)
     );
     assert_eq!(
-        primary_button(Offer::Nothing, false, &idle).1.as_deref(),
+        primary_button(Offer::Nothing, false, &idle, None)
+            .1
+            .as_deref(),
         Some("Nothing has changed")
     );
-    assert!(primary_button(Offer::Recreate, true, &idle).1.is_some());
+    assert!(primary_button(Offer::Recreate, true, &idle, None)
+        .1
+        .is_some());
     assert_eq!(
         primary_button(
             Offer::Recreate,
             false,
-            &EditStatus::Running("Recreating…".to_string())
+            &EditStatus::Running("Recreating…".to_string()),
+            None
         ),
         ("Recreating…".to_string(), None)
     );
@@ -890,28 +1001,47 @@ fn edit_recreate_primary_button_says_what_it_does_and_why_not() {
 
 #[test]
 fn edit_recreate_the_loss_warning_comes_from_the_one_effect_summary() {
-    let c = api();
-    let effect = confirm::recreate_effect(&c, &[], false, &["devices".to_string()], true);
+    let c = loose();
+    let effect = confirm::recreate_effect(&c, &[], false);
     assert_eq!(confirm::button_label(&effect), "Recreate container");
     assert_eq!(confirm::result_label(&effect, 1), "Recreated 1 container");
+    assert_eq!(confirm::recreate_result(), "Recreated 1 container");
     let texts: Vec<&str> = effect.lines.iter().map(|l| l.text.as_str()).collect();
     assert!(texts.iter().any(|t| t.contains("lost")), "{texts:?}");
-    assert!(
-        texts
-            .iter()
-            .any(|t| t.contains("Not carried over: devices")),
-        "{texts:?}"
-    );
-    assert!(
-        texts.iter().any(|t| t.contains("Compose service name")),
-        "{texts:?}"
-    );
     // The latest-image dialog adds the pull.
-    let latest = confirm::recreate_effect(&c, &[], true, &[], false);
+    let latest = confirm::recreate_effect(&c, &[], true);
     assert!(
         latest.lines[0].text.contains("pulled again"),
         "{:?}",
         latest.lines
+    );
+}
+
+#[test]
+fn edit_recreate_the_activity_entry_of_a_recreate_reads_as_a_recreate() {
+    let op = EditOp::Recreate {
+        spec: Box::new(api_spec()),
+        pull: true,
+    };
+    let same = EditOp::Recreate {
+        spec: Box::new(api_spec()),
+        pull: false,
+    };
+    // Edit-and-recreate and recreate with the latest image are one action.
+    assert_eq!(op.action_id(), "container.recreate");
+    assert_eq!(same.action_id(), "container.recreate");
+    let entry = crate::services::activity::entry_for_action(
+        api().engine,
+        op.action_id(),
+        berth_core::Subject::Container(api().id),
+        "web".to_string(),
+        None,
+        berth_core::Outcome::Ok,
+    );
+    assert_eq!(entry.action, "container.recreate");
+    assert_eq!(
+        crate::screens::activity::action_label(&entry.action),
+        "recreate"
     );
 }
 
@@ -931,7 +1061,10 @@ fn LimitsRoot(sheet: Sheet) -> Element {
             .containers
             .set(world().containers_for(&seeded.container.engine));
         state.pending.set(seeded.pending.clone());
-        store.seed(&seeded.container, loaded_of(&seeded.container));
+        store.seed(
+            &seeded.container,
+            loaded_with(&seeded.container, seeded.tweak),
+        );
     });
     rsx! { crate::screens::container_limits::LimitsPanel { container: sheet.container.clone() } }
 }
@@ -966,12 +1099,11 @@ fn edit_recreate_dev_scene_shows_the_sheet_with_a_diff() {
     let html = crate::scenes::render_scene_html("Dev / edit recreate").expect("scene renders");
     for needle in [
         "aria-label=\"Edit and recreate\"",
-        "Edit shop-api-api-1",
+        "Edit pg-scratch",
         "Recreate container",
-        "3001",
-        "values changed (hidden)",
+        "5433",
+        "NEW_VAR=••••",
         "What a recreate loses",
-        "Write to compose.yaml instead",
     ] {
         assert!(html.contains(needle), "{needle}");
     }

@@ -95,7 +95,7 @@ fn limits_of(op: &EditOp) -> Limits {
 fn edit_recreate_a_new_memory_limit_without_swap_gets_twice_the_memory_as_swap() {
     // Docker refuses `-m 256m` on a container without a swap setting
     // ("update the memoryswap at the same time"); live on this engine.
-    let old = crate::sheets::edit_recreate::model::spec_from_detail(
+    let old = berth_core::ContainerSpec::from_detail(
         &futures::executor::block_on(
             berth_engine::MockEngine::bundled(&engine_id()).container(&api().id),
         )
@@ -146,13 +146,14 @@ async fn edit_recreate_a_failed_recreate_reports_the_engine_and_names_no_new_con
     let engine = berth_engine::MockEngine::bundled(&engine_id());
     let c = api();
     let detail = engine.container(&c.id).await.expect("detail");
-    let spec = crate::sheets::edit_recreate::model::spec_from_detail(&detail);
+    let spec = berth_core::ContainerSpec::from_detail(&detail);
     let failed = run_edit(
         &engine,
         &c.id,
         &c.name,
         EditOp::Recreate {
             spec: Box::new(spec),
+            pull: false,
         },
         &CancellationToken::new(),
     )
@@ -180,7 +181,7 @@ async fn edit_recreate_recreate_latest_pulls_before_it_touches_the_container() {
     let spec_engine = berth_engine::MockEngine::bundled(&engine_id());
     let mut detail = spec_engine.container(&c.id).await.expect("detail");
     detail.container.image.reference = reference.to_string();
-    let spec = crate::sheets::edit_recreate::model::spec_from_detail(&detail);
+    let spec = berth_core::ContainerSpec::from_detail(&detail);
     let cancel = CancellationToken::new();
     let result = super::pull(&engine, &spec, &cancel).await;
     assert_eq!(result, Ok(()));
@@ -201,7 +202,13 @@ async fn edit_recreate_a_cancelled_edit_stops_at_once() {
     let c = api();
     let cancel = CancellationToken::new();
     cancel.cancel();
-    let result = run_edit(&engine, &c.id, &c.name, EditOp::RecreateLatest, &cancel).await;
+    let spec =
+        berth_core::ContainerSpec::from_detail(&engine.container(&c.id).await.expect("detail"));
+    let op = EditOp::Recreate {
+        spec: Box::new(spec),
+        pull: true,
+    };
+    let result = run_edit(&engine, &c.id, &c.name, op, &cancel).await;
     assert_eq!(result, Err("cancelled".to_string()));
 }
 
@@ -271,9 +278,22 @@ async fn edit_recreate_service_keeps_a_failed_recreate_as_a_failed_state() {
     dom.in_runtime(|| state.containers.set(vec![c.clone()]));
     let (actions, mut finished) = service();
     let target = ContainerTarget::from(&c);
+    let spec = berth_core::ContainerSpec::from_detail(
+        &futures::executor::block_on(
+            berth_engine::MockEngine::bundled(&engine_id()).container(&c.id),
+        )
+        .expect("detail"),
+    );
     dom.in_runtime(|| {
         actions
-            .edit(&mut state, &target, EditOp::RecreateLatest)
+            .edit(
+                &mut state,
+                &target,
+                EditOp::Recreate {
+                    spec: Box::new(spec),
+                    pull: true,
+                },
+            )
             .expect("accepted")
     });
     let done = tokio::time::timeout(std::time::Duration::from_secs(5), finished.recv())
@@ -284,7 +304,7 @@ async fn edit_recreate_service_keeps_a_failed_recreate_as_a_failed_state() {
     dom.in_runtime(|| apply_finished(&mut state, done));
     let key = PendingKey {
         subject: Subject::Container(c.id.clone()),
-        action: "container.recreate_latest",
+        action: "container.recreate",
     };
     assert!(matches!(
         dom.in_runtime(|| state.pending.peek().get(&key).cloned()),
@@ -336,19 +356,8 @@ fn edit_recreate_the_selection_follows_the_new_container_after_a_recreate() {
 
 #[test]
 fn edit_recreate_every_op_has_its_own_pending_action() {
-    let ids = [
-        memory_limit().action_id(),
-        EditOp::RecreateLatest.action_id(),
-        EditOp::Duplicate.action_id(),
-    ];
-    assert_eq!(
-        ids,
-        [
-            "container.apply_limits",
-            "container.recreate_latest",
-            "container.duplicate"
-        ]
-    );
+    let ids = [memory_limit().action_id(), EditOp::Duplicate.action_id()];
+    assert_eq!(ids, ["container.apply_limits", "container.duplicate"]);
     for id in ids {
         assert_ne!(
             crate::services::actions::pending_label(id),
@@ -410,9 +419,25 @@ async fn edit_recreate_latest_image_dialog_counts_its_one_target_and_starts_the_
     let (dom, mut state) = harness();
     let c = api();
     dom.in_runtime(|| state.containers.set(vec![c.clone()]));
+    let detail = futures::executor::block_on(
+        berth_engine::MockEngine::bundled(&engine_id()).container(&c.id),
+    )
+    .expect("detail");
     let model = dom
-        .in_runtime(|| confirm::recreate_latest_model(&state, &c.id, &[], false))
+        .in_runtime(|| {
+            confirm::recreate_latest_model(
+                &state,
+                &c.id,
+                berth_core::ContainerSpec::from_detail(&detail),
+            )
+        })
         .expect("a dialog for a known container");
+    // One action: pull, then recreate, with the spec in it (D18).
+    assert!(matches!(
+        &model.action,
+        berth_core::EngineAction::Recreate { pull: true, spec, id, .. }
+            if spec.name == c.name && *id == c.id
+    ));
     assert_eq!(model.effect.count as usize, model.targets.len());
     assert_eq!(model.targets, vec![Subject::Container(c.id.clone())]);
     assert_eq!(confirm::button_label(&model.effect), "Recreate container");
@@ -426,7 +451,7 @@ async fn edit_recreate_latest_image_dialog_counts_its_one_target_and_starts_the_
         launched.keys,
         vec![PendingKey {
             subject: Subject::Container(c.id.clone()),
-            action: "container.recreate_latest"
+            action: "container.recreate"
         }]
     );
     let done = tokio::time::timeout(std::time::Duration::from_secs(5), finished.recv())

@@ -94,6 +94,12 @@ fn scratch_spec(host_port: u16, image: &str) -> berth_core::ContainerSpec {
         restart: berth_core::RestartPolicy::No,
         limits: berth_core::Limits::default(),
         platform: None,
+        working_dir: None,
+        user: None,
+        healthcheck: None,
+        cap_add: Vec::new(),
+        cap_drop: Vec::new(),
+        network_aliases: std::collections::BTreeMap::new(),
     }
 }
 

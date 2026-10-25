@@ -19,6 +19,9 @@ pub mod status;
 pub mod template;
 pub mod volume;
 
+#[cfg(test)]
+mod run_settings_tests;
+
 pub use activity::{ActivityEntry, ActivityOrigin, Outcome};
 pub use assistant::{
     AssistantSession, ContextItem, Harness, HarnessTransport, Risk, SessionState, ToolCall,
@@ -26,9 +29,10 @@ pub use assistant::{
 };
 pub use compose::{ComposeCommand, ComposeEvent, ComposeTarget};
 pub use container::{
-    needs_recreate, spec_diff, Container, ContainerAction, ContainerDetail, ContainerSpec,
-    ContainerState, EnvVar, ExecRequest, ExecSession, Health, HealthCheckResult, ImageRef, Limits,
-    LiveStats, Mount, MountKind, PortMapping, Proto, RestartPolicy, SpecChange,
+    needs_recreate, published_ports, spec_diff, Container, ContainerAction, ContainerDetail,
+    ContainerSpec, ContainerState, EnvVar, ExecRequest, ExecSession, Health, HealthCheck,
+    HealthCheckResult, ImageRef, Limits, LiveStats, Mount, MountKind, PortMapping, Proto,
+    RestartPolicy, SpecChange,
 };
 pub use effect::{
     EffectKind, EffectLine, EffectSummary, PruneItem, PruneKind, PrunePlan, PruneReport,

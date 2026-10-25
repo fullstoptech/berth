@@ -44,6 +44,26 @@ pub fn uptime(since: DateTime<Utc>, now: DateTime<Utc>) -> String {
     format!("{n} {unit}")
 }
 
+/// A memory limit in binary units labelled "MB" (D19): `256m` shows as
+/// "256 MB", 1.5 GiB as "1.5 GB". Image and disk sizes use [`bytes`].
+#[must_use]
+#[allow(clippy::cast_precision_loss)]
+pub fn memory(b: ByteSize) -> String {
+    let units = ["B", "KB", "MB", "GB", "TB"];
+    let mut scaled = b.as_u64() as f64;
+    let mut unit = 0_usize;
+    while scaled >= 1024.0 && unit < units.len() - 1 {
+        scaled /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        return format!("{} B", b.as_u64());
+    }
+    let text = format!("{scaled:.1}");
+    let text = text.strip_suffix(".0").unwrap_or(&text);
+    format!("{text} {}", units[unit])
+}
+
 #[must_use]
 pub fn age(at: DateTime<Utc>, now: DateTime<Utc>) -> String {
     let secs = now.signed_duration_since(at).num_seconds().max(0);
@@ -164,6 +184,16 @@ mod tests {
         assert_eq!(middle_truncate("short", 16), "short");
         assert_eq!(middle_truncate("anything", 0), "");
         assert_eq!(middle_truncate("anything", 1), "…");
+    }
+
+    #[test]
+    fn memory_is_binary_units_labelled_mb() {
+        assert_eq!(memory(ByteSize(256 << 20)), "256 MB");
+        assert_eq!(memory(ByteSize(1_610_612_736)), "1.5 GB");
+        assert_eq!(memory(ByteSize(512 << 10)), "512 KB");
+        assert_eq!(memory(ByteSize(100)), "100 B");
+        // Image and disk sizes stay decimal.
+        assert_eq!(bytes(ByteSize(268_435_456)), "268 MB");
     }
 
     #[test]

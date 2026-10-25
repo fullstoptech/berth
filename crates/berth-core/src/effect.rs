@@ -161,6 +161,18 @@ mod tests {
     }
 
     #[test]
+    fn recreate_past_tense_is_recreated() {
+        let mut s = summary();
+        s.verb = "Recreate".to_string();
+        s.noun_one = "container".to_string();
+        s.noun_many = "containers".to_string();
+        s.count = 1;
+        s.bytes = None;
+        assert_eq!(s.button_label(), "Recreate 1 container");
+        assert_eq!(s.result_label(), "Recreated 1 container");
+    }
+
+    #[test]
     fn write_past_tense_is_wrote() {
         let mut s = summary();
         s.verb = "Write".to_string();

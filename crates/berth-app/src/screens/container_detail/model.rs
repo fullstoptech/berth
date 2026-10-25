@@ -301,15 +301,20 @@ fn is_toggle(action: &str) -> bool {
 /// The ⋯ menu: Edit, Duplicate, Recreate with latest image and Rename work
 /// (P3-T7); the later tasks' items stay present and disabled with the task
 /// that enables them (D34: disabled stays visible, with a reason).
+/// A Compose-managed container is never recreated outside Compose (D17).
 #[must_use]
-pub fn header_menu() -> Vec<MenuEntry> {
+pub fn header_menu(c: &Container) -> Vec<MenuEntry> {
     let later = |id: &str, label: &str, task: &str| {
         MenuEntry::new(id, label).disabled(format!("Built in {task}"))
     };
     vec![
         MenuEntry::new("edit", "Edit…").kbd("E"),
         MenuEntry::new("duplicate", "Duplicate"),
-        MenuEntry::new("recreate", "Recreate with latest image"),
+        if c.labels.contains_key("com.docker.compose.project") {
+            MenuEntry::new("recreate", "Recreate with latest image").disabled("Managed by Compose")
+        } else {
+            MenuEntry::new("recreate", "Recreate with latest image")
+        },
         MenuEntry::new("rename", "Rename…"),
         later("save-image", "Save as image…", "P8-T4"),
         MenuEntry::new("copy-id", "Copy container ID")

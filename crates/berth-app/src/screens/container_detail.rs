@@ -234,7 +234,7 @@ pub fn ContainerDetailPanel(id: ContainerId, #[props(default)] initial_tab: Deta
                 id_short: short_id(&c.id.0),
                 id_full: c.id.0.clone(),
                 buttons,
-                menu: header_menu(),
+                menu: header_menu(&c),
                 menu_open: *menu_open.read(),
                 onbutton: move |button: &'static str| {
                     menu_open.set(false);

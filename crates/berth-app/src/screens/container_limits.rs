@@ -13,7 +13,7 @@ use berth_core::Container;
 use crate::services::actions::{dismiss, ActionsService, ContainerTarget, EditOp};
 use crate::services::detail::{DetailEntry, DetailStore};
 use crate::services::Services;
-use crate::sheets::edit_recreate::model::{offer, removes_a_limit, spec_from_detail, Draft, Offer};
+use crate::sheets::edit_recreate::model::{limits_summary, offer, removes_a_limit, Draft, Offer};
 use crate::sheets::edit_recreate::{edit_status, EditStatus, LimitsFields, EDIT_RECREATE_CSS};
 use crate::state::{AppState, Overlay};
 use crate::ui::{Button, ButtonVariant, ControlSize, InlineMessage, InlineTone};
@@ -62,9 +62,9 @@ pub fn LimitsPanel(container: Container) -> Element {
 
     let start_id = id.clone();
     let mut draft = use_signal(move || match store.entries.peek().get(&start_id) {
-        Some(DetailEntry::Ready(loaded)) => {
-            Some(Draft::from_spec(&spec_from_detail(&loaded.detail)))
-        }
+        Some(DetailEntry::Ready(loaded)) => Some(Draft::from_spec(
+            &berth_core::ContainerSpec::from_detail(&loaded.detail),
+        )),
         _ => None,
     });
     let late_id = id.clone();
@@ -73,7 +73,9 @@ pub fn LimitsPanel(container: Container) -> Element {
             return;
         }
         if let Some(DetailEntry::Ready(loaded)) = store.entries.read().get(&late_id) {
-            draft.set(Some(Draft::from_spec(&spec_from_detail(&loaded.detail))));
+            draft.set(Some(Draft::from_spec(
+                &berth_core::ContainerSpec::from_detail(&loaded.detail),
+            )));
         }
     });
 
@@ -113,7 +115,7 @@ pub fn LimitsPanel(container: Container) -> Element {
 
     let content = match (entry, draft.read().clone()) {
         (Some(DetailEntry::Ready(loaded)), Some(current)) => {
-            let base = spec_from_detail(&loaded.detail);
+            let base = berth_core::ContainerSpec::from_detail(&loaded.detail);
             let built = current.to_spec(&base);
             let errors = built.as_ref().err().cloned().unwrap_or_default();
             let (offered, removes) = match &built {
@@ -132,7 +134,9 @@ pub fn LimitsPanel(container: Container) -> Element {
                 EditStatus::Failed { key, message } => Some((key.clone(), message.clone())),
                 _ => None,
             };
+            let now = limits_summary(&base);
             rsx! {
+                p { class: "er-muted lp-now", "Now: {now}" }
                 p { class: "er-muted",
                     "Limits and the restart policy apply at once, without restarting the container."
                 }

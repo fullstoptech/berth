@@ -650,8 +650,8 @@ fn logs_paused(state: &mut AppState) {
 }
 
 /// "Dev / edit recreate" (P3-T7, no frame): the edit and recreate sheet of
-/// the Compose `shop-api-api-1` with a port moved and an env value
-/// replaced, so the diff, the loss warning and the Compose offer show.
+/// the loose `pg-scratch` with a port moved, a variable added
+/// and a memory limit set, so the diff, the loss warning and the Compose offer show.
 fn edit_recreate_sheet(state: &mut AppState) {
     use crate::state::Overlay;
     load_mock_world(state);
@@ -660,7 +660,7 @@ fn edit_recreate_sheet(state: &mut AppState) {
         .containers
         .peek()
         .iter()
-        .find(|c| c.name == "shop-api-api-1")
+        .find(|c| c.name == "pg-scratch")
         .cloned()
     else {
         return;
@@ -671,11 +671,11 @@ fn edit_recreate_sheet(state: &mut AppState) {
     state.overlays.write().push(Overlay::EditRecreate(api.id));
     provide_context(crate::sheets::edit_recreate::DevEditDraft(|draft| {
         if let Some(port) = draft.ports.first().map(|(id, _)| *id) {
-            draft.set_port(port, "3001:3000");
+            draft.set_port(port, "5433:5432");
         }
-        if let Some(env) = draft.env.first().map(|row| row.id) {
-            draft.set_env_value(env, "a-new-value");
-        }
+        let env = draft.add_env();
+        draft.set_env_key(env, "NEW_VAR");
+        draft.set_env_value(env, "a-new-value");
         draft.memory = "256m".to_string();
     }));
 }

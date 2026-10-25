@@ -29,8 +29,8 @@ use crate::ui::{
     Select, SelectOption, TextField,
 };
 use model::{
-    diff_rows, failure_text, not_carried, offer, spec_from_detail, takes_from_image, Draft, Field,
-    FieldError, Offer, RestartKind,
+    diff_rows, failure_text, is_compose_managed, offer, recreate_block, Block, Draft, Field,
+    FieldError, Offer, RestartKind, COMPOSE_REASON,
 };
 
 /// The sheet's CSS, rendered with it (tokens only).
@@ -48,11 +48,7 @@ pub struct DevEditDraft(pub fn(&mut Draft));
 // ---------------------------------------------------------------------
 
 /// The ids of the pending actions the sheet starts.
-const OWN_ACTIONS: [&str; 3] = [
-    "container.recreate",
-    "container.apply_limits",
-    "container.recreate_latest",
-];
+const OWN_ACTIONS: [&str; 2] = ["container.recreate", "container.apply_limits"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EditStatus {
@@ -146,7 +142,8 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
     let start_id = id.clone();
     let mut draft = use_signal(move || {
         ready(store.entries.peek().get(&start_id)).map(|loaded| {
-            let mut draft = Draft::from_spec(&spec_from_detail(&loaded.detail));
+            let mut draft =
+                Draft::from_spec(&berth_core::ContainerSpec::from_detail(&loaded.detail));
             if let Some(dev) = dev {
                 (dev.0)(&mut draft);
             }
@@ -160,7 +157,8 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
         }
         let entries = store.entries.read();
         if let Some(loaded) = ready(entries.get(&late_id)) {
-            let mut fresh = Draft::from_spec(&spec_from_detail(&loaded.detail));
+            let mut fresh =
+                Draft::from_spec(&berth_core::ContainerSpec::from_detail(&loaded.detail));
             if let Some(dev) = dev {
                 (dev.0)(&mut fresh);
             }
@@ -204,28 +202,31 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
 
     let body = match (ready(entry.as_ref()), draft.read().clone(), container()) {
         (Some(loaded), Some(current), Some(c)) => {
-            let base = spec_from_detail(&loaded.detail);
+            let base = berth_core::ContainerSpec::from_detail(&loaded.detail);
             let built = current.to_spec(&base);
             let errors = built.as_ref().err().cloned().unwrap_or_default();
-            let (offered, rows, effect) = match &built {
-                Ok(new) => {
-                    let offered = offer(&base, new);
-                    let effect = (offered == Offer::Recreate).then(|| {
-                        confirm::recreate_effect(
-                            &c,
-                            &state.volumes.peek(),
-                            false,
-                            &not_carried(&loaded.detail),
-                            takes_from_image(&loaded.detail),
-                        )
-                    });
-                    (offered, diff_rows(&base, new), effect)
-                }
-                Err(_) => (Offer::Nothing, Vec::new(), None),
+            let uncarried = berth_core::ContainerSpec::uncarried(&loaded.detail);
+            let (offered, rows) = match &built {
+                Ok(new) => (offer(&base, new), diff_rows(&base, new)),
+                Err(_) => (Offer::Nothing, Vec::new()),
             };
+            // Compose never recreates outside Compose (D17); settings the
+            // spec cannot carry would be dropped (D16).
+            let block = (offered == Offer::Recreate)
+                .then(|| recreate_block(&base, &uncarried))
+                .flatten();
+            let effect = (offered == Offer::Recreate && block.is_none())
+                .then(|| confirm::recreate_effect(&c, &state.volumes.peek(), false));
             let running = matches!(status, EditStatus::Running(_));
-            let (label, reason) = primary_button(offered, built.is_err(), &status);
-            let compose = c.compose_project.clone();
+            let (label, reason) = primary_button(offered, built.is_err(), &status, block.as_ref());
+            let compose = is_compose_managed(&base).then(|| {
+                c.compose_project
+                    .clone()
+                    .or_else(|| base.labels.get(model::COMPOSE_PROJECT_LABEL).cloned())
+                    .unwrap_or_default()
+            });
+            let block_text = block.as_ref().map(Block::reason);
+            let can_recreate = offered == Offer::Recreate && block.is_none();
             let image_changed = current.image.trim() != base.image.reference;
             let target = ContainerTarget::from(&c);
             let click_actions = actions.clone();
@@ -268,6 +269,9 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
                                 "Limits and the restart policy apply to the running container. Nothing is recreated."
                             }
                         }
+                        if let Some(text) = block_text {
+                            InlineMessage { message: text, tone: InlineTone::Warning }
+                        }
                         if let Some(effect) = effect {
                             section { class: "er-card er-loss", "aria-label": "What a recreate loses",
                                 h3 { class: "er-card-title", "Before it runs" }
@@ -287,14 +291,14 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
                         if let Some(project) = compose {
                             section { class: "er-card",
                                 p { class: "er-muted",
-                                    "This container belongs to the Compose project {project}. A change made here is lost the next time Compose recreates it."
+                                    "This container belongs to the Compose project {project}. Only limits and the restart policy can change here; everything else belongs in compose.yaml."
                                 }
                                 Button {
                                     label: "Write to compose.yaml instead".to_string(),
                                     variant: ButtonVariant::Secondary,
                                     size: ControlSize::Sm,
                                     disabled: true,
-                                    disabled_reason: COMPOSE_WRITE_REASON.to_string(),
+                                    disabled_reason: format!("{COMPOSE_WRITE_REASON}. {COMPOSE_REASON}"),
                                 }
                             }
                         }
@@ -342,7 +346,11 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
                                 let op = match offer(&base, &new) {
                                     Offer::Nothing => return,
                                     Offer::ApplyLimits => EditOp::apply_limits(&base, &new),
-                                    Offer::Recreate => EditOp::Recreate { spec: Box::new(new) },
+                                    Offer::Recreate if can_recreate => EditOp::Recreate {
+                                        spec: Box::new(new),
+                                        pull: false,
+                                    },
+                                    Offer::Recreate => return,
                                 };
                                 if let Err(reason) = service.edit(&mut state, &target, op) {
                                     refused.set(Some(reason));
@@ -396,16 +404,21 @@ pub fn primary_button(
     offered: Offer,
     has_errors: bool,
     status: &EditStatus,
+    block: Option<&Block>,
 ) -> (String, Option<String>) {
     if let EditStatus::Running(label) = status {
         return (label.clone(), None);
     }
-    let label = match offered {
-        Offer::ApplyLimits => "Apply limits",
-        Offer::Nothing | Offer::Recreate => "Recreate container",
+    // A Compose container never shows Recreate (D17): the button stays
+    // Apply limits, disabled, and says why.
+    let label = match (offered, block) {
+        (Offer::ApplyLimits, _) | (_, Some(Block::Compose)) => "Apply limits",
+        (Offer::Nothing | Offer::Recreate, _) => "Recreate container",
     };
     let reason = if has_errors {
         Some("Fix the fields marked in red first".to_string())
+    } else if let Some(block) = block {
+        Some(block.reason())
     } else if offered == Offer::Nothing {
         Some("Nothing has changed".to_string())
     } else {
@@ -687,16 +700,22 @@ pub fn menu_click(
             }
         }
         "recreate" => {
-            let (lost, from_image) = match ready(store.entries.peek().get(&container.id)) {
-                Some(loaded) => (
-                    not_carried(&loaded.detail),
-                    takes_from_image(&loaded.detail),
-                ),
-                None => (Vec::new(), false),
+            // Needs the container's detail for the spec the action carries.
+            let loaded = ready(store.entries.peek().get(&container.id)).map(|l| l.detail.clone());
+            let Some(detail) = loaded else {
+                toast_danger(
+                    state,
+                    "Still reading the container. Try again in a moment.".to_string(),
+                );
+                return false;
             };
-            if let Some(model) =
-                confirm::recreate_latest_model(state, &container.id, &lost, from_image)
-            {
+            let spec = berth_core::ContainerSpec::from_detail(&detail);
+            let uncarried = berth_core::ContainerSpec::uncarried(&detail);
+            if let Some(block) = recreate_block(&spec, &uncarried) {
+                toast_danger(state, block.reason());
+                return false;
+            }
+            if let Some(model) = confirm::recreate_latest_model(state, &container.id, spec) {
                 state.overlays.write().push(Overlay::Confirm(model));
             }
         }
