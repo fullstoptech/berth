@@ -214,17 +214,16 @@ volumes:
   - ${VOLUME}:/meili_data
 "#;
 
-const MINIO: &str = r#"
-image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
-command: ["server", "/data", "--console-address", ":9001"]
+const S3: &str = r#"
+image: chrislusf/seaweedfs:4.50
+command: ["server", "-s3", "-dir=/data"]
 ports:
-  - "${PORT}:9000"
-  - "${CONSOLE_PORT}:9001"
+  - "${PORT}:8333"
 environment:
-  MINIO_ROOT_USER: app
-  MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:?set in .env}
+  AWS_ACCESS_KEY_ID: app
+  AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?set in .env}
 healthcheck:
-  test: ["CMD", "mc", "ready", "local"]
+  test: ["CMD", "wget", "--no-verbose", "--spider", "http://127.0.0.1:8333/healthz"]
   interval: 5s
   timeout: 5s
   retries: 10
@@ -367,19 +366,14 @@ pub fn built_in() -> Vec<Template> {
             ],
         },
         Def {
-            id: "minio",
-            name: "MinIO",
+            id: "s3",
+            name: "S3 (SeaweedFS)",
             category: "Storage",
-            description: "S3-compatible storage (pgsty/minio build) with a generated password.",
-            image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
-            service: MINIO,
-            env: &[("MINIO_PASSWORD", "${PASSWORD}")],
-            inputs: vec![
-                port("PORT", "Host port", 9000),
-                port("CONSOLE_PORT", "Console port", 9001),
-                password(),
-                volume("miniodata"),
-            ],
+            description: "S3-compatible storage on SeaweedFS with a generated secret key.",
+            image: "chrislusf/seaweedfs:4.50",
+            service: S3,
+            env: &[("S3_SECRET_KEY", "${PASSWORD}")],
+            inputs: vec![port("PORT", "S3 port", 8333), password(), volume("s3data")],
         },
         Def {
             id: "mailpit",
@@ -683,7 +677,7 @@ mod tests {
                 "valkey",
                 "rabbitmq",
                 "meilisearch",
-                "minio",
+                "s3",
                 "mailpit",
                 "adminer"
             ]

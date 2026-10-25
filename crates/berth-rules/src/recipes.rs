@@ -37,7 +37,7 @@ const BUN_IMAGE: &str = "oven/bun:1-alpine";
 /// What the Generate sheet lets the user change.
 ///
 /// `ports` maps a compose service name to its host port: `app`, `db`, `redis` and so on. A service with a
-/// second published port uses `<service>.<input>` for it (`rabbitmq.management_port`, `minio.console_port`,
+/// second published port uses `<service>.<input>` for it (`rabbitmq.management_port`,
 /// `mailpit.web_port`). A missing entry means the default.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecipeOptions {
@@ -369,7 +369,7 @@ fn template_id(kind: ServiceKind) -> &'static str {
         ServiceKind::Redis => "redis",
         ServiceKind::Rabbitmq => "rabbitmq",
         ServiceKind::Meilisearch => "meilisearch",
-        ServiceKind::Minio => "minio",
+        ServiceKind::Minio => "s3",
         ServiceKind::Mailpit => "mailpit",
     }
 }
@@ -961,9 +961,9 @@ fn app_env_for(
             kv("MEILI_MASTER_KEY", "${MEILI_MASTER_KEY}".into()),
         ],
         (_, ServiceKind::Minio) => vec![
-            kv("S3_ENDPOINT", format!("http://{host}:9000")),
+            kv("S3_ENDPOINT", format!("http://{host}:8333")),
             kv("AWS_ACCESS_KEY_ID", "app".into()),
-            kv("AWS_SECRET_ACCESS_KEY", "${MINIO_PASSWORD}".into()),
+            kv("AWS_SECRET_ACCESS_KEY", "${S3_SECRET_KEY}".into()),
         ],
         (_, ServiceKind::Mailpit) => {
             vec![kv("SMTP_HOST", host.into()), kv("SMTP_PORT", "1025".into())]
@@ -1077,7 +1077,7 @@ mod tests {
         "MARIADB_PASSWORD",
         "MONGO_PASSWORD",
         "RABBITMQ_PASSWORD",
-        "MINIO_PASSWORD",
+        "S3_SECRET_KEY",
         "MEILI_MASTER_KEY",
     ];
 
@@ -1647,7 +1647,6 @@ mod tests {
         assert_eq!(seen.len(), all, "{:?}", o.ports);
         assert_eq!(o.ports.get("rabbitmq.management_port"), Some(&15672));
         assert_eq!(o.ports.get("mailpit.web_port"), Some(&8025));
-        assert_eq!(o.ports.get("minio.console_port"), Some(&9001));
     }
 
     #[test]
