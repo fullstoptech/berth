@@ -276,3 +276,26 @@ fn projects_row_pending_and_failed_actions_show_in_the_model() {
     // A failure does not block a retry.
     assert_eq!(m.restart_reason, None);
 }
+
+#[test]
+fn projects_row_path_shows_home_as_tilde_for_any_home() {
+    let home = std::path::Path::new("/Users/someone");
+    let mock = crate::services::mock_world_in(chrono::Utc::now(), home);
+    let project = mock
+        .projects
+        .iter()
+        .find(|p| p.name == "shop-api")
+        .expect("shop-api");
+    let view = StateView {
+        engines: &mock.engines,
+        containers: &mock.containers,
+        projects: &mock.projects,
+        images: &[],
+        volumes: &[],
+        networks: &[],
+        pending: &std::collections::BTreeMap::new(),
+    };
+    let m = row_model(project, &view, &[], home);
+    assert_eq!(m.path_short, "~/Dev/…/shop-api");
+    assert_eq!(m.path_full, "~/Dev/clients/acme/shop-api");
+}

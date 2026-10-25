@@ -16,16 +16,59 @@ pub fn mock_reference_now() -> chrono::DateTime<chrono::Utc> {
     chrono::DateTime::from_timestamp(1_792_850_550, 0).unwrap_or_default()
 }
 
+/// The home the bundled fixture is written for.
+const MOCK_HOME: &str = "/Users/berth";
+
 /// The bundled mock world with every start time moved by the distance from
 /// [`mock_reference_now`] to `now`, so uptimes read as the frames show them
-/// whenever the mock runs (`BERTH_MOCK=1`, scenes).
+/// whenever the mock runs (`BERTH_MOCK=1`, scenes). Its folders sit under
+/// this Mac's home, so `~/...` paths read the same on any machine.
 pub fn mock_world_at(now: chrono::DateTime<chrono::Utc>) -> berth_engine::MockWorld {
-    let mut world = berth_engine::MockWorld::bundled();
+    mock_world_in(now, &berth_sys::paths::home())
+}
+
+/// [`mock_world_at`] with the home given, so a test can inject one.
+pub fn mock_world_in(
+    now: chrono::DateTime<chrono::Utc>,
+    home: &std::path::Path,
+) -> berth_engine::MockWorld {
+    // JSON-escape the home, then drop the quotes `to_string` adds.
+    let home_json = serde_json::to_string(&home.display().to_string()).unwrap_or_default();
+    let home_json = home_json.trim_matches('"');
+    let json = berth_engine::mock::BUNDLED_JSON.replace(MOCK_HOME, home_json);
+    let mut world = berth_engine::MockWorld::from_json(&json).unwrap_or_default();
     let shift = now - mock_reference_now();
     for container in &mut world.containers {
         container.started = container.started.map(|started| started + shift);
     }
     world
+}
+
+#[cfg(test)]
+mod mock_home_tests {
+    use super::*;
+
+    #[test]
+    fn mock_world_folders_move_under_the_given_home() {
+        let world = mock_world_in(mock_reference_now(), std::path::Path::new("/Users/someone"));
+        let folders: Vec<_> = world
+            .projects
+            .iter()
+            .filter_map(|p| p.folder.as_deref())
+            .collect();
+        // One folder (/srv/landing) is outside any home on purpose.
+        assert!(folders
+            .iter()
+            .any(|f| f.starts_with("/Users/someone/Dev/clients/acme/shop-api")));
+        assert!(
+            folders.iter().all(|f| !f.starts_with("/Users/berth")),
+            "{folders:?}"
+        );
+        assert!(world
+            .pins
+            .iter()
+            .all(|p| p.folder.starts_with("/Users/someone")));
+    }
 }
 
 /// Everything a later service or screen needs from the substrate P2-T1

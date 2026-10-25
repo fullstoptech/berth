@@ -2,6 +2,8 @@
    Colours and sizes come only from tokens.css variables (D4). */
 
 .projects-screen {
+  /* A step taller than the global row, for this screen only. */
+  --projects-row: calc(var(--size-row) + var(--space-4));
   --projects-cols: 162px 138px 72px 98px minmax(140px, 218px) 138px 53px 60px 1fr;
   display: flex;
   flex-direction: column;
@@ -44,10 +46,12 @@
   padding: 0 var(--space-16) var(--space-8);
 }
 
-/* Table */
+/* Table: its box sits on the page gutter (like the header, the cards and
+   the activity list); the cells sit one step inside it. */
 .projects-table {
   display: flex;
   flex-direction: column;
+  margin: 0 var(--space-16);
   border-bottom: 1px solid var(--color-line);
 }
 .projects-head,
@@ -55,7 +59,7 @@
   display: grid;
   grid-template-columns: var(--projects-cols);
   align-items: center;
-  padding: 0 var(--space-16);
+  padding: 0 var(--space-8);
   box-sizing: border-box;
 }
 .projects-head {
@@ -80,7 +84,7 @@
 }
 
 .project-row {
-  height: var(--size-row);
+  height: var(--projects-row);
   font-size: var(--text-body-size);
   color: var(--color-ink);
 }
@@ -150,13 +154,13 @@
 }
 .project-cell-path {
   display: block;
-  line-height: var(--size-row);
+  line-height: var(--projects-row);
   text-overflow: ellipsis;
   color: var(--color-ink);
 }
 .project-cell-engine {
   display: block;
-  line-height: var(--size-row);
+  line-height: var(--projects-row);
   text-overflow: ellipsis;
   color: var(--color-ink);
 }
@@ -225,7 +229,7 @@
   align-items: center;
   gap: var(--space-8);
   height: var(--size-row);
-  padding: 0 var(--space-16) 0 calc(var(--space-16) - 2px);
+  padding: 0 var(--space-8) 0 calc(var(--space-8) - 2px);
   box-sizing: border-box;
   border-left: 2px solid var(--color-danger-dot);
   background: var(--color-danger-subtle);
@@ -235,7 +239,7 @@
 .project-failure {
   display: flex;
   align-items: flex-start;
-  padding: 0 var(--space-16);
+  padding: 0 var(--space-8);
 }
 .project-failure .inline-message {
   flex: 1;
@@ -282,7 +286,7 @@
 
 /* Needs attention */
 .projects-attention {
-  padding: var(--space-16) var(--space-16) 0;
+  padding: var(--space-24) var(--space-16) 0;
 }
 .projects-section-title {
   margin: 0 0 var(--space-6);
@@ -332,7 +336,7 @@
 /* Recent activity: one line per entry; errors and warnings are tinted with a
    bar on the left, the rest are plain (frame "Projects / default / 1440"). */
 .projects-recent {
-  padding: var(--space-12) var(--space-16) 0;
+  padding: var(--space-20) var(--space-16) 0;
 }
 .recent-row {
   display: grid;
