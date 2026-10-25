@@ -1,0 +1,19 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"python-fastapi-uv\"))"
+---
+folder: "<folder>"
+found:
+  - kind: EnvExample
+    path: ".env.example"
+stack:
+  - Python:
+      tool: uv
+      framework: FastAPI
+services_needed:
+  - kind: Postgres
+    reason: from asyncpg in pyproject.toml
+  - kind: Meilisearch
+    reason: from MEILI_MASTER_KEY
+confidence: High
+git_branch: ~

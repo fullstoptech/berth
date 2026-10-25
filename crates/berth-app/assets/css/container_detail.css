@@ -42,7 +42,7 @@
 }
 .ih-more { position: relative; flex: none; }
 .ih-menu { position: absolute; top: 100%; right: 0; z-index: 30; display: flex; flex-direction: column; align-items: flex-end; }
-/* "Dock side" (D22): the two sides as icon buttons, the current one marked. */
+/* "Dock side" (AD22): the two sides as icon buttons, the current one marked. */
 .ih-dock {
   box-sizing: border-box;
   display: flex;
@@ -192,76 +192,8 @@
 .kv-row:hover .kv-copy, .kv-copy:focus-visible { opacity: 1; }
 .kv-copy:hover { color: var(--color-ink); background: var(--color-surface-hover); }
 
-/* ProblemItem, compact */
-.pi {
-  margin: var(--space-16) var(--space-12) 0;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-}
-.pi-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-  width: 100%;
-  box-sizing: border-box;
-  padding: var(--space-12);
-  border: none;
-  background: transparent;
-  color: var(--color-ink);
-  font-family: var(--font-text);
-  font-size: var(--text-body-size);
-  line-height: var(--text-body-line);
-  cursor: pointer;
-  text-align: left;
-}
-.pi-icon { display: inline-flex; color: var(--color-danger-dot); }
-.pi.tone-warning .pi-icon { color: var(--color-warning-dot); }
-.pi.tone-info .pi-icon { color: var(--color-info-dot); }
-.pi-title { flex: 1; min-width: 0; font-weight: var(--text-body-weight); }
-.pi-age { color: var(--color-ink-muted); font-size: var(--text-label-size); }
-.pi-explanation {
-  margin: 0;
-  padding: 0 var(--space-12);
-  color: var(--color-ink-muted);
-  font-size: var(--text-body-size);
-  line-height: var(--text-body-line);
-}
-.pi-evidence {
-  margin: var(--space-8) var(--space-12) 0;
-  padding: var(--space-8);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-sunken);
-  color: var(--color-ink);
-  font-family: var(--font-mono);
-  font-size: var(--text-code-size);
-  line-height: var(--text-code-line);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.pi-fixes {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-8);
-  padding: var(--space-12);
-}
-.pi-fix { display: flex; }
-.pi-fix .btn { flex: 1; justify-content: center; }
-.pi-fix-split .btn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.pi-split {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  width: var(--size-control-md);
-  height: var(--size-control-md);
-  border: 1px solid var(--color-line-strong);
-  border-left: none;
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  background: var(--color-surface);
-  color: var(--color-ink);
-}
-.pi-split:disabled { color: var(--color-ink-disabled); background: var(--color-surface-hover); }
+/* The ProblemItem card inside the inspector (its other rules are in problem_item.css) */
+.cd .pi { margin: var(--space-16) var(--space-12) 0; }
 
 /* Overview extras */
 .cd-section { margin: var(--space-16) var(--space-12) 0; }

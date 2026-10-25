@@ -55,23 +55,37 @@ macro_rules! scene_modules {
 
 scene_modules! {
     activity,
+    add_service,
     clean_up,
     containers,
+    detected,
     dev,
     engines,
     find_images,
+    generate,
     images,
     logs,
     networks,
+    open_folder,
     palette,
+    problems,
+    project_detail,
     projects,
+    review_changes,
+    templates,
     terminal,
     volumes,
 }
 
+#[cfg(test)]
+pub(crate) use add_service::SCENE_PASSWORD;
 pub(crate) use dev::{DevFilesPanel, DevStatsPanel};
 #[cfg(test)]
+pub(crate) use generate::next_detection;
+#[cfg(test)]
 pub(crate) use projects::loose_projects;
+#[cfg(test)]
+pub(crate) use review_changes::{new_app_plan as new_app_pending, NEW_APP_PASSWORD};
 
 /// The bundled mock world as the live app holds it under `BERTH_MOCK=1`:
 /// every engine, container, project and resource list, scoped to the

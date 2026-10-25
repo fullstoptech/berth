@@ -28,7 +28,7 @@ use crate::services::find_images::{
 };
 use crate::services::images::{with_default_tag, ImageStore, PullState};
 use crate::services::Services;
-use crate::state::{AppState, Toast, ToastTone};
+use crate::state::{AddServiceSeed, AppState, Overlay, Toast, ToastTone};
 use crate::ui::progress_bar::{ProgressBar, PROGRESS_BAR_CSS};
 use crate::ui::{
     Banner, BannerTone, Button, ButtonVariant, CellAlign, ControlSize, EmptyState, Icon, IconSize,
@@ -272,6 +272,18 @@ pub fn tag_of_reference(reference: &str) -> String {
 // The screen
 // ---------------------------------------------------------------------
 
+/// "Add to project…": the Add service sheet on this image, with the project still to pick (P5-T9).
+pub fn add_to_project(state: &mut AppState, reference: &str) {
+    state
+        .overlays
+        .write()
+        .push(Overlay::AddService(AddServiceSeed {
+            project: None,
+            template: None,
+            image: Some(reference.to_string()),
+        }));
+}
+
 fn push_toast(state: &mut AppState, text: &str) {
     state.toasts.write().push(Toast {
         id: uuid::Uuid::now_v7(),
@@ -465,6 +477,7 @@ fn Detail(
         .collect();
     let copy_text = command.clone();
     let pull_reference = reference.clone();
+    let add_reference = reference.clone();
     let pull_with = platform_arg.clone();
     rsx! {
         aside { class: "fi-detail", "aria-label": "{hit.name}",
@@ -567,9 +580,7 @@ fn Detail(
                         }
                         Button {
                             label: "Add to project\u{2026}".to_string(),
-                            disabled: true,
-                            disabled_reason: Some("Arrives with Templates".to_string()),
-                            onclick: move |_| push_toast(&mut state, "Add to project arrives with Templates"),
+                            onclick: move |_| add_to_project(&mut state, &add_reference),
                         }
                     }
                     if rate_limited {

@@ -551,7 +551,7 @@ fn inspector_keeps_one_12px_left_edge_and_sets_delete_apart() {
     assert!(rule("\n.cd-tabs .tab {").contains("padding: 0 var(--space-12);"));
     assert!(rule("\n.kv-list {").contains("padding: 0 var(--space-12);"));
     assert!(rule("\n.cd-failure {").contains("padding: var(--space-4) var(--space-12) 0;"));
-    assert!(rule("\n.pi {").contains("margin: var(--space-16) var(--space-12) 0;"));
+    assert!(rule("\n.cd .pi {").contains("margin: var(--space-16) var(--space-12) 0;"));
     // Delete takes a line of its own below the four other buttons.
     assert!(rule("\n.ih-btn-danger {").contains("flex: 0 0 100%;"));
     assert!(rule("\n.ih-buttons {").contains("flex-wrap: wrap;"));
@@ -1081,6 +1081,7 @@ async fn inspector_stop_the_restart_loop_stops_that_container() {
         fix_click(
             &mut state,
             Some(&rig.service),
+            None,
             &format!("stop-loop:{}", worker.id.0),
         );
     });
@@ -1088,7 +1089,7 @@ async fn inspector_stop_the_restart_loop_stops_that_container() {
 }
 
 #[tokio::test]
-async fn inspector_a_problems_run_action_fix_runs_through_the_service() {
+async fn inspector_a_problems_run_action_fix_shows_its_effect_then_runs_through_the_service() {
     let rig = rig();
     let worker = rig.container("shop-api-worker-1");
     let problem = problem_for(&worker, vec![stop_fix(&worker)]);
@@ -1096,7 +1097,18 @@ async fn inspector_a_problems_run_action_fix_runs_through_the_service() {
     rig.dom.in_runtime(|| {
         let mut state = rig.state;
         state.problems.set(vec![problem]);
-        fix_click(&mut state, Some(&rig.service), &fix_id);
+        fix_click(&mut state, Some(&rig.service), None, &fix_id);
+    });
+    // The click asks first, with the fix's own effect; nothing has run.
+    assert!(rig.pending_actions().is_empty());
+    let model = match rig.overlays().as_slice() {
+        [Overlay::Confirm(model)] => model.clone(),
+        other => panic!("one confirm dialog: {other:?}"),
+    };
+    assert_eq!(model.title, "Stop the restart loop?");
+    rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        confirm::run(&mut state, &rig.service, &model, false);
     });
     assert_eq!(rig.pending_actions(), ["container.stop"]);
 }
@@ -1107,7 +1119,12 @@ async fn inspector_go_to_selects_the_dependency() {
     let db = rig.container("shop-api-db-1");
     rig.dom.in_runtime(|| {
         let mut state = rig.state;
-        fix_click(&mut state, Some(&rig.service), &format!("goto:{}", db.id.0));
+        fix_click(
+            &mut state,
+            Some(&rig.service),
+            None,
+            &format!("goto:{}", db.id.0),
+        );
     });
     let selection = rig.dom.in_runtime(|| rig.state.selection.peek().clone());
     assert_eq!(selection, Selection::Containers(vec![db.id]));

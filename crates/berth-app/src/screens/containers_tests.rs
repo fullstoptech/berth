@@ -325,7 +325,7 @@ fn containers_tracks_at(
 
 /// The table's width next to the inspector at `stored` px in a `window` px
 /// wide window at `scale` text, and whether the inspector took room from it
-/// (D21, D24): docked, clamped to keep the main area at 640 px x scale, only
+/// (AD21, AD24): docked, clamped to keep the main area at 640 px x scale, only
 /// from 1200 px up and when 320 px of it fit; else it overlays and the table
 /// has the whole main area.
 fn table_width_with_inspector(window: f32, stored: u32, scale: f32) -> (f32, bool) {
@@ -337,7 +337,7 @@ fn table_width_with_inspector(window: f32, stored: u32, scale: f32) -> (f32, boo
 
 #[test]
 fn containers_table_fits_every_window_inspector_width_and_text_size() {
-    // The D24 sweep: windows 1024 / 1220 / 1440, inspector widths 320 / 360 /
+    // The AD24 sweep: windows 1024 / 1220 / 1440, inspector widths 320 / 360 /
     // 480 / 560, every text size, with and without Engine (all engines). A
     // docked inspector takes Uptime away; an overlay or none leaves it.
     let mut docked_cases = 0;
@@ -370,7 +370,7 @@ fn containers_table_fits_the_main_area_floor_at_every_text_size() {
 
 #[test]
 fn containers_inspector_overlays_at_1440_and_150_percent_and_leaves_the_table_whole() {
-    // Accepted in D24: 1440 - 220 - 960 leaves no room for 320 px.
+    // Accepted in AD24: 1440 - 220 - 960 leaves no room for 320 px.
     let (width, docked) = table_width_with_inspector(1440.0, 360, 1.5);
     assert!(!docked);
     assert_eq!(width, 1220.0);

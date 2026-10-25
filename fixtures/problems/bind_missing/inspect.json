@@ -1,0 +1,17 @@
+{
+  "Id": "1f0e9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a39281706f5e4d3c2b1a0f9e8d7c6",
+  "Name": "/berthfx-broken-badmount-1",
+  "State": {
+    "Status": "created",
+    "Running": false,
+    "OOMKilled": false,
+    "ExitCode": 128,
+    "Error": "invalid mount config for type \"bind\": bind source path does not exist: /nonexistent-berthfx-path"
+  },
+  "HostConfig": { "Memory": 0 },
+  "Config": {
+    "Image": "alpine:3",
+    "Env": ["PATH=••••"],
+    "Labels": { "com.docker.compose.project": "berthfx-broken", "com.docker.compose.service": "badmount" }
+  }
+}

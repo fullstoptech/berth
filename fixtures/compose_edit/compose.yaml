@@ -1,0 +1,43 @@
+# Demo stack for the compose_edit tests.
+# Keep this header.
+name: demo
+
+# shared across services
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+
+x-defaults: &defaults
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  # the app, built from ./Dockerfile
+  web:
+    build: .
+    image: demo-web
+    platform: linux/amd64  # match the Mac
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://app:${DB_PASSWORD}@db:5432/app
+    depends_on:
+      - db
+    logging: *logging
+
+  # Postgres: data lives in the pgdata volume
+  db:
+    image: postgres:17
+    ports:
+      - "5432:5432"  # host port for psql
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  worker:
+    <<: *defaults
+    image: demo-web
+    command: ["node", "worker.js"]
+
+volumes:
+  pgdata:  # database files

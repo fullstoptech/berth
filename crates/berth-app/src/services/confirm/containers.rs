@@ -103,10 +103,10 @@ pub fn kill_effect(container: &Container) -> EffectSummary {
     )
 }
 
-/// What recreating a container does (P3-T7, D18): the loss warning of the
+/// What recreating a container does (P3-T7, AD18): the loss warning of the
 /// edit sheet, the dialog of "Recreate with latest image", the activity
 /// entry and the result all read this one summary. Settings the spec
-/// cannot carry never get here: Recreate is disabled for them (D16).
+/// cannot carry never get here: Recreate is disabled for them (AD16).
 #[must_use]
 pub fn recreate_effect(
     container: &Container,
@@ -237,7 +237,7 @@ pub fn kill_model(state: &AppState, id: &ContainerId) -> Option<ConfirmModel> {
 }
 
 /// The dialog of "Recreate with latest image": one `EngineAction::Recreate`
-/// with `pull: true` (D18). The spec is read when the dialog opens, like
+/// with `pull: true` (AD18). The spec is read when the dialog opens, like
 /// the targets.
 #[must_use]
 pub fn recreate_latest_model(
@@ -384,7 +384,7 @@ pub(super) fn run(ctx: &mut Run<'_>) -> bool {
     true
 }
 
-/// Edit and recreate, and recreate with the latest image (D18).
+/// Edit and recreate, and recreate with the latest image (AD18).
 pub(super) fn run_recreate(ctx: &mut Run<'_>) -> bool {
     let EngineAction::Recreate { id, spec, pull, .. } = &ctx.model.action else {
         return false;

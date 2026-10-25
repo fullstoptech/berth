@@ -221,7 +221,7 @@ pub fn delete_reason(row: &ImageRow) -> Option<String> {
     }
 }
 
-/// Ask first, then delete: opens the confirm dialog of one image (D25a,
+/// Ask first, then delete: opens the confirm dialog of one image (AD25a,
 /// `confirm::delete_image_model`). Nothing happens for an image the store no
 /// longer lists, one that something uses, or while another overlay is open.
 pub fn open_delete(state: &mut AppState, store: &ImageStore, engine: &EngineId, image_id: &str) {

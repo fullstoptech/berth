@@ -1,0 +1,206 @@
+/* ColumnBrowser (P5-T4): the Finder-style columns of the Open folder sheet.
+   Colours and sizes come only from tokens.css (D4). Rows are 28 px at the
+   default text size (the component passes the scaled height inline). */
+
+.cb {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.cb-col {
+  display: flex;
+  flex: 0 0 calc(200px * var(--text-scale, 1));
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  border-right: 1px solid var(--color-line);
+}
+.cb-list {
+  flex: 1;
+  padding-top: var(--space-2);
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+.cb-spacer {
+  flex: none;
+}
+.cb-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  box-sizing: border-box;
+  padding: 0 var(--space-8) 0 var(--space-12);
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  cursor: default;
+  user-select: none;
+}
+.cb-row:hover {
+  background: var(--color-surface-hover);
+}
+.cb-row-selected {
+  background: var(--color-surface-pressed);
+}
+.cb-row-selected.cb-row-focus {
+  background: var(--color-selection);
+}
+.cb-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-ink-muted);
+}
+.cb-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-meta {
+  flex: none;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cb-meta-marker,
+.cb-meta-known {
+  color: var(--color-ink);
+}
+.cb-chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-icon-md);
+  height: var(--size-icon-md);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+.cb-chevron:hover {
+  color: var(--color-ink);
+}
+
+/* Loading, empty, failed columns */
+.cb-note {
+  margin: 0;
+  padding: var(--space-12);
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.cb-skeleton {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) 0;
+}
+.cb-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  height: calc(28px * var(--text-scale, 1));
+  padding: 0 var(--space-12);
+}
+.cb-skeleton-box {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-pressed);
+}
+.cb-skeleton-icon {
+  flex: none;
+  width: var(--size-icon-sm);
+  height: var(--size-icon-sm);
+}
+.cb-skeleton-bar {
+  height: var(--space-8);
+}
+.cb-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A folder that cannot be read */
+.cb-failure {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: calc(var(--space-48) + var(--space-24)) var(--space-24) var(--space-24);
+  text-align: center;
+}
+.cb-failure-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: content-box;
+  width: var(--size-control-lg);
+  height: var(--size-control-lg);
+  margin-bottom: var(--space-8);
+  padding: var(--space-8);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-hover);
+  color: var(--color-ink-muted);
+}
+.cb-failure-title {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-h2-size);
+  line-height: var(--text-h2-line);
+  font-weight: var(--text-body-weight);
+  color: var(--color-ink);
+}
+.cb-failure-body p {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.cb-failure-actions {
+  display: flex;
+  gap: var(--space-8);
+  margin-top: var(--space-4);
+}
+.cb-failure-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-16);
+  padding: var(--space-4) var(--space-8);
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.cb-failure-link:hover {
+  background: var(--color-surface-hover);
+}
+.cb-failure-hint {
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.cb-chevron:focus-visible,
+.cb-failure-link:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}

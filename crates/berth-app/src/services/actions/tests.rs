@@ -298,6 +298,14 @@ impl berth_engine::ComposeRunner for FailingCompose {
     ) -> Result<(), EngineError> {
         Ok(())
     }
+    async fn validate_text(
+        &self,
+        _folder: &std::path::Path,
+        _compose_text: &str,
+        _env: &[(String, String)],
+    ) -> Result<(), EngineError> {
+        Ok(())
+    }
 }
 
 fn engine_id() -> berth_core::EngineId {
@@ -901,6 +909,114 @@ async fn actions_project_failure_shows_the_compose_error() {
             reason: "port 5432 is already allocated".to_string()
         }
     );
+}
+
+/// A compose runner that fails as long as `failing` is set and then succeeds.
+struct FlakyCompose {
+    failing: std::sync::atomic::AtomicBool,
+}
+
+#[async_trait::async_trait]
+impl berth_engine::ComposeRunner for FlakyCompose {
+    fn run(
+        &self,
+        _target: &berth_core::ComposeTarget,
+        _cmd: berth_core::ComposeCommand,
+        _cancel: CancellationToken,
+    ) -> Bs<berth_core::ComposeEvent> {
+        if self.failing.load(std::sync::atomic::Ordering::SeqCst) {
+            futures::stream::iter([
+                Ok(berth_core::ComposeEvent::Line {
+                    stream: berth_core::Stream::Stderr,
+                    text: "port 5432 is already allocated".to_string(),
+                }),
+                Ok(berth_core::ComposeEvent::Progress {
+                    id: "Container shop-api-db-1".to_string(),
+                    status: "Error".to_string(),
+                    text: Some("Ports are not available".to_string()),
+                }),
+                Ok(berth_core::ComposeEvent::Done { code: 1 }),
+            ])
+            .boxed()
+        } else {
+            futures::stream::iter([Ok(berth_core::ComposeEvent::Done { code: 0 })]).boxed()
+        }
+    }
+    async fn config(
+        &self,
+        _target: &berth_core::ComposeTarget,
+    ) -> Result<serde_json::Value, EngineError> {
+        Ok(serde_json::json!({}))
+    }
+    async fn validate(
+        &self,
+        _folder: &std::path::Path,
+        _files: &[std::path::PathBuf],
+    ) -> Result<(), EngineError> {
+        Ok(())
+    }
+    async fn validate_text(
+        &self,
+        _folder: &std::path::Path,
+        _compose_text: &str,
+        _env: &[(String, String)],
+    ) -> Result<(), EngineError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn actions_compose_failure_lines_are_kept_per_project_until_the_next_success() {
+    let mut rig = Rig::new(Mode::Normal);
+    let flaky = Arc::new(FlakyCompose {
+        failing: std::sync::atomic::AtomicBool::new(true),
+    });
+    let (service, rx) = ActionsService::new(
+        Arc::clone(&rig.service.inner.clients),
+        Arc::clone(&rig.store),
+        Arc::clone(&flaky) as Arc<dyn berth_engine::ComposeRunner>,
+        Arc::clone(&rig.colima) as Arc<dyn berth_engine::ColimaControl>,
+        CancellationToken::new(),
+    );
+    rig.rx = rx;
+    rig.service = service.clone();
+    let shop = rig.project("shop-api");
+    let other = rig.project("analytics");
+    let mut state = rig.state;
+    assert!(service.compose_failure_lines(&shop.id).is_empty());
+
+    rig.dom
+        .in_runtime(|| service.project(&mut state, &shop, ProjectOp::Start))
+        .expect("accepted");
+    rig.settle_one().await;
+    assert_eq!(
+        service.compose_failure_lines(&shop.id),
+        [
+            "port 5432 is already allocated",
+            "Container shop-api-db-1: Ports are not available"
+        ]
+    );
+    assert!(
+        service.compose_failure_lines(&other.id).is_empty(),
+        "another project has no failure"
+    );
+
+    // A failed second attempt replaces the lines rather than adding to them.
+    rig.dom
+        .in_runtime(|| service.project(&mut state, &shop, ProjectOp::Start))
+        .expect("accepted after the failure was shown");
+    rig.settle_one().await;
+    assert_eq!(service.compose_failure_lines(&shop.id).len(), 2);
+
+    // A success clears them.
+    flaky
+        .failing
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    rig.dom
+        .in_runtime(|| service.project(&mut state, &shop, ProjectOp::Start))
+        .expect("accepted");
+    rig.settle_one().await;
+    assert!(service.compose_failure_lines(&shop.id).is_empty());
 }
 
 #[tokio::test]

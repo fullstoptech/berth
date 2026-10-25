@@ -18,9 +18,15 @@ pub const DEFS: &[ActionDef] = &[
     ),
 ];
 
-const HANDLERS: &[(&str, Handler)] = &[("overlay.close", |state, _| {
-    state.overlays.write().pop();
-})];
+const HANDLERS: &[(&str, Handler)] = &[
+    ("overlay.close", |state, _| {
+        state.overlays.write().pop();
+    }),
+    (
+        "folders.toggle_hidden",
+        crate::sheets::open_folder::toggle_hidden,
+    ),
+];
 
 const CHORDS: &[Chord] = &[
     // ⌘⇧. only means something in the folder browser.

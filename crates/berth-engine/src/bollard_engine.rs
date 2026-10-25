@@ -108,7 +108,7 @@ impl BollardEngine {
         }
     }
 
-    /// The client with the request timeout of `kind` (D29). The default
+    /// The client with the request timeout of `kind` (AD29). The default
     /// client carries [`LIST_INSPECT`].
     fn docker_for(&self, kind: CallKind) -> bollard::Docker {
         self.docker.clone().with_timeout(kind.for_bollard())
@@ -192,7 +192,7 @@ impl BollardEngine {
     /// a missing helper image is a Docker error naming it.
     ///
     /// The returned guard removes the container when it is dropped, so a
-    /// cancelled or dropped operation leaves nothing behind (D28).
+    /// cancelled or dropped operation leaves nothing behind (AD28).
     async fn helper_container(
         &self,
         volume: &str,
@@ -239,7 +239,7 @@ impl BollardEngine {
 
 const HELPER_IMAGE: &str = "alpine:3";
 const HELPER_MOUNT: &str = "/__berth_vol";
-/// The label every helper container carries (D28). Fixtures use
+/// The label every helper container carries (AD28). Fixtures use
 /// `dev.berth.fixture`; a helper never does, so test cleanup cannot mistake
 /// one for the other.
 const HELPER_LABEL: &str = "dev.berth.helper";
@@ -293,7 +293,7 @@ fn helper_create_body(spec: &berth_core::ContainerSpec) -> ContainerCreateBody {
 
 /// Owns one helper container. [`HelperGuard::remove`] removes it and waits;
 /// dropping the guard without that (a cancelled stream, a dropped future, a
-/// panic) force-removes it from a spawned task (D28).
+/// panic) force-removes it from a spawned task (AD28).
 struct HelperGuard {
     docker: bollard::Docker,
     id: Option<String>,
@@ -518,7 +518,7 @@ impl EngineClient for BollardEngine {
     async fn volume_sizes(
         &self,
     ) -> Result<std::collections::BTreeMap<String, bytesize::ByteSize>, EngineError> {
-        // `system df` walks every volume, so it has its own budget (D29).
+        // `system df` walks every volume, so it has its own budget (AD29).
         let df = self
             .docker_for(CallKind::DiskUsage)
             .df(None::<DataUsageOptions>)
@@ -1309,7 +1309,7 @@ fn proto_name(p: berth_core::Proto) -> &'static str {
     }
 }
 
-/// The endpoint a container gets on `network`: its aliases there (D16).
+/// The endpoint a container gets on `network`: its aliases there (AD16).
 fn endpoint_for(spec: &berth_core::ContainerSpec, network: &str) -> EndpointSettings {
     EndpointSettings {
         aliases: spec.network_aliases.get(network).cloned(),
@@ -1736,7 +1736,7 @@ mod tests {
         }
     }
 
-    /// D16: detail (the inspect mapper) to spec to the create body keeps
+    /// AD16: detail (the inspect mapper) to spec to the create body keeps
     /// every run setting.
     #[test]
     fn spec_to_create_body_carries_the_run_settings_from_an_inspect() {

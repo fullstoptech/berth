@@ -1,0 +1,27 @@
+{
+  "Id": "3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b",
+  "Name": "/berthfx-broken-unhealthy-1",
+  "State": {
+    "Status": "running",
+    "Running": true,
+    "OOMKilled": false,
+    "ExitCode": 0,
+    "Error": "",
+    "Health": {
+      "Status": "unhealthy",
+      "FailingStreak": 5,
+      "Log": [
+        { "Start": "2026-10-25T09:13:01.100Z", "End": "2026-10-25T09:13:01.130Z", "ExitCode": 1, "Output": "" },
+        { "Start": "2026-10-25T09:13:03.150Z", "End": "2026-10-25T09:13:03.180Z", "ExitCode": 1, "Output": "" },
+        { "Start": "2026-10-25T09:13:05.200Z", "End": "2026-10-25T09:13:05.231Z", "ExitCode": 1, "Output": "connection refused" }
+      ]
+    }
+  },
+  "HostConfig": { "Memory": 0 },
+  "Config": {
+    "Image": "alpine:3",
+    "Healthcheck": { "Test": ["CMD", "false"], "Interval": 2000000000, "Timeout": 2000000000, "Retries": 1 },
+    "Env": ["PATH=••••"],
+    "Labels": { "com.docker.compose.project": "berthfx-broken", "com.docker.compose.service": "unhealthy" }
+  }
+}

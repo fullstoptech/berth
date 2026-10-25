@@ -4,6 +4,7 @@ use crate::assets;
 use crate::platform;
 use crate::scenes;
 use crate::services::actions::ActionsService;
+use crate::services::problems::ProblemsService;
 use crate::services::stats::{use_window_visibility, StatsService};
 use crate::services::{action_runners, activity, engines, Services};
 use crate::state::{theme_script, use_app_state, AppState};
@@ -13,6 +14,7 @@ use crate::ui::{BottomPanel, Inspector, InspectorFrame, Sidebar, StatusBar, Titl
 struct Boot {
     services: Services,
     actions: ActionsService,
+    problems: ProblemsService,
     stats: StatsService,
     /// Brings engines online after Colima starts them; None in a scene.
     link: Option<engines::EngineLink>,
@@ -83,6 +85,13 @@ fn boot_services(mut state: AppState) -> Boot {
         colima,
         cancel.clone(),
     );
+    // The Problems list (P5-T8): rules re-run when the engines, projects or a Compose
+    // failure change. A scene shows the frame's problems and runs no pass.
+    let problems = if scene {
+        ProblemsService::inert()
+    } else {
+        ProblemsService::start(state, services.clone(), actions.clone())
+    };
     // Live stats (D26): streams open only for what is on screen.
     let stats = StatsService::start(clients.clone(), cancel.clone());
     let handle = if scene {
@@ -97,6 +106,7 @@ fn boot_services(mut state: AppState) -> Boot {
     Boot {
         services,
         actions,
+        problems,
         stats,
         link,
         _engines: handle,
@@ -122,6 +132,16 @@ pub fn App() -> Element {
     use_context_provider(|| services);
     let actions = boot.actions.clone();
     use_context_provider(|| actions);
+    let problems = boot.problems.clone();
+    use_context_provider(|| problems.clone());
+    use_effect(move || {
+        // Everything the rules read; the service skips a pass whose inputs did not change.
+        let _ = state.engines.read();
+        let _ = state.containers.read();
+        let _ = state.projects.read();
+        let _ = state.pending.read();
+        problems.nudge();
+    });
     let link = boot.link.clone();
     use_context_provider(|| link);
     let stats = boot.stats.clone();
@@ -141,6 +161,7 @@ pub fn App() -> Element {
         )
     });
     use_context_provider(|| exec);
+    crate::services::menubar::use_menubar(state);
 
     // BERTH_SCENE puts the UI into a frame's state for screenshots (D58).
     use_hook(move || {
@@ -151,6 +172,22 @@ pub fn App() -> Element {
             } else if frame != crate::bridge::dev::FRAME {
                 tracing::warn!(%frame, "unknown BERTH_SCENE frame");
             }
+        }
+        // BERTH_OPEN_GENERATE=<folder> opens the Generate sheet for a folder on a live engine
+        // (the folder browser and drop overlay that normally open it come later in Phase 5).
+        if let Some(folder) = std::env::var_os("BERTH_OPEN_GENERATE") {
+            state
+                .overlays
+                .write()
+                .push(crate::state::Overlay::Generate(folder.into()));
+        }
+        // BERTH_OPEN_DETECTED=<folder> opens the Detected sheet for a folder, as a drop of it would
+        // (for live checks where the Finder drag cannot be scripted).
+        if let Some(folder) = std::env::var_os("BERTH_OPEN_DETECTED") {
+            state
+                .overlays
+                .write()
+                .push(crate::state::Overlay::Detected(folder.into()));
         }
         // BERTH_THEME forces the theme for development shots.
         if let Ok(forced) = std::env::var("BERTH_THEME") {
@@ -271,6 +308,7 @@ pub fn Shell() -> Element {
     let dock = crate::ui::dock::use_dock_view(state);
     let layout = *dock.layout.read();
     // One body, drawn in the right column, as an overlay or at the bottom.
+    let zone = crate::ui::drop_overlay::use_drop_zone(state);
     let hide_stream_tabs = layout.region == Some(RegionMode::Split);
     let pane = crate::routes::InspectorPane {
         pane_px: layout.pane_px,
@@ -295,10 +333,16 @@ pub fn Shell() -> Element {
     } else {
         rsx! {}
     };
+    let (on_enter, on_over, on_leave, on_drop) =
+        (zone.clone(), zone.clone(), zone.clone(), zone.clone());
     rsx! {
         div {
             class: "shell",
             tabindex: "-1",
+            ondragenter: move |e| on_enter.enter(&e),
+            ondragover: move |e| on_over.over(&e),
+            ondragleave: move |_| on_leave.leave(),
+            ondrop: move |e| on_drop.dropped(&e),
             onmounted: move |e| {
                 spawn(async move {
                     let _ = e.set_focus(true).await;
@@ -339,6 +383,7 @@ pub fn Shell() -> Element {
             }
             StatusBar {}
             OverlayStack {}
+            crate::ui::drop_overlay::DropOverlay { hover: zone.hover() }
             crate::ui::ToastStack {}
         }
     }

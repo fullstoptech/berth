@@ -1,0 +1,27 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"node-next-pnpm\"))"
+---
+folder: "<folder>"
+found:
+  - kind:
+      Dockerfile:
+        from: "node:22-alpine"
+    path: Dockerfile
+  - kind:
+      Env:
+        keys: 6
+    path: ".env"
+stack:
+  - Node:
+      pm: pnpm
+      framework: Next.js
+      framework_version: "15"
+      version: "22"
+services_needed:
+  - kind: Postgres
+    reason: from DATABASE_URL
+  - kind: Redis
+    reason: from REDIS_URL
+confidence: High
+git_branch: ~

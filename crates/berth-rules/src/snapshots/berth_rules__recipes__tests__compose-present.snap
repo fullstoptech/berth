@@ -1,0 +1,7 @@
+---
+source: crates/berth-rules/src/recipes.rs
+expression: "view(& plan_of(\"compose-present\", & [5432]))"
+---
+source: Recipe("Dockerfile")
+after_write: None
+note: This folder already has a compose file. Berth did not change it.

@@ -21,7 +21,7 @@ const CHANNEL_DEPTH: usize = 4;
 const DRAIN_STEP: usize = 1024;
 
 /// Most lines in one emitted batch, so that the locked half of a push (`LogView::commit_batch`,
-/// which holds the view lock the UI reads, D23) stays under the 4 ms budget of CLAUDE.md. The
+/// which holds the view lock the UI reads, AD23) stays under the 4 ms budget of CLAUDE.md. The
 /// other half, `PreparedBatch::new`, runs outside the lock and does not count against it.
 /// Derivation: the lock hold is the worst batch, not the mean, and a batch that meets a cold
 /// cache, first-touch memory or a preempted thread takes several times its average. A whole

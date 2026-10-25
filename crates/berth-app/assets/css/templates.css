@@ -1,0 +1,149 @@
+/* Templates screen (P5-T9). No frame exists: the header is Networks', the list is a plain table
+   grouped by category (brief 7.3). Colours and sizes come only from tokens.css. */
+
+.templates-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-bottom: var(--space-24);
+  font-size: var(--text-body-size);
+  container: templates / inline-size;
+}
+
+.tp-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--gutter) var(--space-12);
+  flex: none;
+}
+.tp-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-body-weight);
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.tp-header .badge-count {
+  height: var(--size-control-sm);
+  padding: 0 var(--space-8);
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  border-radius: var(--radius-md);
+}
+.tp-spacer {
+  flex: 1;
+}
+.tp-filter {
+  flex: 0 1 240px;
+  min-width: calc(120px * var(--text-scale, 1));
+}
+
+/* List: the head and every row share one track list; narrow windows drop Description, then
+   Ports and Version. */
+.tp-list {
+  --tp-cols: minmax(calc(120px * var(--text-scale, 1)), 1.2fr) calc(64px * var(--text-scale, 1)) minmax(calc(140px * var(--text-scale, 1)), 2fr) calc(112px * var(--text-scale, 1)) minmax(calc(160px * var(--text-scale, 1)), 3fr) calc(136px * var(--text-scale, 1));
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.tp-head,
+.tp-row {
+  display: grid;
+  grid-template-columns: var(--tp-cols);
+  column-gap: var(--space-12);
+  align-items: center;
+  padding: 0 calc(var(--gutter) - var(--space-8));
+  margin: 0 var(--space-8);
+  box-sizing: border-box;
+}
+.tp-head {
+  height: var(--size-row);
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  white-space: nowrap;
+}
+.tp-row {
+  height: var(--size-row);
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.tp-row:hover {
+  background: var(--color-surface-hover);
+}
+.tp-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tp-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tp-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.tp-muted {
+  color: var(--color-ink-muted);
+}
+.tp-actions {
+  display: flex;
+  justify-content: flex-end;
+  overflow: visible;
+}
+
+.tp-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin: 0;
+  padding: var(--space-16) var(--gutter) var(--space-4);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  font-weight: var(--text-label-weight);
+  color: var(--color-ink-muted);
+}
+.tp-group-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--text-body-weight);
+}
+.tp-custom-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-16) var(--gutter);
+  border-bottom: 1px solid var(--color-line);
+  margin: 0 var(--space-8);
+  padding-left: calc(var(--gutter) - var(--space-8));
+}
+.tp-custom-empty-title {
+  color: var(--color-ink);
+}
+.tp-empty {
+  padding: var(--space-48) var(--gutter);
+}
+
+@container templates (max-width: 900px) {
+  .tp-list {
+    --tp-cols: minmax(calc(120px * var(--text-scale, 1)), 1.2fr) calc(64px * var(--text-scale, 1)) minmax(calc(140px * var(--text-scale, 1)), 2fr) calc(112px * var(--text-scale, 1)) calc(136px * var(--text-scale, 1));
+  }
+  .tp-desc {
+    display: none;
+  }
+}
+@container templates (max-width: 700px) {
+  .tp-list {
+    --tp-cols: minmax(calc(120px * var(--text-scale, 1)), 1.2fr) minmax(calc(140px * var(--text-scale, 1)), 2fr) calc(136px * var(--text-scale, 1));
+  }
+  .tp-version,
+  .tp-ports {
+    display: none;
+  }
+}

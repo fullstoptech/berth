@@ -8,19 +8,27 @@ pub mod colima;
 pub mod compose;
 pub mod confirm;
 pub mod detail;
+pub mod drops;
 pub mod edit;
 pub mod engine_dashboard;
 pub mod engines;
 pub mod exec;
 pub mod files;
 pub mod find_images;
+pub mod folders;
 pub mod group_ops;
 pub mod images;
 pub mod logs;
+pub mod menubar;
 pub mod networks;
+pub mod plans;
+pub mod ports;
+pub mod problems;
+pub mod project_files;
 pub mod prune;
 pub mod search;
 pub mod stats;
+pub mod templates;
 pub mod volume_backup;
 pub mod volumes;
 
@@ -184,6 +192,18 @@ mod lazy {
             Self::resolve(&self.inner)
                 .await
                 .validate(folder, files)
+                .await
+        }
+
+        async fn validate_text(
+            &self,
+            folder: &std::path::Path,
+            compose_text: &str,
+            env: &[(String, String)],
+        ) -> Result<(), EngineError> {
+            Self::resolve(&self.inner)
+                .await
+                .validate_text(folder, compose_text, env)
                 .await
         }
     }

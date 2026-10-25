@@ -123,7 +123,7 @@ pub fn seed_details(state: &AppState, store: crate::services::detail::DetailStor
     }
 }
 
-/// D22 (no frame yet, owner request 2026-10-25): the inspector docked at the
+/// AD22 (no frame yet, owner request 2026-10-25): the inspector docked at the
 /// bottom beside the Terminal panel. The terminal scene with the inspector
 /// shown instead of hidden and `inspector_dock = Bottom`; the region is 360 px
 /// high so both panes have room to read.

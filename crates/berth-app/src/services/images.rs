@@ -3,7 +3,7 @@
 //! buttons. The UI reads the store; this file owns every engine call.
 //!
 //! `AppState::images` is one flat list over all engines and an `Image`
-//! knows its engine (D27). The store keeps its own per-engine lists (one
+//! knows its engine (AD27). The store keeps its own per-engine lists (one
 //! `client.images()` per engine, refreshed whenever the flat list changes)
 //! so the screen can tell an engine that answered from one that did not. Pulls are folded into per-layer
 //! progress ([`PullState`], pure) as Docker streams them.
@@ -549,7 +549,7 @@ impl ImageStore {
 
     /// The image with this id, preferring the one on an engine the scope
     /// names, else the first any engine lists. The image knows its engine
-    /// (`Image::engine`, D27).
+    /// (`Image::engine`, AD27).
     #[must_use]
     pub fn find(&self, image_id: &str, scope: &crate::state::EngineScope) -> Option<Image> {
         let by_engine = self.by_engine.read();

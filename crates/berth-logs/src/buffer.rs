@@ -69,7 +69,7 @@ impl PreparedLine {
 }
 
 /// A batch of lines run through the part of [`LogView::push_batch`](crate::LogView::push_batch)
-/// that needs no view state (D23): ANSI stripping, classification, JSON parsing and the text facts
+/// that needs no view state (AD23): ANSI stripping, classification, JSON parsing and the text facts
 /// for folding. Build it with [`PreparedBatch::new`] outside any lock, then hand it to
 /// [`LogView::commit_batch`](crate::LogView::commit_batch), which does the short remainder: the
 /// fold link to the previous line, sequence numbers, counts, the visible list, the search and
@@ -97,6 +97,13 @@ impl PreparedBatch {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.lines.is_empty()
+    }
+
+    /// The lines carrying the error mark (an error level or an error shape such as
+    /// "Error: connect ECONNREFUSED"), in batch order. The problems service reads them (D35,
+    /// D82): rules never see the whole log.
+    pub fn error_lines(&self) -> impl Iterator<Item = &LogLine> {
+        self.lines.iter().filter(|l| l.error_mark).map(|l| &l.line)
     }
 }
 
@@ -288,6 +295,34 @@ pub(crate) mod tests {
 
     pub(crate) fn out(text: &str) -> LogLine {
         line("c1", Stream::Stdout, text)
+    }
+
+    #[test]
+    fn a_prepared_batch_lists_its_error_marked_lines_in_order() {
+        let batch = PreparedBatch::new(vec![
+            out("INFO listening on 3000"),
+            out("ERROR simulated failure"),
+            line(
+                "c1",
+                Stream::Stderr,
+                "Error: connect ECONNREFUSED 127.0.0.1:5432",
+            ),
+            out("GET /health 200"),
+        ]);
+        let found: Vec<&str> = batch.error_lines().map(|l| l.text.as_str()).collect();
+        assert_eq!(
+            found,
+            [
+                "ERROR simulated failure",
+                "Error: connect ECONNREFUSED 127.0.0.1:5432"
+            ]
+        );
+        assert_eq!(
+            PreparedBatch::new(vec![out("INFO fine")])
+                .error_lines()
+                .count(),
+            0
+        );
     }
 
     #[test]

@@ -1,6 +1,7 @@
 // markers around the PATH the login shell prints (rc files may print banners)
 const BEGIN: &str = "__BERTH_PATH_BEGIN__";
 const END: &str = "__BERTH_PATH_END__";
+const EXACT_VAR: &str = "BERTH_SEARCH_PATH";
 const SHELL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
 #[derive(Debug, Clone)]
@@ -43,7 +44,21 @@ impl SearchPath {
         Self { dirs }
     }
 
+    /// Exactly these directories, in order, with no defaults added (empty and
+    /// repeated entries dropped). A fake path for tests (AD34).
+    pub fn from_dirs(dirs: Vec<std::path::PathBuf>) -> Self {
+        let mut unique = Vec::new();
+        push_unseen(&mut unique, dirs);
+        Self { dirs: unique }
+    }
+
+    /// `PATH` plus the well-known dirs plus `BERTH_EXTRA_PATH`. When
+    /// `BERTH_SEARCH_PATH` is set (colon-separated), exactly those dirs replace
+    /// the whole list, and the login shell adds nothing (AD34).
     pub fn from_process() -> Self {
+        if let Some(exact) = std::env::var_os(EXACT_VAR) {
+            return Self::from_dirs(std::env::split_paths(&exact).collect());
+        }
         Self::from_parts(
             std::env::var_os("PATH").as_deref(),
             &crate::paths::home(),
@@ -52,7 +67,8 @@ impl SearchPath {
     }
 
     pub async fn with_login_shell(self) -> Self {
-        let enabled = std::env::var("BERTH_SHELL_PATH").map_or(true, |v| v != "0");
+        let enabled = std::env::var("BERTH_SHELL_PATH").map_or(true, |v| v != "0")
+            && std::env::var_os(EXACT_VAR).is_none();
         let shell = std::env::var_os("SHELL")
             .filter(|v| !v.is_empty())
             .map_or_else(
@@ -189,6 +205,29 @@ mod tests {
     }
 
     #[test]
+    fn from_dirs_keeps_exactly_the_given_dirs() {
+        let sp = SearchPath::from_dirs(vec!["/b".into(), "/a".into(), "/b".into(), "".into()]);
+        assert_eq!(
+            sp.dirs(),
+            [
+                std::path::PathBuf::from("/b"),
+                std::path::PathBuf::from("/a")
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn from_dirs_finds_only_in_its_dirs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let exe = write_executable(dir.path(), "berth-only-here", "#!/bin/sh\nexit 0\n");
+        let sp = SearchPath::from_dirs(vec![dir.path().to_path_buf()]);
+        assert_eq!(sp.find("berth-only-here"), Some(exe));
+        // `sh` lives in /bin, which this path does not include.
+        assert_eq!(sp.find("sh"), None);
+    }
+
+    #[test]
     fn path_var_joins_dirs_in_order() {
         let sp = SearchPath::from_parts(Some(std::ffi::OsStr::new("/a:/b")), &home(), None);
         assert!(sp.path_var().to_string_lossy().starts_with("/a:/b:"));
@@ -304,5 +343,28 @@ mod tests {
         let after = SearchPath::from_process().with_login_shell().await;
         std::env::remove_var("BERTH_SHELL_PATH");
         assert_eq!(after.dirs(), before.as_slice());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn berth_search_path_replaces_the_default_list_and_skips_the_shell() {
+        // Env-var tests live in one function so they cannot race each other.
+        std::env::set_var("BERTH_SEARCH_PATH", "/only/one:/only/two");
+        let sp = SearchPath::from_process();
+        let after_shell = SearchPath::from_process().with_login_shell().await;
+        std::env::set_var("BERTH_SEARCH_PATH", "");
+        let empty = SearchPath::from_process();
+        std::env::remove_var("BERTH_SEARCH_PATH");
+        let expected = [
+            std::path::PathBuf::from("/only/one"),
+            std::path::PathBuf::from("/only/two"),
+        ];
+        assert_eq!(sp.dirs(), expected);
+        assert_eq!(after_shell.dirs(), expected);
+        assert!(empty.dirs().is_empty(), "{:?}", empty.dirs());
+        // Unset again: the defaults are back.
+        assert!(SearchPath::from_process()
+            .dirs()
+            .contains(&std::path::PathBuf::from("/opt/homebrew/bin")));
     }
 }

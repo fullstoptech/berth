@@ -3,7 +3,7 @@
 //! commit holding the lock for more than 4 ms. The default suite checks the counts (every line
 //! reaches the view, in batches of at most `MAX_BATCH_LINES`, the same content as a synchronous
 //! push); the rates and the lock hold are `perf_throughput`, which `scripts/perf.sh` runs in a
-//! release build (D26). `scripts/perf.sh` prints the numbers.
+//! release build (AD26). `scripts/perf.sh` prints the numbers.
 //!
 //! Two measurements, because one number cannot say both things:
 //! - saturated: the source never waits, so the rate is what the pipeline can do (CPU bound on the
@@ -246,7 +246,7 @@ async fn paced_source_batches_once_per_tick() -> Run {
     run
 }
 
-/// CLAUDE.md: no work over 4 ms on the UI path. D23: what the UI can wait for is the locked
+/// CLAUDE.md: no work over 4 ms on the UI path. AD23: what the UI can wait for is the locked
 /// commit, so that is the time held to the budget (the unlocked prepare is only reported).
 const LOCK_HOLD_BUDGET: Duration = Duration::from_millis(4);
 

@@ -30,7 +30,7 @@ pub fn delete_volume_effect(name: &str, size: Option<bytesize::ByteSize>) -> Eff
 }
 
 /// The delete dialog for a volume: typed name, and `EngineAction::Remove`
-/// of the volume on the engine that has it (D25a). `None` when the volume
+/// of the volume on the engine that has it (AD25a). `None` when the volume
 /// is gone or in use.
 #[must_use]
 pub fn delete_volume_model(state: &AppState, name: &str) -> Option<ConfirmModel> {

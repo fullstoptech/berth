@@ -22,7 +22,7 @@ pub enum EditOp {
         restart: RestartPolicy,
     },
     /// Replace the container by one made from this spec, after pulling its
-    /// image again when `pull` is set ("Recreate with latest image", D18).
+    /// image again when `pull` is set ("Recreate with latest image", AD18).
     Recreate {
         spec: Box<ContainerSpec>,
         pull: bool,

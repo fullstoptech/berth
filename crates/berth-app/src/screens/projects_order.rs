@@ -1,4 +1,4 @@
-//! The Projects table keeps the order it had when the screen opened (D31).
+//! The Projects table keeps the order it had when the screen opened (AD31).
 //! A row that moves under the pointer lets a click land on the wrong
 //! project, so the sort runs once, and the slot that holds a row's
 //! problem line is fixed per row at the same moment.

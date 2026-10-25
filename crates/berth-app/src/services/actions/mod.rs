@@ -33,6 +33,7 @@ use crate::state::{AppState, PendingKey, PendingState, Selection};
 
 mod container;
 mod engine;
+mod folder;
 mod network;
 mod project;
 mod reasons;
@@ -183,7 +184,12 @@ struct Inner {
     previous: Arc<
         std::sync::Mutex<std::collections::BTreeMap<berth_core::EngineId, berth_core::EngineState>>,
     >,
+    /// The output of each project's last failed Compose command (AD33): set when a command fails,
+    /// dropped when the next one succeeds. Written by the action task, read by the UI.
+    compose_failures: Arc<std::sync::Mutex<ComposeFailures>>,
 }
+
+type ComposeFailures = std::collections::BTreeMap<berth_core::ProjectId, Vec<String>>;
 
 pub(crate) fn spawn_io(future: impl std::future::Future<Output = ()> + Send + 'static) {
     if tokio::runtime::Handle::try_current().is_ok() {
@@ -225,6 +231,7 @@ impl ActionsService {
                 runs: colima::Runs::default(),
                 link: Arc::default(),
                 previous: Arc::default(),
+                compose_failures: Arc::default(),
             }),
         };
         (service, rx)

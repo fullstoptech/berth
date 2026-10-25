@@ -23,7 +23,10 @@ use super::log_toolbar::{
     ToolbarModel,
 };
 use super::virtual_table::visible_range;
+use crate::screens::problems::ExplainPanel;
 use crate::services::logs::{save_file_name, write_lines, LogCore, LogHandle, LogStatus};
+use crate::services::problems::{ExplainLine, ProblemsService, World};
+use crate::services::Services;
 use crate::state::{AppState, Toast, ToastTone};
 
 /// Rows rendered above and below the viewport.
@@ -51,6 +54,8 @@ pub struct ViewPrefs {
     pub range: TimeRange,
     pub selection: Vec<Span>,
     pub focus: Option<u64>,
+    /// What Explain showed (a scene or a test starts there): `Some(None)` while the rules run.
+    pub explained: Option<Option<Vec<berth_core::Problem>>>,
 }
 
 impl Default for ViewPrefs {
@@ -67,6 +72,7 @@ impl Default for ViewPrefs {
             range: TimeRange::All,
             selection: Vec::new(),
             focus: None,
+            explained: None,
         }
     }
 }
@@ -188,6 +194,39 @@ pub fn selected_text(view: &LogView, spans: &[Span], timestamps: bool) -> String
         .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// The selected rows as the rules read them: the container's name as the view shows it, and the
+/// line. A trace's folded members are not listed; the head line carries the error.
+#[must_use]
+pub fn selected_lines(view: &LogView, spans: &[Span]) -> Vec<ExplainLine> {
+    spans
+        .iter()
+        .flat_map(|&(lo, hi)| {
+            let range = lower_bound(view, lo)..lower_bound(view, hi.saturating_add(1));
+            view.rows(range)
+        })
+        .map(|row| ExplainLine {
+            container: row.container,
+            text: row.text,
+        })
+        .collect()
+}
+
+/// What the rules say about the selected rows of a view: the rows are read inside the session
+/// task, the rules run off the UI thread.
+pub async fn explain_selection(
+    core: std::sync::Arc<LogCore>,
+    spans: Vec<Span>,
+    service: ProblemsService,
+    world: World,
+    services: Option<Services>,
+) -> Vec<berth_core::Problem> {
+    let lines = core
+        .run(move |view| selected_lines(view, &spans))
+        .await
+        .unwrap_or_default();
+    service.explain(world, services.as_ref(), lines).await
 }
 
 /// The tone of each row in a window, and whether it is an open trace head. A trace member takes
@@ -377,6 +416,12 @@ pub fn LogViewer(
 ) -> Element {
     let state = use_context::<AppState>();
     let core_id = handle.core.id();
+    let services = try_consume_context::<Services>();
+    let problems_service = use_hook(|| {
+        try_consume_context::<ProblemsService>().unwrap_or_else(ProblemsService::inert)
+    });
+    // What Explain found for the selected lines: `Some(None)` while the rules run.
+    let mut explained = use_signal(|| prefs.explained.clone());
 
     let mut wrap = use_signal(|| prefs.wrap);
     let mut time = use_signal(|| prefs.time);
@@ -607,6 +652,19 @@ pub fn LogViewer(
         ));
     };
 
+    let explain_core = std::sync::Arc::clone(&handle.core);
+    let on_explain = move |_| {
+        let core = std::sync::Arc::clone(&explain_core);
+        let spans = selection.peek().clone();
+        let service = problems_service.clone();
+        let services = services.clone();
+        explained.set(Some(None));
+        spawn(async move {
+            let found = explain_selection(core, spans, service, World::of(&state), services).await;
+            explained.set(Some(Some(found)));
+        });
+    };
+
     let Some(snap) = snap else {
         return rsx! {
             div { class: "log-viewer", role: "region", "aria-label": "Logs",
@@ -712,8 +770,7 @@ pub fn LogViewer(
                         label: "Explain".to_string(),
                         variant: ButtonVariant::Ghost,
                         icon: "sparkles",
-                        disabled: true,
-                        disabled_reason: "Explain arrives with Problems (Phase 5)".to_string(),
+                        onclick: on_explain,
                     }
                     Button {
                         label: ask_label.clone(),
@@ -734,6 +791,9 @@ pub fn LogViewer(
                         onclick: move |_| selection.set(Vec::new()),
                     }
                 }
+            }
+            if let Some(result) = explained.read().clone() {
+                ExplainPanel { problems: result, onclose: move |()| explained.set(None) }
             }
             if let LogStatus::Failed(message) = &status {
                 InlineMessage { message: message.clone(), tone: InlineTone::Warning }

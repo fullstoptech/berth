@@ -458,11 +458,13 @@ fn apply(
     while !rest.is_empty() {
         let tail = rest.split_off(rest.len().min(MAX_BATCH_LINES));
         let chunk = std::mem::replace(&mut rest, tail);
-        // Classification, JSON parsing and fold facts run before the lock is taken (D23): the UI
+        // Classification, JSON parsing and fold facts run before the lock is taken (AD23): the UI
         // reads the view while this chunk is prepared, and waits only for the commit.
         let prepare_started = Instant::now();
         let prepared = PreparedBatch::new(chunk);
         let prepare_us = micros(prepare_started.elapsed());
+        // Only error-marked lines feed the problem rules (D35, D82); outside the lock too.
+        crate::services::problems::tap_errors(prepared.error_lines());
         let mut guard = lock(&core.view);
         let Some(view) = guard.as_mut() else {
             return;

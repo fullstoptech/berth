@@ -1,4 +1,4 @@
-//! D31: rows keep their place and their y offset while the screen is open.
+//! AD31: rows keep their place and their y offset while the screen is open.
 
 use dioxus::prelude::*;
 

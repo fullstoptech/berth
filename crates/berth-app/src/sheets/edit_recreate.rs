@@ -4,12 +4,13 @@
 //! limits or the restart policy changed, Recreate container otherwise.
 //! A failed recreate keeps the old container (the engine restores it) and
 //! the sheet says so. For a Compose service the sheet also offers to write
-//! the change into compose.yaml, which waits for P5-T3.
+//! the change into compose.yaml through Review changes (P5-T3).
 //!
 //! The model (`model`) is pure; this file draws signals and sends clicks
 //! to the actions service. Env values never enter the markup: an existing
 //! variable shows `••••` as a placeholder, and the diff shows `KEY=••••`.
 
+mod compose_write;
 pub mod model;
 
 use std::collections::BTreeMap;
@@ -30,14 +31,11 @@ use crate::ui::{
 };
 use model::{
     diff_rows, failure_text, is_compose_managed, offer, recreate_block, Block, Draft, Field,
-    FieldError, Offer, RestartKind, COMPOSE_REASON,
+    FieldError, Offer, RestartKind,
 };
 
 /// The sheet's CSS, rendered with it (tokens only).
 pub const EDIT_RECREATE_CSS: &str = include_str!("../../assets/css/edit_recreate.css");
-
-/// Why "Write to compose.yaml instead" cannot be used yet.
-pub const COMPOSE_WRITE_REASON: &str = "Built in P5-T3";
 
 /// Dev scenes put edits into the form before it is drawn.
 #[derive(Clone, Copy)]
@@ -117,6 +115,7 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
     let store = use_hook(|| try_consume_context::<DetailStore>().unwrap_or_default());
     let services = try_consume_context::<Services>();
     let actions = try_consume_context::<ActionsService>();
+    let plan_store = try_consume_context::<crate::services::plans::PlanStore>();
     let dev = try_consume_context::<DevEditDraft>();
 
     let row_id = id.clone();
@@ -210,8 +209,8 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
                 Ok(new) => (offer(&base, new), diff_rows(&base, new)),
                 Err(_) => (Offer::Nothing, Vec::new()),
             };
-            // Compose never recreates outside Compose (D17); settings the
-            // spec cannot carry would be dropped (D16).
+            // Compose never recreates outside Compose (AD17); settings the
+            // spec cannot carry would be dropped (AD16).
             let block = (offered == Offer::Recreate)
                 .then(|| recreate_block(&base, &uncarried))
                 .flatten();
@@ -230,6 +229,65 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
             let image_changed = current.image.trim() != base.image.reference;
             let target = ContainerTarget::from(&c);
             let click_actions = actions.clone();
+            // "Write to compose.yaml instead": the change as a plan for Review changes.
+            let write_reason: Option<String> = match &built {
+                Err(_) => Some("Fix the fields marked above first.".to_string()),
+                Ok(_) if offered == Offer::Nothing => {
+                    Some("Nothing differs from the container yet.".to_string())
+                }
+                Ok(_) if plan_store.is_none() => {
+                    Some("Review changes is not connected.".to_string())
+                }
+                Ok(_) => None,
+            };
+            let on_write_compose = {
+                let old_spec = base.clone();
+                let new_spec = built.clone().ok();
+                let container = c.clone();
+                let plan_store = plan_store.clone();
+                let projects = state.projects.read().clone();
+                move |_| {
+                    let (Some(new_spec), Some(plan_store)) = (new_spec.clone(), plan_store.clone())
+                    else {
+                        return;
+                    };
+                    let service = old_spec
+                        .labels
+                        .get(compose_write::COMPOSE_SERVICE_LABEL)
+                        .cloned()
+                        .unwrap_or_default();
+                    let found = projects
+                        .iter()
+                        .find(|p| {
+                            p.engine == container.engine
+                                && container.compose_project.as_deref() == Some(p.name.as_str())
+                                && p.folder.is_some()
+                        })
+                        .cloned();
+                    let Some(project) = found else {
+                        refused.set(Some("This project has no folder on this Mac.".to_string()));
+                        return;
+                    };
+                    let old_spec = old_spec.clone();
+                    refused.set(None);
+                    spawn(async move {
+                        let built = crate::services::plans::blocking(move || {
+                            compose_write::pending_for_project(
+                                &project, &service, &old_spec, &new_spec,
+                            )
+                        })
+                        .await;
+                        match built {
+                            Some(Ok(pending)) => {
+                                let id = plan_store.insert(pending);
+                                state.overlays.write().push(Overlay::ReviewChanges(id));
+                            }
+                            Some(Err(message)) => refused.set(Some(message)),
+                            None => refused.set(Some("The plan did not finish.".to_string())),
+                        }
+                    });
+                }
+            };
             let failure = match &status {
                 EditStatus::Failed { key, message } => Some((key.clone(), failure_text(message))),
                 _ => None,
@@ -297,8 +355,9 @@ pub fn EditRecreateSheet(id: ContainerId) -> Element {
                                     label: "Write to compose.yaml instead".to_string(),
                                     variant: ButtonVariant::Secondary,
                                     size: ControlSize::Sm,
-                                    disabled: true,
-                                    disabled_reason: format!("{COMPOSE_WRITE_REASON}. {COMPOSE_REASON}"),
+                                    disabled: write_reason.is_some(),
+                                    disabled_reason: write_reason.clone(),
+                                    onclick: on_write_compose,
                                 }
                             }
                         }
@@ -409,7 +468,7 @@ pub fn primary_button(
     if let EditStatus::Running(label) = status {
         return (label.clone(), None);
     }
-    // A Compose container never shows Recreate (D17): the button stays
+    // A Compose container never shows Recreate (AD17): the button stays
     // Apply limits, disabled, and says why.
     let label = match (offered, block) {
         (Offer::ApplyLimits, _) | (_, Some(Block::Compose)) => "Apply limits",

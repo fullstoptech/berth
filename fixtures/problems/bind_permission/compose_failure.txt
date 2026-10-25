@@ -1,0 +1,1 @@
+Error response from daemon: error while creating mount source path '/host_mnt/Users/me/Documents/shop/uploads': mkdir /host_mnt/Users/me/Documents/shop/uploads: operation not permitted

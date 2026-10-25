@@ -21,6 +21,21 @@ pub trait ComposeRunner: Send + Sync {
         folder: &std::path::Path,
         files: &[std::path::PathBuf],
     ) -> Result<(), EngineError>;
+    /// Validates compose text that is not on disk yet (`config -q -f -`, the text on stdin), so Review
+    /// changes can check a proposed file before Write (AD33, ADR 0012). `env` holds the `.env` lines the
+    /// plan adds; they reach the child as process environment, never as a file, and are not recorded.
+    /// Relative paths resolve against `folder`. A `Docker(message)` error carries Compose's own words.
+    ///
+    /// `env_file: .env` pointing at a `.env` that is not on disk passes when `env` is not empty: a plan
+    /// that adds `.env` lines creates that file. Any other missing `env_file` is an error.
+    /// There is no cancellation token (the trait has none for `validate`); dropping the future kills the
+    /// child, and the call gives up after 30 s.
+    async fn validate_text(
+        &self,
+        folder: &std::path::Path,
+        compose_text: &str,
+        env: &[(String, String)],
+    ) -> Result<(), EngineError>;
 }
 
 fn push_base(
@@ -40,6 +55,35 @@ fn push_base(
         args.push("-p".to_string());
         args.push(name.to_string());
     }
+}
+
+/// Arguments of `docker compose` that validate the compose text on stdin: `-f -` and `config -q`.
+pub fn validate_text_args(folder: &std::path::Path) -> Vec<String> {
+    let mut args = Vec::new();
+    push_base(&mut args, folder, &[std::path::PathBuf::from("-")], None);
+    args.push("config".to_string());
+    args.push("-q".to_string());
+    args
+}
+
+/// The file Compose names in `env file <path> not found: ...`, if that is what `stderr` says.
+fn missing_env_file(stderr: &str) -> Option<std::path::PathBuf> {
+    stderr.lines().find_map(|line| {
+        let rest = line.trim().strip_prefix("env file ")?;
+        let end = rest.find(" not found")?;
+        Some(std::path::PathBuf::from(&rest[..end]))
+    })
+}
+
+/// Whether `missing` is the project's own `.env`.
+fn is_project_dotenv(missing: &std::path::Path, folder: &std::path::Path) -> bool {
+    if missing.file_name().and_then(|n| n.to_str()) != Some(".env") {
+        return false;
+    }
+    let canon = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    missing
+        .parent()
+        .is_some_and(|parent| canon(parent) == canon(folder))
 }
 
 /// Pure argument builder for a Compose command (D27). The first item is the
@@ -122,6 +166,49 @@ pub fn parse_progress_json(line: &str) -> Option<berth_core::ComposeEvent> {
     Some(berth_core::ComposeEvent::Progress { id, status, text })
 }
 
+/// The containers the engine's classic builder is running for a Compose build, read from its own
+/// output (`---> Running in 45f1f3e9c4cd`, then `Removing intermediate container 45f1f3e9c4cd` once
+/// the step passes).
+///
+/// A step that fails is not removed: the engine keeps it, stopped, under a random name
+/// (`eager_satoshi`) and nothing marks it as a build's. Compose offers no `--force-rm` and the
+/// BuildKit route needs the `buildx` plugin, which Colima setups often lack, so Berth removes
+/// exactly the containers its own build named and never failed to clean up.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct BuildLeftovers {
+    open: Vec<String>,
+}
+
+fn container_id_after<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
+    let rest = line.trim().split_once(marker)?.1;
+    let id = rest.split_whitespace().next()?;
+    ((12..=64).contains(&id.len()) && id.chars().all(|c| c.is_ascii_hexdigit())).then_some(id)
+}
+
+impl BuildLeftovers {
+    /// Learn from one output line.
+    pub fn feed(&mut self, line: &str) {
+        if let Some(id) = container_id_after(line, "---> Running in ") {
+            self.open.push(id.to_string());
+        } else if let Some(id) = container_id_after(line, "Removing intermediate container ") {
+            self.open.retain(|open| open != id);
+        }
+    }
+
+    /// The containers a failed step left, and forget them.
+    pub fn take(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.open)
+    }
+}
+
+/// `docker rm <ids>`: without `-f`, so a container that is still running is refused, not killed.
+#[must_use]
+pub fn remove_leftovers_args(ids: &[String]) -> Vec<String> {
+    std::iter::once("rm".to_string())
+        .chain(ids.iter().cloned())
+        .collect()
+}
+
 fn line_event(stream: berth_core::Stream, text: String) -> berth_core::ComposeEvent {
     parse_progress_json(&text).unwrap_or(berth_core::ComposeEvent::Line { stream, text })
 }
@@ -135,6 +222,33 @@ fn docker_host_env(target: &berth_core::ComposeTarget) -> (std::ffi::OsString, s
         std::ffi::OsString::from("DOCKER_HOST"),
         std::ffi::OsString::from(&target.docker_host),
     )
+}
+
+fn note_build_line(leftovers: &std::sync::Mutex<BuildLeftovers>, text: &str) {
+    if let Ok(mut l) = leftovers.lock() {
+        l.feed(text);
+    }
+}
+
+/// Best effort: a container that is already gone, or an engine that went away, changes nothing.
+async fn remove_leftovers(
+    binary: &std::path::Path,
+    env: &[(std::ffi::OsString, std::ffi::OsString)],
+    path_var: std::ffi::OsString,
+    ids: &[String],
+) {
+    let _ = berth_sys::run_capture(
+        binary,
+        &os_args(&remove_leftovers_args(ids)),
+        berth_sys::SpawnOpts {
+            env: env.to_vec(),
+            path: Some(path_var),
+            timeout: Some(CAPTURE_TIMEOUT),
+            ..Default::default()
+        },
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
 }
 
 pub struct CliCompose {
@@ -169,6 +283,7 @@ impl CliCompose {
         &self,
         args: &[String],
         env: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+        stdin: Option<Vec<u8>>,
     ) -> Result<berth_sys::Output, EngineError> {
         let binary = self.binary().ok_or_else(Self::not_found)?;
         berth_sys::run_capture(
@@ -177,6 +292,7 @@ impl CliCompose {
             berth_sys::SpawnOpts {
                 env,
                 path: Some(self.search.path_var()),
+                stdin,
                 timeout: Some(CAPTURE_TIMEOUT),
                 ..Default::default()
             },
@@ -199,27 +315,56 @@ impl ComposeRunner for CliCompose {
             return futures::stream::once(async { Err(Self::not_found()) }).boxed();
         };
         let args = compose_args(target, &cmd);
+        let builds = matches!(
+            cmd,
+            berth_core::ComposeCommand::Up { build: true, .. }
+                | berth_core::ComposeCommand::Build { .. }
+        );
+        let leftovers = std::sync::Arc::new(std::sync::Mutex::new(BuildLeftovers::default()));
+        let rm_env = vec![docker_host_env(target)];
+        let path_var = self.search.path_var();
+        let rm_binary = binary.clone();
         berth_sys::spawn_lines(
             &binary,
             &os_args(&args),
             berth_sys::SpawnOpts {
                 env: vec![docker_host_env(target)],
-                path: Some(self.search.path_var()),
+                path: Some(path_var.clone()),
                 ..Default::default()
             },
             cancel,
         )
-        .map(|item| match item {
-            Ok(berth_sys::ProcessLine::Stdout(text)) => {
-                Ok(line_event(berth_core::Stream::Stdout, text))
+        .then(move |item| {
+            let leftovers = std::sync::Arc::clone(&leftovers);
+            let (rm_binary, rm_env, path_var) =
+                (rm_binary.clone(), rm_env.clone(), path_var.clone());
+            async move {
+                let event = match item {
+                    Ok(berth_sys::ProcessLine::Stdout(text)) => {
+                        if builds {
+                            note_build_line(&leftovers, &text);
+                        }
+                        Ok(line_event(berth_core::Stream::Stdout, text))
+                    }
+                    Ok(berth_sys::ProcessLine::Stderr(text)) => {
+                        if builds {
+                            note_build_line(&leftovers, &text);
+                        }
+                        Ok(line_event(berth_core::Stream::Stderr, text))
+                    }
+                    Ok(berth_sys::ProcessLine::Exit(code)) => {
+                        let left = leftovers.lock().map(|mut l| l.take()).unwrap_or_default();
+                        if !left.is_empty() {
+                            remove_leftovers(&rm_binary, &rm_env, path_var, &left).await;
+                        }
+                        Ok(berth_core::ComposeEvent::Done {
+                            code: code.unwrap_or(-1),
+                        })
+                    }
+                    Err(err) => Err(EngineError::from(err)),
+                };
+                event
             }
-            Ok(berth_sys::ProcessLine::Stderr(text)) => {
-                Ok(line_event(berth_core::Stream::Stderr, text))
-            }
-            Ok(berth_sys::ProcessLine::Exit(code)) => Ok(berth_core::ComposeEvent::Done {
-                code: code.unwrap_or(-1),
-            }),
-            Err(err) => Err(EngineError::from(err)),
         })
         .boxed()
     }
@@ -238,7 +383,9 @@ impl ComposeRunner for CliCompose {
         args.push("config".to_string());
         args.push("--format".to_string());
         args.push("json".to_string());
-        let output = self.capture(&args, vec![docker_host_env(target)]).await?;
+        let output = self
+            .capture(&args, vec![docker_host_env(target)], None)
+            .await?;
         if output.code != Some(0) {
             return Err(Self::output_err(&output));
         }
@@ -257,12 +404,83 @@ impl ComposeRunner for CliCompose {
         push_base(&mut args, folder, files, None);
         args.push("config".to_string());
         args.push("-q".to_string());
-        let output = self.capture(&args, Vec::new()).await?;
+        let output = self.capture(&args, Vec::new(), None).await?;
         if output.code == Some(0) {
             Ok(())
         } else {
             Err(Self::output_err(&output))
         }
+    }
+
+    async fn validate_text(
+        &self,
+        folder: &std::path::Path,
+        compose_text: &str,
+        env: &[(String, String)],
+    ) -> Result<(), EngineError> {
+        let process_env: Vec<_> = env
+            .iter()
+            .map(|(k, v)| (std::ffi::OsString::from(k), std::ffi::OsString::from(v)))
+            .collect();
+        let stdin = Some(compose_text.as_bytes().to_vec());
+        let args = validate_text_args(folder);
+        let output = self
+            .capture(&args, process_env.clone(), stdin.clone())
+            .await?;
+        if output.code == Some(0) {
+            return Ok(());
+        }
+        let excused = !env.is_empty()
+            && missing_env_file(&output.stderr)
+                .is_some_and(|missing| is_project_dotenv(&missing, folder));
+        if !excused {
+            return Err(Self::output_err(&output));
+        }
+        // The plan creates `.env`. Check the rest of the file against a mirror of the folder that has one.
+        let mirror = DotenvMirror::new(folder)?;
+        let args = validate_text_args(mirror.path());
+        let output = self.capture(&args, process_env, stdin).await?;
+        if output.code == Some(0) {
+            Ok(())
+        } else {
+            Err(Self::output_err(&output))
+        }
+    }
+}
+
+/// A temporary project directory that links to everything in the real folder and holds an empty `.env`,
+/// so Compose can resolve an `env_file` the plan has yet to create. Removed on drop.
+struct DotenvMirror {
+    dir: std::path::PathBuf,
+}
+
+impl DotenvMirror {
+    fn new(folder: &std::path::Path) -> Result<Self, EngineError> {
+        let io = |err: std::io::Error| EngineError::Docker(err.to_string());
+        let dir =
+            std::env::temp_dir().join(format!("berth-validate-{}", uuid::Uuid::now_v7().simple()));
+        std::fs::create_dir(&dir).map_err(io)?;
+        let mirror = Self { dir };
+        #[cfg(unix)]
+        for entry in std::fs::read_dir(folder).map_err(io)?.flatten() {
+            let name = entry.file_name();
+            if name != ".env" {
+                // A link that fails to appear only means a different error later; nothing to report here.
+                let _ = std::os::unix::fs::symlink(entry.path(), mirror.dir.join(&name));
+            }
+        }
+        std::fs::write(mirror.dir.join(".env"), "").map_err(io)?;
+        Ok(mirror)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.dir
+    }
+}
+
+impl Drop for DotenvMirror {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
@@ -555,5 +773,128 @@ mod tests {
         mock.validate(std::path::Path::new("/work/shop"), &target().files)
             .await
             .expect("mock validate");
+    }
+
+    #[test]
+    fn validate_text_args_read_the_file_from_stdin_and_only_check() {
+        assert_eq!(
+            validate_text_args(std::path::Path::new("/work/shop")),
+            strings(&[
+                "compose",
+                "--project-directory",
+                "/work/shop",
+                "-f",
+                "-",
+                "config",
+                "-q",
+            ])
+        );
+    }
+
+    #[test]
+    fn missing_env_file_reads_the_path_from_composes_message() {
+        let stderr = "level=warning msg=\"The PORT variable is not set.\"\n\
+            env file /work/my shop/.env not found: stat /work/my shop/.env: no such file or directory\n";
+        assert_eq!(
+            missing_env_file(stderr),
+            Some(std::path::PathBuf::from("/work/my shop/.env"))
+        );
+        assert_eq!(
+            missing_env_file("services.web.image must be a string"),
+            None
+        );
+        assert_eq!(missing_env_file(""), None);
+    }
+
+    #[test]
+    fn only_the_project_dotenv_counts_as_created_by_the_plan() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let folder = dir.path();
+        assert!(is_project_dotenv(&folder.join(".env"), folder));
+        // Another file in the folder, or a `.env` somewhere else, is the user's mistake.
+        assert!(!is_project_dotenv(&folder.join(".env.local"), folder));
+        assert!(!is_project_dotenv(&folder.join("api/.env"), folder));
+        assert!(!is_project_dotenv(
+            std::path::Path::new("/elsewhere/.env"),
+            folder
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dotenv_mirror_links_the_folder_adds_an_empty_dotenv_and_cleans_up() {
+        let folder = tempfile::tempdir().expect("tempdir");
+        std::fs::write(folder.path().join("compose.yaml"), "services: {}\n").expect("write");
+        std::fs::create_dir(folder.path().join("api")).expect("mkdir");
+        std::fs::write(folder.path().join("api/prod.env"), "A=1\n").expect("write");
+
+        let mirror = DotenvMirror::new(folder.path()).expect("mirror");
+        let dir = mirror.path().to_path_buf();
+        assert_eq!(std::fs::read_to_string(dir.join(".env")).expect(".env"), "");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("compose.yaml")).expect("linked file"),
+            "services: {}\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("api/prod.env")).expect("file in linked dir"),
+            "A=1\n"
+        );
+        // The real folder is untouched.
+        assert!(!folder.path().join(".env").exists());
+
+        drop(mirror);
+        assert!(!dir.exists(), "the mirror is removed");
+        assert!(
+            folder.path().join("api/prod.env").exists(),
+            "removing the mirror must not follow its links into the real folder"
+        );
+    }
+
+    // --- Classic-builder leftovers ---
+
+    const FAILED_BUILD: &[&str] = &[
+        "Step 2/4 : RUN echo layer1 > /a",
+        " ---> Running in 11aa22bb33cc",
+        "Removing intermediate container 11aa22bb33cc",
+        " ---> 73b62c093331",
+        "Step 3/4 : RUN echo failing && exit 3",
+        " ---> Running in 45f1f3e9c4cd",
+        "failing",
+    ];
+
+    #[test]
+    fn compose_build_leftovers_are_the_containers_of_steps_that_did_not_finish() {
+        let mut left = BuildLeftovers::default();
+        for line in FAILED_BUILD {
+            left.feed(line);
+        }
+        assert_eq!(left.take(), ["45f1f3e9c4cd"]);
+        assert!(left.take().is_empty(), "taken once");
+    }
+
+    #[test]
+    fn compose_build_leftovers_are_none_when_every_step_passed() {
+        let mut left = BuildLeftovers::default();
+        for line in &FAILED_BUILD[..4] {
+            left.feed(line);
+        }
+        assert!(left.take().is_empty());
+    }
+
+    #[test]
+    fn compose_build_leftovers_ignore_lines_that_only_look_like_the_marker() {
+        let mut left = BuildLeftovers::default();
+        left.feed("Running in production mode");
+        left.feed(" ---> Running in not-a-container");
+        left.feed(" ---> Running in abc");
+        left.feed("#7 [app 3/4] RUN pnpm install");
+        assert!(left.take().is_empty());
+    }
+
+    #[test]
+    fn compose_leftovers_are_removed_without_force() {
+        let args = remove_leftovers_args(&["45f1f3e9c4cd".to_string(), "aa00bb11cc22".to_string()]);
+        assert_eq!(args, ["rm", "45f1f3e9c4cd", "aa00bb11cc22"]);
+        assert!(!args.iter().any(|a| a.starts_with('-')));
     }
 }

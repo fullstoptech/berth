@@ -65,7 +65,7 @@ pub struct Fix {
     pub source: FixSource,
     pub effect: FixEffect,
 }
-// RunAction carries an EngineAction, which can carry a whole spec (D18).
+// RunAction carries an EngineAction, which can carry a whole spec (AD18).
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FixEffect {
@@ -83,7 +83,7 @@ pub enum ColimaOp {
     Restart,
     Apply(ColimaStartOptions),
 }
-// Boxing the spec would change the PLAN §6 type (D18).
+// Boxing the spec would change the PLAN §6 type (AD18).
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EngineAction {
@@ -108,14 +108,14 @@ pub enum EngineAction {
     Prune {
         plan: PrunePlan,
     },
-    /// Edit and recreate, and "Recreate with latest image" (`pull`) (D18).
+    /// Edit and recreate, and "Recreate with latest image" (`pull`) (AD18).
     Recreate {
         engine: EngineId,
         id: ContainerId,
         spec: ContainerSpec,
         pull: bool,
     },
-    /// Delete one image, volume or network (D25a). Containers use
+    /// Delete one image, volume or network (`AD25a`). Containers use
     /// `ContainerAction::Remove`; build cache stays under `Prune`.
     Remove {
         engine: EngineId,
@@ -124,7 +124,7 @@ pub enum EngineAction {
     },
 }
 
-/// What `EngineAction::Remove` deletes (D25a). The action id, the nouns, the
+/// What `EngineAction::Remove` deletes (`AD25a`). The action id, the nouns, the
 /// past tense and the pending key's subject all come from here.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ResourceRef {

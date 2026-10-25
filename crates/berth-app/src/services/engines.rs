@@ -81,6 +81,9 @@ pub enum EngineUpdate {
         engine: berth_core::EngineId,
         profile: berth_core::ColimaProfile,
     },
+    /// The set of pinned folders changed (a folder was opened or generated): every engine's
+    /// projects are grouped again with these pins. Sent by [`EngineLink::pins_changed`].
+    PinsChanged(Vec<berth_core::PinnedFolder>),
 }
 
 fn is_remote(kind: &berth_core::EngineKind) -> bool {
@@ -456,15 +459,44 @@ fn store_pins(store: &berth_store::Store) -> Vec<berth_core::PinnedFolder> {
 #[derive(Default)]
 pub struct Applier {
     pins: Vec<berth_core::PinnedFolder>,
+    /// A [`EngineUpdate::PinsChanged`] has arrived: the pins here are newer than the ones the
+    /// engine loops hold, so a full refresh regroups with these.
+    pins_updated: bool,
     images: std::collections::BTreeMap<berth_core::EngineId, Vec<berth_core::Image>>,
     volumes: std::collections::BTreeMap<berth_core::EngineId, Vec<berth_core::Volume>>,
     networks: std::collections::BTreeMap<berth_core::EngineId, Vec<berth_core::Network>>,
 }
 
 impl Applier {
+    /// Group `engine`'s containers into projects with the pins known now and put them in the
+    /// signal in place of that engine's old projects. Returns the engine's containers.
+    fn regroup(
+        &self,
+        state: &mut AppState,
+        engine: &berth_core::EngineId,
+    ) -> Vec<berth_core::Container> {
+        let mine: Vec<berth_core::Container> = state
+            .containers
+            .peek()
+            .iter()
+            .filter(|c| c.engine == *engine)
+            .cloned()
+            .collect();
+        let remote = state
+            .engines
+            .peek()
+            .iter()
+            .find(|e| e.id == *engine)
+            .is_some_and(|e| is_remote(&e.kind));
+        let projects = berth_engine::projects::group(engine, &mine, &self.pins, remote);
+        replace_engine_slice(&mut state.projects, engine, projects);
+        mine
+    }
+
     pub fn new(pins: Vec<berth_core::PinnedFolder>) -> Self {
         Self {
             pins,
+            pins_updated: false,
             images: std::collections::BTreeMap::new(),
             volumes: std::collections::BTreeMap::new(),
             networks: std::collections::BTreeMap::new(),
@@ -526,7 +558,12 @@ impl Applier {
                 self.volumes.insert(engine.clone(), volumes);
                 self.networks.insert(engine.clone(), networks);
                 replace_engine_slice(&mut state.containers, &engine, containers);
-                replace_engine_slice(&mut state.projects, &engine, projects);
+                if self.pins_updated {
+                    // The loop that built `projects` may hold pins from before one was added.
+                    self.regroup(state, &engine);
+                } else {
+                    replace_engine_slice(&mut state.projects, &engine, projects);
+                }
                 self.write_flat_lists(state);
                 let mut engines = state.engines.write();
                 if let Some(found) = engines.iter_mut().find(|e| e.id == engine) {
@@ -552,21 +589,7 @@ impl Applier {
                         containers.push(container);
                     }
                 }
-                let mine: Vec<berth_core::Container> = state
-                    .containers
-                    .peek()
-                    .iter()
-                    .filter(|c| c.engine == engine)
-                    .cloned()
-                    .collect();
-                let remote = state
-                    .engines
-                    .peek()
-                    .iter()
-                    .find(|e| e.id == engine)
-                    .is_some_and(|e| is_remote(&e.kind));
-                let projects = berth_engine::projects::group(&engine, &mine, &self.pins, remote);
-                replace_engine_slice(&mut state.projects, &engine, projects);
+                let mine = self.regroup(state, &engine);
                 let running = mine
                     .iter()
                     .filter(|c| c.state == berth_core::ContainerState::Running)
@@ -575,6 +598,15 @@ impl Applier {
                 if let Some(found) = engines.iter_mut().find(|e| e.id == engine) {
                     found.counts.containers_running = u32::try_from(running).unwrap_or(u32::MAX);
                     found.counts.containers_total = u32::try_from(mine.len()).unwrap_or(u32::MAX);
+                }
+            }
+            EngineUpdate::PinsChanged(pins) => {
+                self.pins = pins;
+                self.pins_updated = true;
+                let engines: Vec<berth_core::EngineId> =
+                    state.engines.peek().iter().map(|e| e.id.clone()).collect();
+                for engine in engines {
+                    self.regroup(state, &engine);
                 }
             }
             EngineUpdate::ImagesChanged { engine, images } => {
@@ -826,9 +858,36 @@ impl EngineLink {
         let inner = Arc::clone(&self.inner);
         spawn_io(async move { inner.connect(engine, profile).await });
     }
+
+    /// Tell the engines service the set of pinned folders changed (Open folder, a generated
+    /// project): it groups every engine's projects again, so the folder shows up without a
+    /// restart. Call after `Store::pin`; the pins are read from the store here.
+    pub fn pins_changed(&self) {
+        let inner = Arc::clone(&self.inner);
+        spawn_io(async move {
+            let pins = inner.current_pins();
+            let _ = inner.tx.send(EngineUpdate::PinsChanged(pins)).await;
+        });
+    }
 }
 
 impl LinkInner {
+    /// The pins now: the store's, plus the mock world's under `BERTH_MOCK=1` (they are not in the
+    /// store).
+    fn current_pins(&self) -> Vec<berth_core::PinnedFolder> {
+        let mut pins = if self.mock {
+            self.pins.clone()
+        } else {
+            Vec::new()
+        };
+        for pin in store_pins(&self.store) {
+            if !pins.iter().any(|p| p.folder == pin.folder) {
+                pins.push(pin);
+            }
+        }
+        pins
+    }
+
     fn has_client(&self, id: &berth_core::EngineId) -> bool {
         match self.clients.lock() {
             Ok(map) => map.contains_key(id),
@@ -877,7 +936,7 @@ impl LinkInner {
                 spawn_io(run_engine(
                     client,
                     Arc::clone(&self.store),
-                    self.pins.clone(),
+                    self.current_pins(),
                     is_remote(&engine.kind),
                     self.tx.clone(),
                     self.cancel.child_token(),
@@ -1544,6 +1603,96 @@ mod tests {
             berth_core::fmt::bytes(pgdata.size.expect("size filled")),
             "1.2 GB"
         );
+    }
+
+    fn empty_engine_data(engine: berth_core::EngineId) -> EngineUpdate {
+        EngineUpdate::EngineData {
+            engine,
+            info: None,
+            containers: Vec::new(),
+            projects: Vec::new(),
+            images: Vec::new(),
+            volumes: Vec::new(),
+            networks: Vec::new(),
+        }
+    }
+
+    fn projects_at(
+        dom: &VirtualDom,
+        state: &AppState,
+        folder: &std::path::Path,
+    ) -> Vec<berth_core::Project> {
+        dom.in_runtime(|| {
+            state
+                .projects
+                .peek()
+                .iter()
+                .filter(|p| p.folder.as_deref() == Some(folder))
+                .cloned()
+                .collect()
+        })
+    }
+
+    #[tokio::test]
+    async fn pins_a_folder_pinned_at_runtime_makes_its_project_appear_without_a_restart() {
+        let (dom, mut state) = harness();
+        let engine = default_engine_id();
+        let folder = std::path::PathBuf::from("/Users/me/Dev/side/new-app");
+        let store = Arc::new(berth_store::Store::open_in_memory().expect("store"));
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        let link = EngineLink::new(
+            client_map(),
+            Arc::clone(&store),
+            Vec::new(),
+            tx,
+            CancellationToken::new(),
+            false,
+        );
+        // The service started with no pins and the engine answered.
+        let mut applier = Applier::new(Vec::new());
+        let world = berth_engine::MockWorld::bundled();
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::EnginesDiscovered(world.engines),
+        );
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            empty_engine_data(engine.clone()),
+        );
+        assert!(projects_at(&dom, &state, &folder).is_empty());
+
+        // The folder is pinned through the store, as Open folder and Review changes do.
+        store
+            .pin(&berth_core::PinnedFolder {
+                folder: folder.clone(),
+                engine: engine.clone(),
+                added: chrono::Utc::now(),
+            })
+            .expect("pin");
+        link.pins_changed();
+        let update = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("the service was told")
+            .expect("an update");
+        assert!(
+            matches!(&update, EngineUpdate::PinsChanged(pins) if pins.len() == 1),
+            "{update:?}"
+        );
+        apply(&dom, &mut applier, &mut state, update);
+
+        let found = projects_at(&dom, &state, &folder);
+        assert_eq!(found.len(), 1, "the pinned folder is a project now");
+        assert!(found[0].pinned);
+        assert_eq!(found[0].name, "new-app");
+        assert!(matches!(found[0].source, berth_core::ProjectSource::Pinned));
+
+        // A reconnect refresh built by a loop that still holds the old pins keeps it.
+        apply(&dom, &mut applier, &mut state, empty_engine_data(engine));
+        assert_eq!(projects_at(&dom, &state, &folder).len(), 1);
     }
 
     #[test]

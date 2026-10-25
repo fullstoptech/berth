@@ -145,6 +145,7 @@ fn SheetRoot(sheet: Sheet) -> Element {
     let state = use_app_state();
     use_context_provider(|| state);
     let store = provide_detail_store();
+    use_context_provider(crate::services::plans::PlanStore::default);
     if let Some(edits) = sheet.edits {
         use_context_provider(|| DevEditDraft(edits.0));
     }
@@ -293,19 +294,20 @@ fn edit_recreate_sheet_running_recreate_shows_its_label_on_the_button() {
 }
 
 #[test]
-fn edit_recreate_sheet_compose_service_offers_to_write_compose_yaml_disabled_until_p5_t3() {
+fn edit_recreate_sheet_compose_service_offers_to_write_compose_yaml_through_review_changes() {
+    // Nothing changed yet: the button is there, disabled, and says why.
     let html = render(Sheet::of(&api()));
     assert!(html.contains("Write to compose.yaml instead"), "{html}");
-    assert!(html.contains("Built in P5-T3."), "{html}");
     assert!(
-        html.contains("Compose would replace a container recreated outside it"),
-        "{html}"
-    );
-    assert!(
-        html.contains("its service-name alias would be lost"),
+        html.contains("data-tooltip=\"Nothing differs from the container yet.\""),
         "{html}"
     );
     assert!(html.contains("shop-api"), "{html}");
+    // A change the file can take enables it.
+    let html = render(Sheet::of(&api()).edited(|d| d.restart = RestartKind::Always));
+    let at = html.find("Write to compose.yaml instead").expect("button");
+    let tag_start = html[..at].rfind("<button").expect("tag");
+    assert!(!html[tag_start..at].contains("disabled"), "{html}");
     // A loose container has no such offer.
     assert!(!render(Sheet::of(&loose())).contains("Write to compose.yaml"));
 }

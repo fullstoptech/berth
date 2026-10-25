@@ -1,0 +1,10 @@
+services:
+  needsvar:
+    image: alpine:3
+    labels: [dev.berth.fixture=1]
+    environment:
+      BERTHFX_REQUIRED: ${BERTHFX_MISSING}
+      GREETING: ${BERTHFX_GREETING:-hello}
+      HOME_DIR: ${HOME}
+      # ${COMMENTED_OUT} is only a comment
+    command: ["sleep", "30"]

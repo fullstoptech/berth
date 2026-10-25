@@ -1,4 +1,4 @@
-//! Deleting an image, volume or network (`EngineAction::Remove`, D25a).
+//! Deleting an image, volume or network (`EngineAction::Remove`, AD25a).
 
 use super::*;
 

@@ -1,4 +1,4 @@
-//! Remove work (`EngineAction::Remove`, D25a): delete one image, volume or
+//! Remove work (`EngineAction::Remove`, AD25a): delete one image, volume or
 //! network.
 
 use std::sync::Arc;
@@ -33,7 +33,7 @@ impl Work for RemoveWork {
 }
 
 impl ActionsService {
-    /// Delete one image, volume or network (`EngineAction::Remove`, D25a).
+    /// Delete one image, volume or network (`EngineAction::Remove`, AD25a).
     /// The pending key's subject and action come from `target`; `name` is
     /// what the activity entry calls it. Same contract as [`container`]:
     /// `Err` carries the reason (an image in use, a network with containers

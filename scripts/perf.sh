@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Timing checks (D26): the tests named perf_*, which scripts/check.sh leaves
+# Timing checks (AD26): the tests named perf_*, which scripts/check.sh leaves
 # out (the default nextest profile filters them and they are #[ignore]).
 # Release build, one test at a time, output kept so the numbers print.
 set -euo pipefail

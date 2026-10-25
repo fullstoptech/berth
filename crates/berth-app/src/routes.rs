@@ -12,10 +12,12 @@ use crate::state::{AppState, Overlay, Section, Selection};
 pub fn screen(section: Section, dev_gallery: bool) -> Element {
     match section {
         Section::Activity => rsx! { crate::screens::activity::ActivityScreen {} },
+        Section::Project => rsx! { ProjectRoute {} },
         Section::Projects if !dev_gallery => rsx! { crate::screens::projects::ProjectsScreen {} },
         Section::Containers => rsx! { crate::screens::containers::ContainersScreen {} },
         Section::Logs => rsx! { crate::screens::logs::LogsScreen {} },
         Section::Networks => rsx! { crate::screens::networks::NetworksScreen {} },
+        Section::Templates => rsx! { crate::screens::templates::TemplatesScreen {} },
         Section::Volumes => rsx! { crate::screens::volumes::VolumesScreen {} },
         Section::Images => rsx! { crate::screens::images::ImagesScreen {} },
         Section::Engines => rsx! { crate::screens::engines::EnginesScreen {} },
@@ -23,9 +25,23 @@ pub fn screen(section: Section, dev_gallery: bool) -> Element {
     }
 }
 
+/// The selected project's own screen, keyed by the project so a new
+/// selection remounts it (its tabs, tree and checks start fresh).
+#[component]
+fn ProjectRoute() -> Element {
+    let state = use_context::<AppState>();
+    let selection = state.selection.read();
+    match &*selection {
+        Selection::Project(id) => rsx! {
+            crate::screens::project_detail::ProjectDetailScreen { key: "{id.0}", id: id.clone() }
+        },
+        _ => rsx! {},
+    }
+}
+
 /// How the inspector body is drawn: the width of the pane (how many tabs
 /// fit before the overflow menu) and whether the bottom panel beside it
-/// already shows the stream tabs (D22).
+/// already shows the stream tabs (AD22).
 #[derive(Debug, Clone, Copy)]
 pub struct InspectorPane {
     pub pane_px: u32,
@@ -83,6 +99,7 @@ fn overlay_title(overlay: &Overlay) -> &'static str {
         Overlay::AddRegistry => "Add registry",
         Overlay::BuildImage => "Build image",
         Overlay::AddService(_) => "Add service",
+        Overlay::DeleteProject(_) => "Delete project",
     }
 }
 
@@ -94,10 +111,22 @@ pub fn overlay(overlay: &Overlay) -> Element {
         Overlay::Confirm(model) => rsx! {
             crate::ui::ConfirmOverlay { key: "{model.title}", model: model.clone() }
         },
+        Overlay::AddService(seed) => rsx! {
+            crate::sheets::add_service::AddServiceSheet {
+                key: "{seed.project:?}{seed.template:?}{seed.image:?}",
+                seed: seed.clone(),
+            }
+        },
         Overlay::CleanUp(engine) => rsx! {
             crate::sheets::clean_up::CleanUpSheet { key: "{engine.0}", engine: engine.clone() }
         },
         Overlay::CreateVolume => rsx! { crate::sheets::create_volume::CreateVolumeSheet {} },
+        Overlay::Generate(folder) => rsx! {
+            crate::sheets::generate::GenerateSheet { key: "{folder.display()}", folder: folder.clone() }
+        },
+        Overlay::ReviewChanges(id) => rsx! {
+            crate::sheets::review_changes::ReviewChangesSheet { key: "{id}", id: *id }
+        },
         Overlay::Run(id) => rsx! { crate::sheets::run::RunSheet { key: "{id}", id: id.clone() } },
         Overlay::EditResources(engine) => rsx! {
             crate::sheets::edit_resources::EditResourcesSheet {
@@ -109,6 +138,14 @@ pub fn overlay(overlay: &Overlay) -> Element {
             crate::sheets::edit_recreate::EditRecreateSheet { key: "{id.0}", id: id.clone() }
         },
         Overlay::CreateNetwork => rsx! { crate::sheets::create_network::CreateNetworkSheet {} },
+        Overlay::DeleteProject(id) => rsx! {
+            crate::sheets::delete_project::DeleteProjectSheet { key: "{id.0}", id: id.clone() }
+        },
+        Overlay::Detected(folder) => rsx! {
+            crate::sheets::detected::DetectedSheet { key: "{folder.display()}", folder: folder.clone() }
+        },
+        Overlay::NewProject => rsx! { crate::sheets::new_project::NewProjectSheet {} },
+        Overlay::OpenFolder => rsx! { crate::sheets::open_folder::OpenFolderSheet {} },
         other => placeholder(other),
     }
 }

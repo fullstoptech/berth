@@ -39,7 +39,7 @@ fn images_selected(state: &mut AppState) {
     }
 }
 
-/// Delete on an image nothing uses: the confirm dialog (D25a).
+/// Delete on an image nothing uses: the confirm dialog (AD25a).
 fn images_confirm_delete(state: &mut AppState) {
     images_base(state);
     let world = crate::services::mock_world_at(chrono::Utc::now());

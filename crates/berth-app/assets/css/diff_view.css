@@ -1,0 +1,203 @@
+/* Diff view of Review changes (P5-T3): file list and diff cards. Tokens only. */
+
+.dv-files-label {
+  margin: 0 0 var(--space-6);
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.dv-files {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dv-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--size-control-lg);
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  text-align: left;
+  cursor: pointer;
+}
+.dv-file:hover {
+  background: var(--color-surface-hover);
+}
+.dv-file:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.dv-file-selected,
+.dv-file-selected:hover {
+  background: var(--color-selection);
+}
+.dv-file-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-ink-muted);
+}
+.dv-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dv-file-counts {
+  display: inline-flex;
+  flex: none;
+  gap: var(--space-4);
+}
+.dv-count-added,
+.dv-count-removed {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.dv-count-added {
+  color: var(--color-success);
+}
+.dv-count-removed {
+  color: var(--color-danger);
+}
+
+.dv-card {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.dv-card + .dv-card {
+  margin-top: var(--space-12);
+}
+.dv-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-12);
+  background: var(--color-surface-sunken);
+  border-bottom: 1px solid var(--color-line);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.dv-path {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  color: var(--color-ink);
+}
+.dv-tag {
+  color: var(--color-ink-muted);
+  font-style: italic;
+}
+.dv-spacer {
+  flex: 1;
+}
+.dv-reveal {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-8);
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-caption-size);
+  cursor: pointer;
+}
+.dv-reveal:hover {
+  background: var(--color-surface-hover);
+}
+.dv-reveal:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.dv-lines {
+  padding: var(--space-2) 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+}
+.dv-empty {
+  padding: var(--space-8) var(--space-12);
+  color: var(--color-ink-muted);
+  font-family: var(--font-text);
+}
+.dv-line {
+  display: flex;
+  min-width: max-content;
+  border-left: 3px solid transparent;
+  white-space: pre;
+}
+.dv-line-added {
+  border-left-color: var(--color-success);
+  background: var(--color-success-subtle);
+}
+.dv-line-removed {
+  border-left-color: var(--color-danger);
+  background: var(--color-danger-subtle);
+}
+.dv-no {
+  flex: none;
+  width: 3.4em;
+  padding-right: var(--space-8);
+  color: var(--color-ink-muted);
+  text-align: right;
+  user-select: none;
+}
+.dv-sign {
+  flex: none;
+  width: 1.6em;
+  color: var(--color-ink-muted);
+  text-align: center;
+  user-select: none;
+}
+.dv-text {
+  flex: 1;
+  padding-right: var(--space-12);
+}
+.dv-note {
+  flex: none;
+  padding-right: var(--space-12);
+  color: var(--color-ink-muted);
+  font-family: var(--font-text);
+  font-size: var(--text-label-size);
+  font-style: italic;
+}
+.dv-gap {
+  padding-left: var(--space-24);
+  color: var(--color-ink-muted);
+  user-select: none;
+}
+.dv-more {
+  display: block;
+  width: 100%;
+  padding: var(--space-8) var(--space-12);
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  background: var(--color-surface-sunken);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-body-size);
+  text-align: left;
+  cursor: pointer;
+}
+.dv-more:hover {
+  background: var(--color-surface-hover);
+}
+.dv-more:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}

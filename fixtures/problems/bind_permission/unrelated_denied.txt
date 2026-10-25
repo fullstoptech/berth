@@ -1,0 +1,1 @@
+Error: EACCES: permission denied, open '/etc/shadow'

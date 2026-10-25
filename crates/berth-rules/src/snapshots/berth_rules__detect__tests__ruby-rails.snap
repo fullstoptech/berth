@@ -1,0 +1,16 @@
+---
+source: crates/berth-rules/src/detect.rs
+expression: "view(& fixture(\"ruby-rails\"))"
+---
+folder: "<folder>"
+found: []
+stack:
+  - Ruby:
+      framework: Rails
+services_needed:
+  - kind: Postgres
+    reason: from pg in Gemfile
+  - kind: Redis
+    reason: from redis in Gemfile
+confidence: High
+git_branch: ~

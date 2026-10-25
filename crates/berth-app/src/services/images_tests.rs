@@ -671,7 +671,7 @@ fn images_find_prefers_the_scope_engine_then_any_that_has_it() {
 }
 
 // ---------------------------------------------------------------------
-// Delete (D25a)
+// Delete (AD25a)
 // ---------------------------------------------------------------------
 
 fn captured_all() -> (VirtualDom, AppState, ImageStore) {

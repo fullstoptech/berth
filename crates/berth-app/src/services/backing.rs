@@ -29,6 +29,9 @@ pub enum Capability {
     /// Listing, downloading and uploading files (`list_files`, `download`,
     /// `upload`): the Files tab, the volume browser, volume backups.
     Files,
+    /// Writing the files Review changes proposes (compose, `.env`, generated files). Mock folders are
+    /// not real project folders, so a write under the mock would only mislead (AD33).
+    WriteFiles,
 }
 
 impl Capability {
@@ -37,6 +40,7 @@ impl Capability {
             Self::Terminals => "Terminals",
             Self::CreateContainers => "Creating containers",
             Self::Files => "Files",
+            Self::WriteFiles => "Writing project files",
         }
     }
 
@@ -68,6 +72,13 @@ impl Backing {
         }
     }
 
+    /// Whether Review changes may write project files: false under the mock. A screen that shows Write
+    /// disables it with [`Self::unsupported`]`(`[`Capability::WriteFiles`]`)` as the reason.
+    #[must_use]
+    pub fn can_write_files(self) -> bool {
+        self.unsupported(Capability::WriteFiles).is_none()
+    }
+
     /// [`Self::unsupported`] for an action id.
     #[must_use]
     pub fn unsupported_action(self, action: &str) -> Option<String> {
@@ -96,6 +107,7 @@ mod tests {
             Capability::Terminals,
             Capability::CreateContainers,
             Capability::Files,
+            Capability::WriteFiles,
         ] {
             assert_eq!(Backing::Live.unsupported(capability), None);
             let reason = Backing::Mock.unsupported(capability).expect("a reason");
@@ -108,6 +120,18 @@ mod tests {
             Backing::Mock.unsupported(Capability::Terminals).as_deref(),
             Some("Terminals need a real Docker engine. You're viewing mock data.")
         );
+    }
+
+    #[test]
+    fn backing_the_mock_cannot_write_project_files_and_says_why() {
+        assert!(Backing::Live.can_write_files());
+        assert!(!Backing::Mock.can_write_files());
+        assert_eq!(
+            Backing::Mock.unsupported(Capability::WriteFiles).as_deref(),
+            Some("Writing project files need a real Docker engine. You're viewing mock data.")
+        );
+        // A scene frame keeps Write live, like every other button it draws.
+        assert!(Backing::at_boot(true, true).can_write_files());
     }
 
     #[test]

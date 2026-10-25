@@ -52,7 +52,7 @@ v1 is the brief's milestones M1 to M4. M5 and everything the brief marks "Later"
 
 ### 2.2 Later (no v1 task touches these)
 
-Visual Compose builder (M5). Kubernetes, Swarm, Nomad. Windows. A Linux package and a supported Linux GUI. Accounts, sync, roles, LDAP. Edge agents. Webhooks for redeploy. Coolify env editing, rollback, preview deployments, backups, server cleanup. Plugins with custom UI or WASM plugins. Network sandboxing of plugins. Auto-apply of fixes in watch mode. containerd and Incus runtimes. Languages other than English, right-to-left. ANSI colour rendering in logs (v1 strips escapes). A Rust-native terminal replacing xterm.js. Undocking the inspector into its own window (D22, 2026-10-25).
+Visual Compose builder (M5). Kubernetes, Swarm, Nomad. Windows. A Linux package and a supported Linux GUI. Accounts, sync, roles, LDAP. Edge agents. Webhooks for redeploy. Coolify env editing, rollback, preview deployments, backups, server cleanup. Plugins with custom UI or WASM plugins. Network sandboxing of plugins. Auto-apply of fixes in watch mode. containerd and Incus runtimes. Languages other than English, right-to-left. ANSI colour rendering in logs (v1 strips escapes). A Rust-native terminal replacing xterm.js. Undocking the inspector into its own window (AD22, 2026-10-25).
 
 ---
 
@@ -125,7 +125,7 @@ Every decision below is final for v1. The workhorse implements them and never re
 | D23 | Data flow | The UI never calls an engine. Services in `crates/berth-app/src/services/` own every I/O task and write signals. Lists update from `docker events`; a full refresh happens only on (re)connect. Cold start renders the last snapshot from SQLite, then live data replaces it (brief §1.3). |
 | D24 | Virtual lists | Every list that can exceed 100 rows is virtual: fixed row height (28 px, 24 compact), 10-row overscan, pure `visible_range(scroll_top, viewport_h, row_h, total, overscan) -> Range<usize>` (Ferry D23 pattern). Rows are plain elements, no per-row effects. |
 | D25 | Logs pipeline | `berth-logs` keeps a ring buffer of 100,000 lines per view, classifies level and error marks in Rust, searches in Rust (plain or regex), and flushes to the UI at most once per 16 ms tick. The DOM holds only the visible lines plus overscan. ANSI escapes are stripped. ADR 0011. |
-| D26 | Stats | One `stats` stream per visible container row or open Stats tab, closed on scroll-out and when the window is hidden. Missing stats show "—", never 0. Amended 2026-10-25 (D32): "hidden" means minimised, closed or ⌘H-hidden (native window state, polled every 500 ms); a window merely covered by another app keeps streaming, because WebKit reports a covered window as `visibilitychange: hidden`. |
+| D26 | Stats | One `stats` stream per visible container row or open Stats tab, closed on scroll-out and when the window is hidden. Missing stats show "—", never 0. Amended 2026-10-25 (AD32): "hidden" means minimised, closed or ⌘H-hidden (native window state, polled every 500 ms); a window merely covered by another app keeps streaming, because WebKit reports a covered window as `visibilitychange: hidden`. |
 | D27 | Compose | The `docker compose` CLI (v2 plugin) as a subprocess: `docker compose --project-directory <folder> -f <file>… -p <name> --progress json <cmd>` with `DOCKER_HOST` set to the engine's endpoint. Bollard is never used for Compose. ADR 0003. |
 | D28 | Colima | The `colima` CLI as a subprocess. List with `colima list --json` (one JSON object per line), status with `colima status -p <profile> --json` (field `docker_socket`), `start`/`stop`/`restart -p <profile>`; resource edits are `colima stop` then `colima start -p <p> --cpus N --memory GiB --disk GiB [--vm-type vz] [--vz-rosetta]`. Rosetta and VM type are read from `<colima dir>/<profile>/colima.yaml` (`rosetta`, `vmType`). ADR 0003. |
 | D29 | Engine discovery | Engines = Colima profiles ∪ docker contexts whose endpoint is a unix socket not already covered by a profile ∪ engines the user added. Socket and context lookup lives only in `berth_engine::discovery` (Ferry ADR 0003 pattern: `$DOCKER_HOST`, `~/.docker/config.json` current context, `~/.docker/contexts/meta/*/meta.json`). No socket path is hardcoded elsewhere. |
@@ -188,7 +188,7 @@ Every decision below is final for v1. The workhorse implements them and never re
 | D81 | Engine merge view | The title-bar engine switcher picks one engine or "All engines"; lists show the engine column only in "All engines". Default: the first running Colima profile. |
 | D82 | Problem detection on logs | Only error-marked lines feed the rules; rules never read whole logs. Evidence keeps at most 20 lines. |
 | D83 | Recipes | Node (npm, pnpm, yarn, bun; Next.js, Vite, Express), Python (pip, Poetry, uv; Django, FastAPI, Flask), Go, Rust, PHP (Laravel, plain), Ruby (Rails), Java (Maven, Gradle; Spring Boot), Static (nginx). Services needed from dependencies and `.env` keys: Postgres, MySQL, MongoDB, Redis, RabbitMQ, Meilisearch, MinIO, Mailpit. |
-| D84 | Built-in templates | Postgres 17, MySQL 8.4, MariaDB 11, MongoDB 8, Redis 7, Valkey 8, RabbitMQ 4, Meilisearch 1, S3 (SeaweedFS, `chrislusf/seaweedfs`; replaces MinIO, whose `minio/minio` is no longer pullable from Docker Hub — D30, 2026-10-25), Mailpit, Adminer. Image tags are pinned in `berth-rules/src/templates.rs` and checked against Docker Hub in P5-T2. |
+| D84 | Built-in templates | Postgres 17, MySQL 8.4, MariaDB 11, MongoDB 8, Redis 7, Valkey 8, RabbitMQ 4, Meilisearch 1, S3 (SeaweedFS, `chrislusf/seaweedfs`; replaces MinIO, whose `minio/minio` is no longer pullable from Docker Hub — AD30, 2026-10-25), Mailpit, Adminer. Image tags are pinned in `berth-rules/src/templates.rs` and checked against Docker Hub in P5-T2. |
 
 ---
 
@@ -245,7 +245,7 @@ Reached through `dioxus::desktop` re-exports, never as direct dependencies: `wry
 
 Not approved: Tailwind or any CSS framework, any JS framework, `serde_yaml`/`serde_yml`, `git2`/`gix`, `openssl`, `aws-lc-rs`, `keyring` 4, `portable-pty` (exec needs no local PTY), `notify` (no folder watching), any other UI crate, any ORM.
 
-Node tooling (only for `scripts/build-web.sh`): `@xterm/xterm` 6.0.0, `@xterm/addon-fit` 0.11.0, `@xterm/addon-search` 0.16.0, `@xterm/addon-web-links` 0.12.0, `codemirror` 6.0.2, `@codemirror/lang-yaml` 6.1.3, `@codemirror/view` 6.43, `@codemirror/state` 6.7, `@codemirror/language` 6.13.1, `@codemirror/lint` 6.9.7, `@lezer/highlight` 1.2.5 (added 2026-10-25, D10), `esbuild` 0.28.2 (npm, 2026-10-24). pnpm 12 needs `pnpm approve-builds esbuild` once and refuses packages younger than 24 h (Ferry Mac session).
+Node tooling (only for `scripts/build-web.sh`): `@xterm/xterm` 6.0.0, `@xterm/addon-fit` 0.11.0, `@xterm/addon-search` 0.16.0, `@xterm/addon-web-links` 0.12.0, `codemirror` 6.0.2, `@codemirror/lang-yaml` 6.1.3, `@codemirror/view` 6.43, `@codemirror/state` 6.7, `@codemirror/language` 6.13.1, `@codemirror/lint` 6.9.7, `@lezer/highlight` 1.2.5 (added 2026-10-25, AD10), `esbuild` 0.28.2 (npm, 2026-10-24). pnpm 12 needs `pnpm approve-builds esbuild` once and refuses packages younger than 24 h (Ferry Mac session).
 
 ---
 
@@ -487,15 +487,15 @@ pub struct ContainerSpec {               // what Edit and recreate edits (brief 
     pub env: Vec<(String, String)>, pub ports: Vec<PortMapping>, pub mounts: Vec<Mount>,
     pub networks: Vec<String>, pub labels: std::collections::BTreeMap<String, String>,
     pub restart: RestartPolicy, pub limits: Limits, pub platform: Option<String>,
-    // D16 (architect, 2026-10-25): recreate must not silently drop how the container runs.
+    // AD16 (architect, 2026-10-25): recreate must not silently drop how the container runs.
     pub working_dir: Option<String>, pub user: Option<String>, pub healthcheck: Option<HealthCheck>,
     pub cap_add: Vec<String>, pub cap_drop: Vec<String>,
     pub network_aliases: std::collections::BTreeMap<String, Vec<String>>, // network name -> aliases
 }
 pub struct HealthCheck { pub test: Vec<String>, pub interval_s: Option<u64>, pub timeout_s: Option<u64>, pub retries: Option<u32>, pub start_period_s: Option<u64> }
-// Anything else the inspect carries that the spec cannot is listed by `ContainerSpec::uncarried(&ContainerDetail) -> Vec<String>`; Recreate is disabled with those names as its reason (D16 backstop).
-// D17: a Compose-managed container is never recreated outside Compose; the sheet offers Apply limits and "Write to compose.yaml instead" (P5-T3) with the reason.
-// D19: memory is formatted in binary units labelled "MB" (256m shows "256 MB"); image and disk sizes stay decimal.
+// Anything else the inspect carries that the spec cannot is listed by `ContainerSpec::uncarried(&ContainerDetail) -> Vec<String>`; Recreate is disabled with those names as its reason (AD16 backstop).
+// AD17: a Compose-managed container is never recreated outside Compose; the sheet offers Apply limits and "Write to compose.yaml instead" (P5-T3) with the reason.
+// AD19: memory is formatted in binary units labelled "MB" (256m shows "256 MB"); image and disk sizes stay decimal.
 #[derive(Default)] pub struct Limits { pub cpus: Option<f32>, pub memory: Option<ByteSize>, pub memory_swap: Option<ByteSize> }
 pub enum RestartPolicy { No, Always, UnlessStopped, OnFailure { max_retries: u16 } }
 pub struct SpecChange { pub field: String, pub before: String, pub after: String }   // env values shown masked
@@ -517,7 +517,7 @@ pub struct Image {
     pub id: String, pub repo_tags: Vec<String>, pub digests: Vec<String>, pub size: ByteSize,
     pub created: DateTime<Utc>, pub arch: Arch, pub os: String,
     pub used_by: Vec<ContainerId>, pub dangling: bool,
-    pub engine: EngineId, // D27 (2026-10-25): filled by the mapper, as for Container
+    pub engine: EngineId, // AD27 (2026-10-25): filled by the mapper, as for Container
 }
 pub struct ImageLayer { pub created_by: String, pub size: ByteSize, pub created: Option<DateTime<Utc>> }
 pub struct ImageDetail { pub image: Image, pub layers: Vec<ImageLayer>, pub env_keys: Vec<String>, pub exposed_ports: Vec<u16> }
@@ -527,15 +527,15 @@ pub struct Volume {
     pub name: String, pub driver: String, pub size: Option<ByteSize>, pub mountpoint: String,
     pub used_by: Vec<ContainerId>, pub project: Option<ProjectId>, pub created: Option<DateTime<Utc>>,
     pub labels: std::collections::BTreeMap<String, String>,
-    pub engine: EngineId, // D27
+    pub engine: EngineId, // AD27
 }
 pub struct VolumeSpec { pub name: String, pub driver: String, pub driver_opts: std::collections::BTreeMap<String, String>, pub labels: std::collections::BTreeMap<String, String> }
 pub struct Network {
     pub id: String, pub name: String, pub driver: String, pub subnet: Option<String>, pub gateway: Option<String>,
     pub internal: bool, pub containers: Vec<ContainerId>, pub project: Option<ProjectId>, pub built_in: bool,
-    pub engine: EngineId, // D27
+    pub engine: EngineId, // AD27
 }
-pub struct NetworkSpec { pub name: String, pub driver: String, pub subnet: Option<String>, pub gateway: Option<String>, pub internal: bool, pub attach: Vec<ContainerId>, pub labels: std::collections::BTreeMap<String, String> } // labels: D25b (2026-10-25)
+pub struct NetworkSpec { pub name: String, pub driver: String, pub subnet: Option<String>, pub gateway: Option<String>, pub internal: bool, pub attach: Vec<ContainerId>, pub labels: std::collections::BTreeMap<String, String> } // labels: AD25b (2026-10-25)
 pub enum FileTarget { Container(ContainerId), Volume(String) }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FileKind { File, Dir, Link, Other }
@@ -623,10 +623,10 @@ pub enum EngineAction {
     Colima { profile: String, op: ColimaOp },
     PullImage { engine: EngineId, reference: String, platform: Option<String> },
     Prune { plan: PrunePlan },
-    Recreate { engine: EngineId, id: ContainerId, spec: ContainerSpec, pull: bool }, // D18 (2026-10-25): edit-and-recreate and "Recreate with latest image"
-    Remove { engine: EngineId, target: ResourceRef, force: bool }, // D25a (2026-10-25): delete one image, volume or network; containers use ContainerAction::Remove; build cache stays under Prune
+    Recreate { engine: EngineId, id: ContainerId, spec: ContainerSpec, pull: bool }, // AD18 (2026-10-25): edit-and-recreate and "Recreate with latest image"
+    Remove { engine: EngineId, target: ResourceRef, force: bool }, // AD25a (2026-10-25): delete one image, volume or network; containers use ContainerAction::Remove; build cache stays under Prune
 }
-pub enum ResourceRef { Image(String), Volume(String), Network(String) } // D25a: action ids image.delete / volume.delete / network.delete, noun, past tense and PendingKey subject derive from it
+pub enum ResourceRef { Image(String), Volume(String), Network(String) } // AD25a: action ids image.delete / volume.delete / network.delete, noun, past tense and PendingKey subject derive from it
 
 // ---------- generation.rs ----------
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -652,7 +652,7 @@ impl GenerationPlan { pub fn effect(&self) -> EffectSummary; }  // "Adds 3 files
 pub enum FoundKind { Compose, Dockerfile { from: Option<String> }, Env { keys: u32 }, EnvExample, DockerIgnore } // Dockerfile.from: the "Found" list shows `FROM node:22-alpine` (gap review 2026-10-25)
 pub struct FoundFile { pub kind: FoundKind, pub path: std::path::PathBuf }
 pub enum StackGuess {
-    Node { pm: String, framework: Option<String>, version: Option<String> },
+    Node { pm: String, framework: Option<String>, framework_version: Option<String>, version: Option<String> },   // framework_version: major only, "15" from next 15.0.3 (AD33)
     Python { tool: String, framework: Option<String> }, Go, Rust, Php { framework: Option<String> },
     Ruby { framework: Option<String> }, Java { build: String, framework: Option<String> }, Static,
 }
@@ -737,7 +737,8 @@ pub enum SysError {
 #[derive(Debug, Clone)]
 pub struct SearchPath { dirs: Vec<std::path::PathBuf> }
 impl SearchPath {
-    pub fn from_process() -> Self;                                   // PATH + ~/.local/bin, /opt/homebrew/bin, /usr/local/bin + BERTH_EXTRA_PATH
+    pub fn from_process() -> Self;                                   // PATH + ~/.local/bin, /opt/homebrew/bin, /usr/local/bin + BERTH_EXTRA_PATH; BERTH_SEARCH_PATH (exact dirs) replaces all of it (AD34)
+    pub fn from_dirs(dirs: Vec<std::path::PathBuf>) -> Self;         // AD34: a fake path for app tests
     pub async fn with_login_shell(self) -> Self;                     // D30; no-op when BERTH_SHELL_PATH=0 or not unix
     pub fn find(&self, program: &str) -> Option<std::path::PathBuf>;
     pub fn path_var(&self) -> std::ffi::OsString;
@@ -794,15 +795,16 @@ pub fn secret_store() -> std::sync::Arc<dyn SecretStore>;   // KeyringStore, fal
 pub struct Settings {
     pub theme: Theme, pub density: Density,
     pub text_scale: f32, // 0.85..=1.5, default 1.0 (owner request 2026-10-25)
-    pub inspector_width_px: u32, // 320..=560, default 360 (owner request, D21, 2026-10-25)
-    pub inspector_dock: InspectorDock, // Right (default) or Bottom (D21; bottom is Chrome-DevTools-style, D22)
-    pub inspector_split_pct: u8, // bottom dock: inspector share of the bottom region, default 40, each pane >= 320 px (D22)
+    pub inspector_width_px: u32, // 320..=560, default 360 (owner request, AD21, 2026-10-25)
+    pub inspector_dock: InspectorDock, // Right (default) or Bottom (AD21; bottom is Chrome-DevTools-style, AD22)
+    pub inspector_split_pct: u8, // bottom dock: inspector share of the bottom region, default 40, each pane >= 320 px (AD22)
     pub default_engine: Option<berth_core::EngineId>,
     pub last_harness: Option<berth_core::HarnessId>,
     pub harness_paths: std::collections::BTreeMap<String, std::path::PathBuf>,   // user-chosen binaries
     pub terminal_app: Option<String>, pub editor: Option<String>,
     pub favourites: Vec<std::path::PathBuf>,
     pub show_dock_icon: bool, pub update_check: bool,
+    #[serde(default)] pub update_last_checked: Option<chrono::DateTime<chrono::Utc>>,   // AD34: D62 "once a day" survives a relaunch
     pub log_buffer_lines: u32,                       // default 100_000
     pub owner: berth_core::OwnerId,
 }
@@ -820,6 +822,7 @@ impl Store {
     pub fn open(path: &std::path::Path) -> Result<Self, StoreError>;          // runs migrations
     pub fn open_in_memory() -> Result<Self, StoreError>;
     pub fn settings(&self) -> Result<Settings, StoreError>;
+    pub fn snapshots(&self) -> Result<Vec<EngineSnapshot>, StoreError>;          // AD34: cold start paints from these before discovery
     pub fn set_settings(&self, s: &Settings) -> Result<(), StoreError>;
     pub fn pins(&self) -> Result<Vec<berth_core::PinnedFolder>, StoreError>;
     pub fn pin(&self, p: &berth_core::PinnedFolder) -> Result<(), StoreError>;
@@ -988,6 +991,7 @@ pub trait ComposeRunner: Send + Sync {
     fn run(&self, target: &berth_core::ComposeTarget, cmd: berth_core::ComposeCommand, cancel: Cancel) -> Bs<berth_core::ComposeEvent>;
     async fn config(&self, target: &berth_core::ComposeTarget) -> Result<serde_json::Value, EngineError>;   // config --format json
     async fn validate(&self, folder: &std::path::Path, files: &[std::path::PathBuf]) -> Result<(), EngineError>; // config -q; Docker(msg) on error
+    async fn validate_text(&self, folder: &std::path::Path, compose_text: &str, env: &[(String, String)]) -> Result<(), EngineError>; // AD33: `config -q -f -` from stdin before Write (ADR 0012); new .env lines go in as process env; env_file-not-found passes when the plan creates it
 }
 pub struct CliCompose { /* SearchPath */ }      // D27; args built by pure `compose_args(target, cmd) -> Vec<String>`
 pub struct MockCompose;
@@ -1032,7 +1036,7 @@ pub struct LogFilter { pub stdout: bool, pub stderr: bool, pub levels: std::coll
 #[derive(Debug, Clone, Default)] pub struct ViewDelta { pub appended: u32, pub dropped: u32, pub new_while_paused: u32 }
 #[derive(Debug, Clone)]
 pub struct RowModel { pub seq: u64, pub ts: String, pub ts_utc: Option<chrono::DateTime<chrono::Utc>>, pub container: String, pub series: u8, pub stream: berth_core::Stream, pub level: Option<Level>, pub error_mark: bool, pub text: String, pub json: Option<JsonSummary>, pub fold: Fold, pub matches: Vec<std::ops::Range<usize>> }
-// ts_utc (architect, 2026-10-25, D20): the full timestamp, so the UI shows local time and puts UTC in a tooltip; `ts` stays the UTC HH:MM:SS.mmm used for text and copy.
+// ts_utc (architect, 2026-10-25, AD20): the full timestamp, so the UI shows local time and puts UTC in a tooltip; `ts` stays the UTC HH:MM:SS.mmm used for text and copy.
 
 pub struct LogView { /* LogBuffer, filter, visible index list, folds expanded, search state, follow */ }
 impl LogView {
@@ -1093,7 +1097,7 @@ pub mod templates {
     pub fn render(t: &berth_core::Template, inputs: &std::collections::BTreeMap<String, String>) -> (String, Vec<(String, String)>);
     pub fn generate_password() -> String;                                            // 24 chars, [A-Za-z0-9]
     pub fn add_service_plan(root: &std::path::Path, compose_rel: &std::path::Path, compose_text: &str, env_text: Option<&str>, t: &berth_core::Template,   // compose_rel: the file may be docker-compose.yml
-                            inputs: &std::collections::BTreeMap<String, String>) -> Result<berth_core::GenerationPlan, RulesError>;
+                            service: &str, inputs: &std::collections::BTreeMap<String, String>) -> Result<berth_core::GenerationPlan, RulesError>;   // service: the name to add (user may rename to avoid ServiceExists), AD33
 }
 pub mod compose_edit {   // D32: text edits that keep comments
     pub fn add_service(text: &str, name: &str, block_yaml: &str) -> Result<String, RulesError>;
@@ -1126,10 +1130,11 @@ pub mod problems {
         pub env_text: Option<String>,      // replaces env_keys: the EnvVarMissing fix hashes and diffs the old .env
         pub compose_error: Option<String>,
         pub failure_lines: Vec<String>,    // <= 20 error lines of the last failed compose command (D82): port clash, name in use, network, build, dependency, pull denied
+        pub missing_binds: Vec<(String, std::path::PathBuf)>, // AD35: (service, absolute source) of each long-syntax bind with `create_host_path: false` whose source is missing; the service stats them (D36: stat only, no walk); evaluate stays pure
     }
     pub struct ProblemInput {
         pub now: chrono::DateTime<chrono::Utc>,
-        pub engine: berth_core::Engine,   // one engine per call; the service calls evaluate per engine (D27)
+        pub engine: berth_core::Engine,   // one engine per call; the service calls evaluate per engine (AD27)
         pub host_arch: berth_core::Arch,  // the Mac's arch (exec_format compares it with the image's)
         pub containers: Vec<ContainerFacts>, pub projects: Vec<ProjectFacts>,
         pub disk: Option<berth_core::DiskUsage>, pub taken_ports: Vec<u16>,
@@ -1350,8 +1355,10 @@ pub enum Overlay {          // stacked; Esc closes the top one
     Palette, Confirm(ConfirmModel), ReviewChanges(uuid::Uuid), Generate(std::path::PathBuf), Detected(std::path::PathBuf),
     OpenFolder, DropFolder(Vec<std::path::PathBuf>), NewProject, EditRecreate(berth_core::ContainerId), Run(String),
     CleanUp(berth_core::EngineId), CreateVolume, CreateNetwork, EditResources(String), AddEngine, AddRegistry,
-    BuildImage, AddService(berth_core::ProjectId),
+    BuildImage, AddService(AddServiceSeed), DeleteProject(berth_core::ProjectId),   // AD33 (2026-10-25): AddService opens from Templates/Find images without a project; DeleteProject has two checkboxes
 }
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AddServiceSeed { pub project: Option<berth_core::ProjectId>, pub template: Option<String>, pub image: Option<String> }
 #[derive(Clone, Copy)]
 pub struct AppState {
     pub settings: Signal<berth_store::Settings>,
@@ -1376,18 +1383,21 @@ pub struct BottomPanel { pub open: bool, pub height_px: u32, pub tab: BottomTab,
 pub struct TerminalTab { pub id: uuid::Uuid, pub title: String, pub session: Option<berth_core::ExecSession>, pub exited: bool, pub unread: bool }
 pub struct ConfirmModel { pub title: String, pub effect: berth_core::EffectSummary, pub action: berth_core::EngineAction, pub checkbox: Option<(String, bool)>, pub targets: Vec<berth_core::Subject> }
 // For EngineAction::Prune, `targets` stays empty and `plan.items` is the target list (Subject has no build-cache case; one list is the single source of what gets removed). 2026-10-25.
-// targets (architect, 2026-10-25, D2): the subjects the dialog acts on, fixed when it opens; effect.count == targets.len(); a target gone by confirm time becomes a refused line in the result. run() never re-reads the selection.
+// targets (architect, 2026-10-25, AD2): the subjects the dialog acts on, fixed when it opens; effect.count == targets.len(); a target gone by confirm time becomes a refused line in the result. run() never re-reads the selection.
 pub enum ToastTone { Neutral, Success, Danger }
 pub struct Toast { pub id: uuid::Uuid, pub text: String, pub tone: ToastTone, pub action: Option<(String, &'static str)> }  // (label, ActionDef id)
 pub enum ActionScope { Global, Container, Project, Image, Volume, Network, Engine, Logs, Assistant }
 
-// services/menubar.rs (D38): pure, unit-tested
-pub struct AppSnapshot { pub engines: Vec<berth_core::Engine>, pub projects: Vec<berth_core::Project>, pub failing: Vec<berth_core::Container> }
-pub enum MenuIcon { AllGood, Failing, EngineStopped }
-pub enum MenuItem { Header(String), Engine { id: berth_core::EngineId, label: String, running: bool }, Project { id: berth_core::ProjectId, label: String, running: bool },
-                    Failing { id: berth_core::ContainerId, label: String }, Separator, OpenBerth, Quit }
-pub struct MenuModel { pub icon: MenuIcon, pub items: Vec<MenuItem> }
-pub fn menu_model(s: &AppSnapshot) -> MenuModel;
+// services/menubar.rs (D38; reshaped AD34, 2026-10-25, to carry the frame: summary, unreachable engines with Retry, "N of M running", failing containers nested under their project)
+#[derive(Debug, Clone, PartialEq)] pub struct AppSnapshot { pub engines: Vec<berth_core::Engine>, pub projects: Vec<berth_core::Project>, pub containers: Vec<berth_core::Container> }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)] pub enum MenuIcon { AllGood, Failing, EngineStopped }
+#[derive(Debug, Clone, PartialEq, Eq)] pub enum MenuCommand { EngineStart(berth_core::EngineId), EngineAskStop(berth_core::EngineId), EngineRetry(berth_core::EngineId), ProjectStart(berth_core::ProjectId), ProjectStop(berth_core::ProjectId), ProjectOpen(berth_core::ProjectId), ShowLogs(berth_core::ContainerId), Restart(berth_core::ContainerId), OpenBerth, Quit }
+#[derive(Debug, Clone, PartialEq, Eq)] pub enum MenuItem { Summary { text: String, tone: berth_core::Tone }, Header(&'static str), Row { label: String, detail: String, tone: berth_core::Tone, nested: bool, commands: Vec<(String, MenuCommand)> }, Separator, Command { label: &'static str, command: MenuCommand } }
+#[derive(Debug, Clone, PartialEq, Eq)] pub struct MenuModel { pub icon: MenuIcon, pub items: Vec<MenuItem> }   // PartialEq: the tray rebuilds only on change
+pub fn menu_model(s: &AppSnapshot) -> MenuModel;     // order: summary, engines, projects (failing containers nested); a Row becomes a native submenu (muda rows hold no buttons)
+pub fn command_id(c: &MenuCommand) -> String;        // "tray:project.stop:<id>"
+pub fn parse_command_id(id: &str) -> Option<MenuCommand>;   // commands run through ActionsService with an explicit subject (not keys::dispatch, which acts on the selection)
+// platform (AD34): pub fn use_tray(model: ReadSignal<MenuModel>); pub fn set_dock_icon_visible(visible: bool); pub fn quit() /* sets WindowCloses, saves the snapshot, exits */; pub fn show_window();
 
 // actions.rs: one table drives buttons, shortcuts, palette and menus (brief §7.2 "every button has a shortcut and a palette command")
 pub struct ActionDef { pub id: &'static str, pub label: &'static str, pub shortcut: Option<&'static str>, pub scope: ActionScope, pub danger: bool }

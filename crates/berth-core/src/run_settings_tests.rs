@@ -1,4 +1,4 @@
-//! D16 to D19 tests: the run settings a spec carries, what it cannot carry,
+//! AD16 to AD19 tests: the run settings a spec carries, what it cannot carry,
 //! the diff of both, memory in binary units and `EngineAction::Recreate`.
 
 use std::collections::BTreeMap;

@@ -1,0 +1,396 @@
+/* Project detail (P5-T6, frame "Project / files / 1440"). Colours and sizes
+   come only from tokens.css. */
+
+.project-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  font-size: var(--text-body-size);
+}
+.main:has(> .project-detail) {
+  overflow: hidden;
+}
+
+/* Header: title, state, buttons; folder, branch, counts; banners; tabs */
+.pd-header {
+  flex: none;
+  padding: var(--space-12) var(--gutter) 0;
+}
+.pd-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.pd-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-body-weight);
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.pd-spacer {
+  flex: 1;
+}
+.pd-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-12);
+  margin: var(--space-4) 0 var(--space-12);
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.pd-path {
+  font-family: var(--font-mono);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pd-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-family: var(--font-mono);
+  color: var(--color-ink);
+}
+.pd-subline {
+  white-space: nowrap;
+}
+.pd-failure {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: var(--space-8);
+}
+.pd-failure .inline-message {
+  flex: 1;
+  padding-left: 0;
+}
+.pd-failure-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+.pd-failure-dismiss:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-ink);
+}
+.pd-failure-dismiss:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.pd-banner {
+  margin-bottom: var(--space-8);
+}
+.pd-header .tabs-underline {
+  margin: 0 calc(-1 * var(--gutter));
+  padding: 0 var(--gutter);
+}
+
+/* More-actions menu */
+.pd-more {
+  position: relative;
+  display: inline-flex;
+}
+.pd-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+}
+.pd-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+}
+
+/* Body under the tabs */
+.pd-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pd-empty,
+.pd-loading {
+  padding: var(--space-32) var(--gutter);
+}
+.pd-loading {
+  padding-top: var(--space-16);
+}
+.pd-note {
+  padding: var(--space-8) var(--gutter) 0;
+}
+.pd-services {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+/* A project's rows are opened, not ticked: the checkbox column keeps its
+   room so the grid is the Containers table's. */
+.pd-services .ct-check {
+  visibility: hidden;
+  pointer-events: none;
+}
+.pd-services .ct-table {
+  flex: none;
+}
+.pd-logs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Files tab: bar, tree, preview */
+.pd-files {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.pd-files-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--gutter);
+  border-bottom: 1px solid var(--color-line);
+}
+.pd-files-path {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption-size);
+  color: var(--color-ink-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pd-files-spacer {
+  flex: 1;
+}
+.pd-files-hint {
+  font-size: var(--text-caption-size);
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+}
+.pd-files-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: calc(300px * var(--text-scale, 1)) minmax(0, 1fr);
+}
+.pd-tree {
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--color-line);
+  padding: var(--space-4) 0;
+}
+.pd-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--size-control-md);
+  min-height: var(--size-control-md);
+  padding-right: var(--space-12);
+  border: none;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  text-align: left;
+  cursor: pointer;
+}
+.pd-row:hover {
+  background: var(--color-surface-hover);
+}
+.pd-row:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.pd-row-selected {
+  background: var(--color-surface-hover);
+  border-left-color: var(--color-accent);
+}
+.pd-chevron {
+  display: inline-flex;
+  width: var(--size-icon-sm);
+  flex: none;
+  color: var(--color-ink-muted);
+}
+.pd-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pd-row-count,
+.pd-row-tag {
+  flex: none;
+  font-family: var(--font-text);
+  font-size: var(--text-caption-size);
+  color: var(--color-ink-muted);
+}
+.pd-row-note {
+  cursor: default;
+  color: var(--color-ink-muted);
+  font-family: var(--font-text);
+  font-size: var(--text-caption-size);
+}
+.pd-row-note:hover {
+  background: none;
+}
+.pd-row-failed {
+  color: var(--color-danger);
+}
+.pd-key {
+  cursor: default;
+  color: var(--color-ink-muted);
+}
+.pd-key-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pd-key-value {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 1px;
+}
+.pd-key-shown {
+  letter-spacing: 0;
+  color: var(--color-ink);
+}
+
+.pd-preview-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-16);
+}
+.pd-card {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.pd-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-12);
+  border-bottom: 1px solid var(--color-line);
+}
+.pd-card-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.pd-card-meta {
+  font-size: var(--text-caption-size);
+  color: var(--color-ink-muted);
+}
+.pd-card-note {
+  margin: 0;
+  padding: var(--space-12);
+  color: var(--color-ink-muted);
+}
+.pd-code {
+  padding: var(--space-4) 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+  overflow-x: auto;
+}
+.pd-line {
+  display: flex;
+  gap: var(--space-12);
+  padding: 0 var(--space-12) 0 0;
+  min-width: max-content;
+}
+.pd-line-no {
+  flex: none;
+  width: calc(3ch + var(--space-12));
+  text-align: right;
+  color: var(--color-ink-muted);
+  user-select: none;
+}
+.pd-line-text {
+  white-space: pre;
+}
+.pd-line-error {
+  background: var(--color-danger-subtle);
+  box-shadow: inset 2px 0 0 var(--color-danger);
+}
+.pd-files-foot {
+  position: absolute;
+  right: var(--space-8);
+  bottom: var(--space-8);
+}
+
+/* Activity tab */
+.pd-activity {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-8) var(--gutter);
+}
+.pd-act {
+  display: grid;
+  grid-template-columns: 3px calc(88px * var(--text-scale, 1)) calc(140px * var(--text-scale, 1)) minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--space-12);
+  min-height: var(--size-row);
+  color: var(--color-ink);
+}
+.pd-act-bar {
+  align-self: stretch;
+  margin: var(--space-4) 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+}
+.pd-act-time,
+.pd-act-source {
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pd-act-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pd-act-danger .pd-act-bar {
+  background: var(--color-danger);
+}
+.pd-act-danger .pd-act-message {
+  color: var(--color-danger);
+}
+.pd-act-warning .pd-act-bar {
+  background: var(--color-warning);
+}

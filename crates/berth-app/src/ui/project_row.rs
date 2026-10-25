@@ -157,7 +157,7 @@ pub struct ProjectRowModel {
     pub problem_count: usize,
     pub problem_summary: Option<String>,
     /// Whether the row reserves a fixed-height slot under it for the
-    /// problem line (D31). `row_model` says yes when there is a summary;
+    /// problem line (AD31). `row_model` says yes when there is a summary;
     /// the Projects screen overrides it with the slot decided when the
     /// row first appeared, so a problem that shows up later moves nothing.
     pub problem_slot: bool,
@@ -171,6 +171,8 @@ pub struct ProjectRowModel {
     pub restart_reason: Option<String>,
     pub rebuild_reason: Option<String>,
     pub pull_reason: Option<String>,
+    /// Why Delete project is unavailable (opens the Delete project sheet).
+    pub delete_reason: Option<String>,
     /// Why "Open terminals for all services" is unavailable (P3-T6).
     pub terminals_reason: Option<String>,
     pub pending: Option<RowPending>,
@@ -464,30 +466,32 @@ pub fn row_model(
     };
     let reason = |action: &str| crate::services::actions::disabled_reason(&subject, action, view);
     let not_compose = || Some("Not a Compose project".to_string());
-    let (primary_label, primary_reason, restart_reason, rebuild_reason, pull_reason) = match &loose
-    {
-        Some(ops) => (
-            match primary {
-                PrimaryOp::Start => "Start all",
-                PrimaryOp::Stop => "Stop all",
-            }
-            .to_string(),
-            match primary {
-                PrimaryOp::Start => ops.start_reason.clone(),
-                PrimaryOp::Stop => ops.stop_reason.clone(),
-            },
-            ops.stop_reason.clone(),
-            not_compose(),
-            not_compose(),
-        ),
-        None => (
-            primary.label().to_string(),
-            reason(primary.op().action_id()),
-            reason("project.restart"),
-            reason("project.rebuild"),
-            reason("project.pull_images"),
-        ),
-    };
+    let (primary_label, primary_reason, restart_reason, rebuild_reason, pull_reason, delete_reason) =
+        match &loose {
+            Some(ops) => (
+                match primary {
+                    PrimaryOp::Start => "Start all",
+                    PrimaryOp::Stop => "Stop all",
+                }
+                .to_string(),
+                match primary {
+                    PrimaryOp::Start => ops.start_reason.clone(),
+                    PrimaryOp::Stop => ops.stop_reason.clone(),
+                },
+                ops.stop_reason.clone(),
+                not_compose(),
+                not_compose(),
+                not_compose(),
+            ),
+            None => (
+                primary.label().to_string(),
+                reason(primary.op().action_id()),
+                reason("project.restart"),
+                reason("project.rebuild"),
+                reason("project.pull_images"),
+                reason("project.delete"),
+            ),
+        };
 
     ProjectRowModel {
         id: project.id.clone(),
@@ -519,6 +523,7 @@ pub fn row_model(
         restart_reason,
         rebuild_reason,
         pull_reason,
+        delete_reason,
         terminals_reason: crate::services::exec::project_terminals_reason(
             view.containers,
             project,
@@ -661,11 +666,16 @@ pub fn menu_entries(model: &ProjectRowModel) -> Vec<MenuEntry> {
             "terminal",
             &model.terminals_reason,
         ),
-        MenuEntry::new("delete", "Delete project\u{2026}")
-            .icon("trash-2")
-            .danger()
-            .separator_before()
-            .disabled("Delete confirmation is not built yet"),
+        {
+            let delete = MenuEntry::new("delete", "Delete project\u{2026}")
+                .icon("trash-2")
+                .danger()
+                .separator_before();
+            match &model.delete_reason {
+                Some(reason) => delete.disabled(reason.clone()),
+                None => delete,
+            }
+        },
     ]
 }
 
@@ -709,7 +719,7 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
         div { class: "project-row-wrap",
             div { class: "{row_class}", role: "row",
                 // The full path is the name cell's tooltip at any size, so it
-                // stays reachable when the Path column is hidden (D3). The
+                // stays reachable when the Path column is hidden (AD3). The
                 // button inside carries it too: a child's title wins on hover.
                 div {
                     class: "project-cell project-cell-name",
@@ -912,6 +922,12 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                                                     &id,
                                                     ProjectOp::PullImages,
                                                 ),
+                                                "delete" => {
+                                                    state
+                                                        .overlays
+                                                        .write()
+                                                        .push(crate::state::Overlay::DeleteProject(id.clone()));
+                                                }
                                                 "terminals" => {
                                                     if let (Some(core), Some(mut view)) = (
                                                         try_consume_context::<crate::services::exec::ExecCore>(),

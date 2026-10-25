@@ -1,0 +1,12 @@
+{
+  "Id": "9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4",
+  "Name": "/berthfx-broken-crash-1",
+  "State": { "Status": "exited", "Running": false, "OOMKilled": false, "ExitCode": 1, "Error": "", "StartedAt": "2026-10-25T09:12:03.114Z", "FinishedAt": "2026-10-25T09:12:03.201Z" },
+  "HostConfig": { "Memory": 0 },
+  "Config": {
+    "Image": "alpine:3",
+    "Cmd": ["sh", "-c", "exit 1"],
+    "Env": ["PATH=••••"],
+    "Labels": { "com.docker.compose.project": "berthfx-broken", "com.docker.compose.service": "crash" }
+  }
+}

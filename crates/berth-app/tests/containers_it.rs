@@ -116,6 +116,7 @@ async fn containers_it_filter_berthfx_shows_four_rows_and_the_port_link_opens_ng
         return;
     }
     common::settle_fixture().await;
+    common::assert_broken_down();
     let (dom, mut state) = harness();
     let search = berth_sys::SearchPath::from_process()
         .with_login_shell()

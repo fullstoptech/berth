@@ -1,0 +1,12 @@
+services:
+  web:
+    image: nginx:alpine
+    labels: [dev.berth.fixture=1]
+    ports:
+      - "127.0.0.1:56081:80"
+  portclash:
+    image: nginx:alpine
+    labels: [dev.berth.fixture=1]
+    ports:
+      # The host port the clash is about.
+      - "127.0.0.1:56080:80"

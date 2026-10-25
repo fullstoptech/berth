@@ -1,4 +1,4 @@
-//! Per-call request timeouts for the Docker API (D29).
+//! Per-call request timeouts for the Docker API (AD29).
 //!
 //! bollard has one timeout per client, applied from sending the request to
 //! receiving the response head. A single 2 s value broke two kinds of

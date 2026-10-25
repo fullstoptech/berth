@@ -1,4 +1,4 @@
-//! Where the inspector sits (D21, D22): a right column you can resize, or
+//! Where the inspector sits (AD21, AD22): a right column you can resize, or
 //! the right pane of the bottom region as in browser dev tools.
 //!
 //! Everything that decides a size or a place is a pure function here, so
@@ -24,7 +24,7 @@ use crate::state::AppState;
 /// The sidebar's width (`--size-sidebar`), which the main area gives up.
 pub const SIDEBAR_PX: f64 = 220.0;
 /// The main area never drops below this at 100 % text next to a docked
-/// inspector; it grows and shrinks with the text size (D24).
+/// inspector; it grows and shrinks with the text size (AD24).
 pub const MAIN_MIN_PX: f64 = 640.0;
 /// A window narrower than this never docks the inspector at the right.
 pub const DOCK_MIN_WINDOW_PX: f64 = 1200.0;
@@ -46,7 +46,7 @@ pub fn clamp_stored_width(px: u32) -> u32 {
     px.clamp(INSPECTOR_WIDTH_MIN, INSPECTOR_WIDTH_MAX)
 }
 
-/// The least main area a docked inspector leaves (D24): 640 px at 100 %
+/// The least main area a docked inspector leaves (AD24): 640 px at 100 %
 /// text, 544 at 85 %, 960 at 150 %. The tables' narrowest column lists fit
 /// it at every text size (the sweep in `containers_tests.rs`).
 #[must_use]
@@ -142,7 +142,7 @@ pub fn inspector_slot(
 // The bottom region
 // ---------------------------------------------------------------------
 
-/// What the one full-width bottom region shows (D22).
+/// What the one full-width bottom region shows (AD22).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegionMode {
     /// The inspector alone: the Logs/Terminal panel is closed.
@@ -593,7 +593,7 @@ pub fn SplitHandle(
     }
 }
 
-/// The handle on the right column's left edge (D21).
+/// The handle on the right column's left edge (AD21).
 #[component]
 pub fn InspectorWidthHandle() -> Element {
     let mut state = use_context::<AppState>();
@@ -627,7 +627,7 @@ pub fn InspectorWidthHandle() -> Element {
     }
 }
 
-/// The divider between the panel and the inspector in the bottom region (D22).
+/// The divider between the panel and the inspector in the bottom region (AD22).
 #[component]
 pub fn InspectorSplitHandle() -> Element {
     let mut state = use_context::<AppState>();
@@ -680,7 +680,7 @@ mod tests {
         assert_eq!(clamp_right_width(560, 1300.0, 1.0), 440);
         // 1200: 340 is all that fits next to 640 px of main area.
         assert_eq!(clamp_right_width(560, 1200.0, 1.0), 340);
-        // The floor is 640 px x text size (D24): 544 at 85 %, 960 at 150 %.
+        // The floor is 640 px x text size (AD24): 544 at 85 %, 960 at 150 %.
         assert_eq!(main_min_px(0.85), 544.0);
         assert_eq!(main_min_px(1.0), 640.0);
         assert_eq!(main_min_px(1.5), 960.0);

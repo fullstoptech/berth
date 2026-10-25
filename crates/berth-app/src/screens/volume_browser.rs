@@ -8,7 +8,7 @@
 //! read, backup or restore on an engine, a dialog says "Berth uses a small
 //! helper image alpine:3 to read volumes" with its size and pulls it only
 //! on a click. Back up writes a `.tar.gz` where the save panel points (a
-//! direct export, D15) and never stops a container. Restore writes into the
+//! direct export, AD15) and never stops a container. Restore writes into the
 //! volume, so it asks with the volume's name typed (D33).
 //!
 //! All I/O is in `services::{volumes, volume_backup}` and runs on the I/O

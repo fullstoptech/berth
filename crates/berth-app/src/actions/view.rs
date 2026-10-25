@@ -7,7 +7,7 @@ use crate::text_scale::Step;
 use dioxus::prelude::{ReadableExt, WritableExt};
 
 pub const DEFS: &[ActionDef] = &[
-    // View > dock the inspector at the other side (D21, D22). The View menu
+    // View > dock the inspector at the other side (AD21, AD22). The View menu
     // item's label names the side a click moves to.
     def(
         "view.dock_inspector",
