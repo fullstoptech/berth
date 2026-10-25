@@ -1,0 +1,27 @@
+---
+source: crates/berth-engine/src/mappers.rs
+expression: disk_usage(&df())
+---
+{
+  "images": {
+    "count": 44,
+    "size": "17.9 GiB",
+    "reclaimable": "14.2 GiB"
+  },
+  "containers": {
+    "count": 7,
+    "size": "180.0 KiB",
+    "reclaimable": "0 B"
+  },
+  "volumes": {
+    "count": 119,
+    "size": "5.4 GiB",
+    "reclaimable": "4.7 GiB"
+  },
+  "build_cache": {
+    "count": 0,
+    "size": "0 B",
+    "reclaimable": "0 B"
+  },
+  "disk_total": null
+}

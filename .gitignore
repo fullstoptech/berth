@@ -1,3 +1,5 @@
 .DS_Store
 /target/
 *.swp
+/web-src/node_modules/
+.claude/worktrees/

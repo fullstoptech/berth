@@ -1,0 +1,93 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/berth-core",
+    "crates/berth-sys",
+    "crates/berth-store",
+    "crates/berth-engine",
+    "crates/berth-logs",
+    "crates/berth-rules",
+    "crates/berth-registry",
+    "crates/berth-assistant",
+    "crates/berth-plugin-protocol",
+    "crates/berth-plugin-host",
+    "crates/berth-app",
+    "plugins/coolify",
+]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+publish = false
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/fullstoptech/berth"
+
+# PLAN §5. Caret requirements at the minimums checked on 2026-10-24.
+[workspace.dependencies]
+berth-core = { path = "crates/berth-core" }
+berth-sys = { path = "crates/berth-sys" }
+berth-store = { path = "crates/berth-store" }
+berth-engine = { path = "crates/berth-engine" }
+berth-logs = { path = "crates/berth-logs" }
+berth-rules = { path = "crates/berth-rules" }
+berth-registry = { path = "crates/berth-registry" }
+berth-assistant = { path = "crates/berth-assistant" }
+berth-plugin-protocol = { path = "crates/berth-plugin-protocol" }
+berth-plugin-host = { path = "crates/berth-plugin-host" }
+
+dioxus = { version = "0.7.10", features = ["desktop"] }
+dioxus-ssr = "0.7.10"
+tokio = { version = "1.54", features = ["full"] }
+tokio-util = { version = "0.7.20", features = ["codec"] }
+tokio-stream = "0.1.19"
+futures = "0.3.34"
+async-trait = "0.1.92"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+serde_norway = "0.9.42"
+toml = "1.1"
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+tracing-appender = "0.2.5"
+uuid = { version = "1.29", features = ["v7", "serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+url = { version = "2.5", features = ["serde"] }
+bytesize = { version = "2.7", features = ["serde"] }
+sha2 = "0.11"
+hex = "0.4"
+directories = "6"
+rusqlite = { version = "0.41", features = ["bundled"] }
+keyring = { version = "3.6", features = ["apple-native"] }
+secrecy = { version = "0.10.3", features = ["serde"] }
+bollard = { version = "0.21.1", features = ["chrono"] }
+regex = "1.13"
+strip-ansi-escapes = "0.2.1"
+similar = "3.2"
+shell-words = "1.1"
+nucleo-matcher = "0.3.1"
+which = "8"
+semver = "1.0"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "json", "query", "stream"] }
+rustls = { version = "0.23.46", default-features = false, features = ["std", "ring", "logging", "tls12"] }
+rmcp = { version = "3.7", features = ["server", "macros", "transport-io"] }
+schemars = "1.2"
+flate2 = "1.1"
+tar = "0.4.46"
+bytes = "1"
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
+insta = { version = "1.49", features = ["json", "yaml"] }
+tempfile = "3.27"
+pretty_assertions = "1.4"
+wiremock = "0.6.5"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+opt-level = 3

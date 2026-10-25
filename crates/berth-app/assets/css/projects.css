@@ -1,0 +1,557 @@
+/* Projects screen and ProjectRow (P2-T6, frame "Projects / default / 1440").
+   Colours and sizes come only from tokens.css variables (D4). */
+
+.projects-screen {
+  /* A step taller than the global row, for this screen only. */
+  --projects-row: calc(var(--size-row) + var(--space-4));
+  /* Every track that holds text, numbers or buttons grows with the text size
+     (--text-scale), so the wide layout is the 100 % layout zoomed. */
+  --projects-cols: calc(162px * var(--text-scale, 1)) calc(138px * var(--text-scale, 1)) calc(72px * var(--text-scale, 1)) calc(98px * var(--text-scale, 1)) minmax(calc(140px * var(--text-scale, 1)), calc(218px * var(--text-scale, 1))) calc(138px * var(--text-scale, 1)) calc(53px * var(--text-scale, 1)) calc(60px * var(--text-scale, 1)) 1fr;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-bottom: var(--space-24);
+  /* The narrow-layout rules below key on this screen's own width, in text
+     size units: container-query ems resolve against this font size, so N em
+     is N x 13 px at 100 % and grows with the text size. */
+  font-size: var(--text-body-size);
+  container: projects / inline-size;
+}
+
+/* Header: title, count, filter controls, primary action */
+.projects-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: calc(var(--space-12) + 1px) var(--space-16) var(--space-6);
+}
+.projects-header .badge-count {
+  background: var(--color-surface-pressed);
+}
+.projects-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-h1-weight);
+  color: var(--color-ink);
+}
+.projects-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-left: auto;
+  min-width: 0;
+}
+/* The search field gives way first when the controls outgrow the header. */
+.projects-search {
+  width: 240px;
+  flex-shrink: 1;
+  min-width: calc(120px * var(--text-scale, 1));
+}
+.projects-banners {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: 0 var(--space-16) var(--space-8);
+}
+
+/* Table: its box sits on the page gutter (like the header, the cards and
+   the activity list); the cells sit one step inside it. */
+.projects-table {
+  display: flex;
+  flex-direction: column;
+  margin: 0 var(--space-16);
+  border-bottom: 1px solid var(--color-line);
+}
+.projects-head,
+.project-row {
+  display: grid;
+  grid-template-columns: var(--projects-cols);
+  align-items: center;
+  padding: 0 var(--space-8);
+  box-sizing: border-box;
+}
+.projects-head {
+  height: calc(var(--size-row) - var(--space-2));
+  padding-top: var(--space-2);
+  border-bottom: 1px solid var(--color-line);
+}
+.projects-head .table-header-cell {
+  height: auto;
+  min-height: 0;
+  padding: 0 var(--space-8) 0 0;
+  border-bottom: none;
+}
+.projects-head .table-header-cell.align-right {
+  justify-content: flex-end;
+}
+.projects-head .projects-head-name {
+  padding-left: calc(var(--size-icon-md) + var(--space-8));
+}
+.projects-head .projects-head-actions {
+  padding: 0;
+}
+
+.project-row {
+  height: var(--projects-row);
+  font-size: var(--text-body-size);
+  color: var(--color-ink);
+}
+.project-row:hover {
+  background: var(--color-surface-hover);
+}
+.project-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+  padding-right: var(--space-8);
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.project-cell-actions {
+  gap: var(--space-4);
+  padding-right: 0;
+  overflow: visible;
+}
+.project-cell-num {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+.project-cell-name {
+  gap: var(--space-8);
+}
+.project-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+  height: var(--size-control-sm);
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.project-name .icon {
+  color: var(--color-ink-muted);
+}
+.project-name:hover .project-name-text {
+  text-decoration: underline;
+}
+.project-name:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.project-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.project-problem-tag {
+  flex: none;
+  color: var(--color-danger);
+  font-size: var(--text-caption-size);
+}
+.project-cell-path,
+.project-cell-branch,
+.project-cell-ports {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.project-cell-path {
+  display: block;
+  line-height: var(--projects-row);
+  text-overflow: ellipsis;
+  color: var(--color-ink);
+}
+.project-cell-engine {
+  display: block;
+  line-height: var(--projects-row);
+  text-overflow: ellipsis;
+  color: var(--color-ink);
+}
+.project-cell-branch .icon {
+  color: var(--color-ink-muted);
+}
+.project-branch-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.project-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: none;
+}
+.project-services-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-ink-muted);
+}
+.project-note.note-warning {
+  color: var(--color-warning);
+}
+.project-note.note-danger {
+  color: var(--color-danger);
+}
+.project-cell-ports {
+  gap: var(--space-8);
+}
+.port-link {
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.port-link:hover {
+  text-decoration: underline;
+}
+.port-link:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.ports-more {
+  color: var(--color-ink-muted);
+}
+.ports-unreachable {
+  color: var(--color-danger);
+}
+.ports-hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-text);
+  font-size: var(--text-body-size);
+  color: var(--color-ink-muted);
+}
+.cell-dash {
+  color: var(--color-ink-disabled);
+}
+
+.project-cell-span {
+  grid-column: span 3;
+}
+
+/* Narrower main area (D78, as the Containers table). The thresholds are in
+   em of the screen's font size, so they are the 100 % widths of 1200 and 800
+   px and move out as the text grows (at 150 % the first is 1800 px).
+
+   Up to 92.3 em the table drops Engine and Branch. Only the numeric, Ports
+   and button tracks are sized; Path and Services share what is left in the
+   ratio 104:112, and the last track keeps the labelled buttons (text 112 +
+   padding 48 + two 24 px icons + 3 gaps of 4, so 160 x scale + 56 px). At
+   1024 px at 100 % the main area is 804 px: 804 - 32 margin - 16 padding =
+   756 = 116 + 104 + 112 + 104 + 48 + 56 + 216. Services text and the path
+   truncate; the dots stay. The problem count moves to the summary line
+   under the row. */
+@container projects (max-width: 92.3em) {
+  .projects-table {
+    --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 56px);
+  }
+  .projects-head > :nth-child(3),
+  .projects-head > :nth-child(4),
+  .project-cell-engine,
+  .project-cell-branch,
+  .project-problem-tag {
+    display: none;
+  }
+  .ports-unreachable {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+/* Up to 61.5 em (the 100 % width needs 804 px, so 1024 px at 100 % stays in
+   the layout above) Ports gets a zero-width track: the cells stay in the grid
+   so every later cell keeps its track, and are clipped away. Name keeps its
+   room, Path and Services give way. An unreachable engine's message and the
+   not-set-up hint use the Ports, CPU and Memory tracks together instead. */
+@container projects (max-width: 61.5em) {
+  .projects-table {
+    --projects-cols: minmax(calc(96px * var(--text-scale, 1)), 116fr) minmax(0, 104fr) minmax(0, 112fr) 0px calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 56px);
+  }
+  .projects-head > :nth-child(6),
+  .project-cell-ports {
+    padding: 0;
+    overflow: hidden;
+  }
+  .project-cell-ports > * {
+    visibility: hidden;
+  }
+  .project-row:has(.ports-unreachable) .project-cell-ports,
+  .project-cell-ports.project-cell-span {
+    grid-column: span 3;
+    padding-right: var(--space-8);
+  }
+  .project-row:has(.ports-unreachable) .project-cell-ports > *,
+  .project-cell-ports.project-cell-span > * {
+    visibility: visible;
+  }
+  .project-row:has(.ports-unreachable) .project-cell-num {
+    display: none;
+  }
+  /* The controls drop under the title when they no longer fit beside it. */
+  .projects-header {
+    flex-wrap: wrap;
+  }
+  .projects-controls {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+  }
+}
+
+/* Up to 49.5 em Path goes too (D3). That is 1024 px at text sizes of 130 %
+   and more (main area 804 px: 804 / 13 / 1.3 = 47.6 em; at 120 % it is
+   51.5 em and Path stays). The threshold sits halfway between the two, so
+   neither side is a pixel away from flipping. Path's cells are removed from
+   the grid, so the tracks lose its slot and Services takes its share (104fr
+   joins 112fr). The full path stays on the Name cell's tooltip. A wide
+   window never gets here: 1440 px at 150 % is 62.6 em.
+
+   Name keeps at least 14 characters (14ch of the body font, so it grows with
+   the text) plus the folder icon, the gap after it (space-8) and the cell's
+   right padding (space-8), so a project name is not cut to "payment...".
+   Services has no minimum and takes what is left: at 1024 px and 130 % that
+   is 179 / 178 px for Name / Services, at 150 % 204 / 100 px. */
+@container projects (max-width: 49.5em) {
+  .projects-table {
+    --projects-cols: minmax(calc(14ch + var(--size-icon-md) + var(--space-16)), 116fr) minmax(0, 216fr) 0px calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + 56px);
+  }
+  .projects-head > :nth-child(2),
+  .project-cell-path {
+    display: none;
+  }
+}
+
+/* Problem summary under a failing row */
+.project-problem-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  height: var(--size-row);
+  padding: 0 var(--space-8) 0 calc(var(--space-8) - 2px);
+  box-sizing: border-box;
+  border-left: 2px solid var(--color-danger-dot);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+  font-size: var(--text-body-size);
+}
+.project-failure {
+  display: flex;
+  align-items: flex-start;
+  padding: 0 var(--space-8);
+}
+.project-failure .inline-message {
+  flex: 1;
+  padding-left: 0;
+}
+.project-failure-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+.project-failure-dismiss:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-ink);
+}
+.project-failure-dismiss:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+/* More-actions menu */
+.project-more {
+  position: relative;
+  display: inline-flex;
+}
+.project-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+}
+.project-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+}
+
+/* Needs attention */
+.projects-attention {
+  padding: var(--space-24) var(--space-16) 0;
+}
+.projects-section-title {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  font-weight: var(--text-label-weight);
+  color: var(--color-ink);
+}
+.attention-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  height: var(--size-control-lg);
+  margin-bottom: var(--space-6);
+  padding: 0 var(--space-12);
+  box-sizing: border-box;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-size);
+}
+.attention-card .icon.tone-danger {
+  color: var(--color-danger);
+}
+.attention-card .icon.tone-warning {
+  color: var(--color-warning);
+}
+.attention-title {
+  white-space: nowrap;
+}
+.attention-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  color: var(--color-ink-muted);
+}
+.attention-age {
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  white-space: nowrap;
+}
+
+/* Recent activity: one line per entry; errors and warnings are tinted with a
+   bar on the left, the rest are plain (frame "Projects / default / 1440"). */
+.projects-recent {
+  padding: var(--space-20) var(--space-16) 0;
+}
+.recent-row {
+  display: grid;
+  grid-template-columns: var(--space-2) 96px 168px minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--space-12);
+  height: calc(var(--size-row) - var(--space-4));
+  padding: 0 var(--space-12) 0 var(--space-16);
+  box-sizing: border-box;
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+}
+.recent-bar {
+  align-self: stretch;
+  margin: var(--space-2) 0;
+}
+.recent-time,
+.recent-message {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.recent-time,
+.recent-source {
+  color: var(--color-ink-muted);
+}
+.recent-source,
+.recent-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-danger {
+  background: var(--color-danger-subtle);
+}
+.recent-danger .recent-bar {
+  background: var(--color-danger-dot);
+}
+.recent-danger .recent-time,
+.recent-danger .recent-message {
+  color: var(--color-danger);
+}
+.recent-warning {
+  background: var(--color-warning-subtle);
+}
+.recent-warning .recent-bar {
+  background: var(--color-warning-dot);
+}
+.recent-warning .recent-time,
+.recent-warning .recent-message {
+  color: var(--color-warning);
+}
+
+/* Empty and loading bodies */
+.projects-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-24);
+}
+/* The screen's bottom padding is for the table; an empty body fills to the
+   status bar so its content is centred in the area under the header. */
+.projects-screen:has(> .projects-empty) {
+  padding-bottom: 0;
+}
+/* The empty state is centred, horizontally and vertically, in the main
+   area under the header (owner decision). With the First-run checks card
+   (P6) the block moves left and the card sits on its right, as in the
+   frame "Projects / empty / 1440": block 400 px, card 418 px, 72 px apart. */
+.projects-empty.has-first-run {
+  gap: calc(var(--space-48) + var(--space-24));
+}
+.projects-first-run {
+  width: 418px;
+  max-width: 100%;
+  flex: none;
+}
+.projects-empty-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-24);
+  width: 400px;
+  max-width: 100%;
+}
+.projects-empty-column .empty-state {
+  padding: 0;
+}
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  width: 100%;
+  height: 96px;
+  border: 1px dashed var(--color-line-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+}
+.drop-zone-hint {
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+}
+.projects-loading {
+  padding: 0;
+}
+.projects-no-match {
+  padding: var(--space-24) 0;
+}

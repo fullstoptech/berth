@@ -1,0 +1,66 @@
+---
+source: crates/berth-engine/src/mappers.rs
+expression: images
+---
+[
+  {
+    "id": "[id]",
+    "repo_tags": [
+      "alpine:3"
+    ],
+    "digests": [],
+    "size": "13.0 MiB",
+    "created": "1970-01-01T00:00:00Z",
+    "arch": {
+      "Other": "unknown"
+    },
+    "os": "",
+    "used_by": [],
+    "dangling": false
+  },
+  {
+    "id": "[id]",
+    "repo_tags": [
+      "nginx:alpine"
+    ],
+    "digests": [],
+    "size": "89.7 MiB",
+    "created": "1970-01-01T00:00:00Z",
+    "arch": {
+      "Other": "unknown"
+    },
+    "os": "",
+    "used_by": [],
+    "dangling": false
+  },
+  {
+    "id": "[id]",
+    "repo_tags": [
+      "postgres:17-alpine"
+    ],
+    "digests": [],
+    "size": "396.2 MiB",
+    "created": "1970-01-01T00:00:00Z",
+    "arch": {
+      "Other": "unknown"
+    },
+    "os": "",
+    "used_by": [],
+    "dangling": false
+  },
+  {
+    "id": "[id]",
+    "repo_tags": [
+      "redis:7-alpine"
+    ],
+    "digests": [],
+    "size": "56.0 MiB",
+    "created": "1970-01-01T00:00:00Z",
+    "arch": {
+      "Other": "unknown"
+    },
+    "os": "",
+    "used_by": [],
+    "dangling": false
+  }
+]

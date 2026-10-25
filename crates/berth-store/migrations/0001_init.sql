@@ -1,0 +1,20 @@
+CREATE TABLE settings (key TEXT PRIMARY KEY, json TEXT NOT NULL);
+CREATE TABLE pins (folder TEXT PRIMARY KEY, engine TEXT NOT NULL, added TEXT NOT NULL);
+CREATE TABLE recent (folder TEXT PRIMARY KEY, at TEXT NOT NULL);
+CREATE TABLE snapshots (engine TEXT PRIMARY KEY, taken TEXT NOT NULL, json TEXT NOT NULL);
+CREATE TABLE activity (
+    id TEXT PRIMARY KEY,
+    ts TEXT NOT NULL,
+    engine TEXT NOT NULL,
+    project TEXT NULL,
+    origin TEXT NOT NULL,
+    action TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    json TEXT NOT NULL
+);
+CREATE INDEX activity_ts ON activity (ts);
+CREATE TABLE engines (id TEXT PRIMARY KEY, json TEXT NOT NULL);
+CREATE TABLE templates (id TEXT PRIMARY KEY, json TEXT NOT NULL);
+CREATE TABLE registries (id TEXT PRIMARY KEY, json TEXT NOT NULL);
+CREATE TABLE sessions (id TEXT PRIMARY KEY, project TEXT NULL, updated TEXT NOT NULL, json TEXT NOT NULL);
+CREATE TABLE plugins (id TEXT PRIMARY KEY, json TEXT NOT NULL);

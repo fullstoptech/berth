@@ -1,0 +1,48 @@
+services:
+  web:
+    image: nginx:alpine
+    labels: [dev.berth.fixture=1]
+    ports:
+      - "127.0.0.1:56080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 2s
+  db:
+    image: postgres:17-alpine
+    labels: [dev.berth.fixture=1]
+    environment:
+      POSTGRES_PASSWORD: ${BERTHFX_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:56432:5432"
+    volumes:
+      - berthfx_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 2s
+  cache:
+    image: redis:7-alpine
+    labels: [dev.berth.fixture=1]
+    ports:
+      - "127.0.0.1:56379:6379"
+  logger:
+    image: alpine:3
+    labels: [dev.berth.fixture=1]
+    environment:
+      LOGGER_RATE: ${LOGGER_RATE:-1}
+    volumes:
+      - ./logger.sh:/logger.sh:ro
+    command: ["sh", "/logger.sh"]
+
+volumes:
+  berthfx_pgdata:
+    labels: [dev.berth.fixture=1]
+
+networks:
+  default:
+    labels: [dev.berth.fixture=1]

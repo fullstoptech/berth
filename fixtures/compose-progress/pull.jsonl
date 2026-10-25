@@ -1,0 +1,8 @@
+{"id":"Image postgres:17-alpine","status":"Working","text":"Pulling"}
+{"id":"Image redis:7-alpine","status":"Working","text":"Pulling"}
+{"id":"Image alpine:3","status":"Working","text":"Pulling"}
+{"id":"Image nginx:alpine","status":"Working","text":"Pulling"}
+{"id":"Image nginx:alpine","status":"Done","text":"Pulled"}
+{"id":"Image alpine:3","status":"Done","text":"Pulled"}
+{"id":"Image postgres:17-alpine","status":"Done","text":"Pulled"}
+{"id":"Image redis:7-alpine","status":"Done","text":"Pulled"}

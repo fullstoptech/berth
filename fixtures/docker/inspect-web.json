@@ -1,0 +1,299 @@
+{
+  "Id": "8f039e3b7925858dd714e5f2f47eca02b867f3c1d2778daa4391479739ef3a76",
+  "Created": "2026-10-24T12:44:54.380514215Z",
+  "Path": "/docker-entrypoint.sh",
+  "Args": [
+    "nginx",
+    "-g",
+    "daemon off;"
+  ],
+  "State": {
+    "Status": "running",
+    "Running": true,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 885969,
+    "ExitCode": 0,
+    "Error": "",
+    "StartedAt": "2026-10-24T12:46:11.162487364Z",
+    "FinishedAt": "2026-10-24T12:46:10.963575375Z",
+    "Health": {
+      "Status": "healthy",
+      "FailingStreak": 0,
+      "Log": [
+        {
+          "Start": "2026-10-24T14:46:24.410066236+02:00",
+          "End": "2026-10-24T14:46:24.443524191+02:00",
+          "ExitCode": 0,
+          "Output": "<!DOCTYPE html>\n<html>\n<head>\n<title>Welcome to nginx!</title>\n<style>\nhtml { color-scheme: light dark; }\nbody { width: 35em; margin: 0 auto;\nfont-family: Tahoma, Verdana, Arial, sans-serif; }\n</style>\n</head>\n<body>\n<h1>Welcome to nginx!</h1>\n<p>If you see this page, nginx is successfully installed and working.\nFurther configuration is required for the web server, reverse proxy, \nAPI gateway, load balancer, content cache, or other features.</p>\n\n<p>For online documentation and support please refer to\n<a href=\"https://nginx.org/\">nginx.org</a>.<br/>\nTo engage with the community please visit\n<a href=\"https://community.nginx.org/\">community.nginx.org</a>.<br/>\nFor enterprise grade support, professional services, additional \nsecurity features and capabilities please refer to\n<a href=\"https://f5.com/nginx\">f5.com/nginx</a>.</p>\n\n<p><em>Thank you for using nginx.</em></p>\n</body>\n</html>\n"
+        },
+        {
+          "Start": "2026-10-24T14:46:26.444496593+02:00",
+          "End": "2026-10-24T14:46:26.483413797+02:00",
+          "ExitCode": 0,
+          "Output": "<!DOCTYPE html>\n<html>\n<head>\n<title>Welcome to nginx!</title>\n<style>\nhtml { color-scheme: light dark; }\nbody { width: 35em; margin: 0 auto;\nfont-family: Tahoma, Verdana, Arial, sans-serif; }\n</style>\n</head>\n<body>\n<h1>Welcome to nginx!</h1>\n<p>If you see this page, nginx is successfully installed and working.\nFurther configuration is required for the web server, reverse proxy, \nAPI gateway, load balancer, content cache, or other features.</p>\n\n<p>For online documentation and support please refer to\n<a href=\"https://nginx.org/\">nginx.org</a>.<br/>\nTo engage with the community please visit\n<a href=\"https://community.nginx.org/\">community.nginx.org</a>.<br/>\nFor enterprise grade support, professional services, additional \nsecurity features and capabilities please refer to\n<a href=\"https://f5.com/nginx\">f5.com/nginx</a>.</p>\n\n<p><em>Thank you for using nginx.</em></p>\n</body>\n</html>\n"
+        },
+        {
+          "Start": "2026-10-24T14:46:28.484844231+02:00",
+          "End": "2026-10-24T14:46:28.524327685+02:00",
+          "ExitCode": 0,
+          "Output": "<!DOCTYPE html>\n<html>\n<head>\n<title>Welcome to nginx!</title>\n<style>\nhtml { color-scheme: light dark; }\nbody { width: 35em; margin: 0 auto;\nfont-family: Tahoma, Verdana, Arial, sans-serif; }\n</style>\n</head>\n<body>\n<h1>Welcome to nginx!</h1>\n<p>If you see this page, nginx is successfully installed and working.\nFurther configuration is required for the web server, reverse proxy, \nAPI gateway, load balancer, content cache, or other features.</p>\n\n<p>For online documentation and support please refer to\n<a href=\"https://nginx.org/\">nginx.org</a>.<br/>\nTo engage with the community please visit\n<a href=\"https://community.nginx.org/\">community.nginx.org</a>.<br/>\nFor enterprise grade support, professional services, additional \nsecurity features and capabilities please refer to\n<a href=\"https://f5.com/nginx\">f5.com/nginx</a>.</p>\n\n<p><em>Thank you for using nginx.</em></p>\n</body>\n</html>\n"
+        },
+        {
+          "Start": "2026-10-24T14:46:30.526632276+02:00",
+          "End": "2026-10-24T14:46:30.551166565+02:00",
+          "ExitCode": 0,
+          "Output": "<!DOCTYPE html>\n<html>\n<head>\n<title>Welcome to nginx!</title>\n<style>\nhtml { color-scheme: light dark; }\nbody { width: 35em; margin: 0 auto;\nfont-family: Tahoma, Verdana, Arial, sans-serif; }\n</style>\n</head>\n<body>\n<h1>Welcome to nginx!</h1>\n<p>If you see this page, nginx is successfully installed and working.\nFurther configuration is required for the web server, reverse proxy, \nAPI gateway, load balancer, content cache, or other features.</p>\n\n<p>For online documentation and support please refer to\n<a href=\"https://nginx.org/\">nginx.org</a>.<br/>\nTo engage with the community please visit\n<a href=\"https://community.nginx.org/\">community.nginx.org</a>.<br/>\nFor enterprise grade support, professional services, additional \nsecurity features and capabilities please refer to\n<a href=\"https://f5.com/nginx\">f5.com/nginx</a>.</p>\n\n<p><em>Thank you for using nginx.</em></p>\n</body>\n</html>\n"
+        },
+        {
+          "Start": "2026-10-24T14:46:32.552274687+02:00",
+          "End": "2026-10-24T14:46:32.588948934+02:00",
+          "ExitCode": 0,
+          "Output": "<!DOCTYPE html>\n<html>\n<head>\n<title>Welcome to nginx!</title>\n<style>\nhtml { color-scheme: light dark; }\nbody { width: 35em; margin: 0 auto;\nfont-family: Tahoma, Verdana, Arial, sans-serif; }\n</style>\n</head>\n<body>\n<h1>Welcome to nginx!</h1>\n<p>If you see this page, nginx is successfully installed and working.\nFurther configuration is required for the web server, reverse proxy, \nAPI gateway, load balancer, content cache, or other features.</p>\n\n<p>For online documentation and support please refer to\n<a href=\"https://nginx.org/\">nginx.org</a>.<br/>\nTo engage with the community please visit\n<a href=\"https://community.nginx.org/\">community.nginx.org</a>.<br/>\nFor enterprise grade support, professional services, additional \nsecurity features and capabilities please refer to\n<a href=\"https://f5.com/nginx\">f5.com/nginx</a>.</p>\n\n<p><em>Thank you for using nginx.</em></p>\n</body>\n</html>\n"
+        }
+      ]
+    }
+  },
+  "Image": "sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417",
+  "ResolvConfPath": "/var/lib/docker/containers/8f039e3b7925858dd714e5f2f47eca02b867f3c1d2778daa4391479739ef3a76/resolv.conf",
+  "HostnamePath": "/var/lib/docker/containers/8f039e3b7925858dd714e5f2f47eca02b867f3c1d2778daa4391479739ef3a76/hostname",
+  "HostsPath": "/var/lib/docker/containers/8f039e3b7925858dd714e5f2f47eca02b867f3c1d2778daa4391479739ef3a76/hosts",
+  "LogPath": "/var/lib/docker/containers/8f039e3b7925858dd714e5f2f47eca02b867f3c1d2778daa4391479739ef3a76/8f039e3b7925858dd714e5f2f47eca02b867f3c1d2778daa4391479739ef3a76-json.log",
+  "Name": "/berthfx-web-1",
+  "RestartCount": 0,
+  "Driver": "overlayfs",
+  "Platform": "linux",
+  "MountLabel": "",
+  "ProcessLabel": "",
+  "AppArmorProfile": "docker-default",
+  "ExecIDs": null,
+  "HostConfig": {
+    "Binds": null,
+    "ContainerIDFile": "",
+    "LogConfig": {
+      "Type": "json-file",
+      "Config": {}
+    },
+    "NetworkMode": "berthfx_default",
+    "PortBindings": {
+      "80/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "56080"
+        }
+      ]
+    },
+    "RestartPolicy": {
+      "Name": "no",
+      "MaximumRetryCount": 0
+    },
+    "AutoRemove": false,
+    "VolumeDriver": "",
+    "VolumesFrom": null,
+    "ConsoleSize": [
+      0,
+      0
+    ],
+    "CapAdd": null,
+    "CapDrop": null,
+    "CgroupnsMode": "private",
+    "Dns": null,
+    "DnsOptions": null,
+    "DnsSearch": null,
+    "ExtraHosts": [],
+    "GroupAdd": null,
+    "IpcMode": "private",
+    "Cgroup": "",
+    "Links": null,
+    "OomScoreAdj": 0,
+    "PidMode": "",
+    "Privileged": false,
+    "PublishAllPorts": false,
+    "ReadonlyRootfs": false,
+    "SecurityOpt": null,
+    "UTSMode": "",
+    "UsernsMode": "",
+    "ShmSize": 67108864,
+    "Runtime": "runc",
+    "Isolation": "",
+    "CpuShares": 0,
+    "Memory": 0,
+    "NanoCpus": 0,
+    "CgroupParent": "",
+    "BlkioWeight": 0,
+    "BlkioWeightDevice": null,
+    "BlkioDeviceReadBps": null,
+    "BlkioDeviceWriteBps": null,
+    "BlkioDeviceReadIOps": null,
+    "BlkioDeviceWriteIOps": null,
+    "CpuPeriod": 0,
+    "CpuQuota": 0,
+    "CpuRealtimePeriod": 0,
+    "CpuRealtimeRuntime": 0,
+    "CpusetCpus": "",
+    "CpusetMems": "",
+    "Devices": null,
+    "DeviceCgroupRules": null,
+    "DeviceRequests": null,
+    "MemoryReservation": 0,
+    "MemorySwap": 0,
+    "MemorySwappiness": null,
+    "OomKillDisable": null,
+    "PidsLimit": null,
+    "Ulimits": null,
+    "CpuCount": 0,
+    "CpuPercent": 0,
+    "IOMaximumIOps": 0,
+    "IOMaximumBandwidth": 0,
+    "MaskedPaths": [
+      "/proc/acpi",
+      "/proc/asound",
+      "/proc/interrupts",
+      "/proc/kcore",
+      "/proc/keys",
+      "/proc/latency_stats",
+      "/proc/sched_debug",
+      "/proc/scsi",
+      "/proc/timer_list",
+      "/proc/timer_stats",
+      "/sys/devices/virtual/powercap",
+      "/sys/firmware"
+    ],
+    "ReadonlyPaths": [
+      "/proc/bus",
+      "/proc/fs",
+      "/proc/irq",
+      "/proc/sys",
+      "/proc/sysrq-trigger"
+    ]
+  },
+  "Storage": {
+    "RootFS": {
+      "Snapshot": {
+        "Name": "overlayfs"
+      }
+    }
+  },
+  "Mounts": [],
+  "Config": {
+    "Hostname": "8f039e3b7925",
+    "Domainname": "",
+    "User": "",
+    "AttachStdin": false,
+    "AttachStdout": true,
+    "AttachStderr": true,
+    "ExposedPorts": {
+      "80/tcp": {}
+    },
+    "Tty": false,
+    "OpenStdin": false,
+    "StdinOnce": false,
+    "Env": [
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "NGINX_VERSION=1.31.8",
+      "PKG_RELEASE=1",
+      "DYNPKG_RELEASE=1",
+      "NJS_VERSION=1.0.2",
+      "NJS_RELEASE=1",
+      "ACME_VERSION=0.4.1"
+    ],
+    "Cmd": [
+      "nginx",
+      "-g",
+      "daemon off;"
+    ],
+    "Healthcheck": {
+      "Test": [
+        "CMD",
+        "wget",
+        "-qO-",
+        "http://127.0.0.1/"
+      ],
+      "Interval": 2000000000,
+      "Timeout": 2000000000,
+      "StartPeriod": 2000000000,
+      "Retries": 10
+    },
+    "Image": "nginx:alpine",
+    "Volumes": null,
+    "WorkingDir": "/",
+    "Entrypoint": [
+      "/docker-entrypoint.sh"
+    ],
+    "Labels": {
+      "com.docker.compose.config-hash": "d54c95e4bd22af205e02038f18a6e83016eee35764023c64a882f2ba69cdddbe",
+      "com.docker.compose.container-number": "1",
+      "com.docker.compose.depends_on": "",
+      "com.docker.compose.image": "sha256:41c8801e327f9c60c47aa700390ea5cf1862a6852bd27d103ba2cac41a7d6ec7",
+      "com.docker.compose.oneoff": "False",
+      "com.docker.compose.project": "berthfx",
+      "com.docker.compose.project.config_files": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx/compose.yaml",
+      "com.docker.compose.project.working_dir": "/Users/emmanuel/Dev/app-ideas/docker-manger/.muse/worktrees/subagent-v2-01a16db3-5d9e-7473-9bc5-d92bd4a114d3-01a16dee-ca2b-7af1-8200-cad5ba5442f9/fixtures/compose/berthfx",
+      "com.docker.compose.service": "web",
+      "com.docker.compose.version": "5.5.1",
+      "dev.berth.fixture": "1",
+      "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>"
+    },
+    "StopSignal": "SIGQUIT"
+  },
+  "NetworkSettings": {
+    "SandboxID": "6c780486695052f02521e2f72e158a34e3e708b67e3843f4e238353bb02e9eb4",
+    "SandboxKey": "/var/run/docker/netns/6c7804866950",
+    "Ports": {
+      "80/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "56080"
+        }
+      ]
+    },
+    "Networks": {
+      "berthfx_default": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "berthfx-web-1",
+          "web"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "6b00c05a0511eef8575dfd0ae5987f5a94217d17d215f68f763582b53659df61",
+        "EndpointID": "a36356422c8abf8d3c20c5fa3a9c554d97a6d082e991a9e3b8dd40b8d83de89f",
+        "Gateway": "172.28.0.1",
+        "IPAddress": "172.28.0.2",
+        "MacAddress": "8e:bf:59:83:83:72",
+        "IPPrefixLen": 16,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "berthfx-web-1",
+          "web",
+          "8f039e3b7925"
+        ]
+      }
+    }
+  },
+  "ImageManifestDescriptor": {
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "digest": "sha256:41c8801e327f9c60c47aa700390ea5cf1862a6852bd27d103ba2cac41a7d6ec7",
+    "size": 2497,
+    "annotations": {
+      "com.docker.official-images.bashbrew.arch": "arm64v8",
+      "org.opencontainers.image.base.digest": "sha256:0e0bc470be99ef3024361d500c1b9661e63a029eae5f8a654c46a7a0aa9f3456",
+      "org.opencontainers.image.base.name": "nginx:1.31.8-alpine-slim",
+      "org.opencontainers.image.created": "2026-10-22T00:16:46Z",
+      "org.opencontainers.image.revision": "6fabb4c960a02a1e576d2789974c45f4cd2aa854",
+      "org.opencontainers.image.source": "https://github.com/nginx/docker-nginx.git#6fabb4c960a02a1e576d2789974c45f4cd2aa854:mainline/alpine",
+      "org.opencontainers.image.url": "https://hub.docker.com/_/nginx",
+      "org.opencontainers.image.version": "1.31.8-alpine"
+    },
+    "platform": {
+      "architecture": "arm64",
+      "os": "linux",
+      "variant": "v8"
+    }
+  }
+}
