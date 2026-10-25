@@ -27,6 +27,7 @@ mod containers;
 mod engines;
 mod images;
 mod networks;
+mod project_delete;
 mod remove;
 mod upload;
 mod volumes;
@@ -35,6 +36,7 @@ pub use containers::*;
 pub use engines::*;
 pub use images::*;
 pub use networks::*;
+pub use project_delete::*;
 pub use upload::*;
 pub use volumes::*;
 

@@ -61,6 +61,21 @@ impl ActionsService {
         failures.get(project).cloned().unwrap_or_default()
     }
 
+    /// Does the project's Compose file load (`docker compose config -q`)? `Err` holds Compose's
+    /// own words, which `project_files::parse_compose_problem` reads a line and a message from.
+    /// Nothing starts or changes; the project detail screen asks when it opens.
+    pub async fn validate_compose(
+        &self,
+        folder: &std::path::Path,
+        files: &[std::path::PathBuf],
+    ) -> Result<(), String> {
+        self.inner
+            .compose
+            .validate(folder, files)
+            .await
+            .map_err(|err| err.to_string())
+    }
+
     /// One project action through Compose.
     pub fn project(
         &self,

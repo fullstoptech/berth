@@ -12,6 +12,7 @@ use crate::state::{AppState, Overlay, Section, Selection};
 pub fn screen(section: Section, dev_gallery: bool) -> Element {
     match section {
         Section::Activity => rsx! { crate::screens::activity::ActivityScreen {} },
+        Section::Project => rsx! { ProjectRoute {} },
         Section::Projects if !dev_gallery => rsx! { crate::screens::projects::ProjectsScreen {} },
         Section::Containers => rsx! { crate::screens::containers::ContainersScreen {} },
         Section::Logs => rsx! { crate::screens::logs::LogsScreen {} },
@@ -19,6 +20,20 @@ pub fn screen(section: Section, dev_gallery: bool) -> Element {
         Section::Volumes => rsx! { crate::screens::volumes::VolumesScreen {} },
         Section::Images => rsx! { crate::screens::images::ImagesScreen {} },
         Section::Engines => rsx! { crate::screens::engines::EnginesScreen {} },
+        _ => rsx! {},
+    }
+}
+
+/// The selected project's own screen, keyed by the project so a new
+/// selection remounts it (its tabs, tree and checks start fresh).
+#[component]
+fn ProjectRoute() -> Element {
+    let state = use_context::<AppState>();
+    let selection = state.selection.read();
+    match &*selection {
+        Selection::Project(id) => rsx! {
+            crate::screens::project_detail::ProjectDetailScreen { key: "{id.0}", id: id.clone() }
+        },
         _ => rsx! {},
     }
 }
@@ -110,6 +125,9 @@ pub fn overlay(overlay: &Overlay) -> Element {
             crate::sheets::edit_recreate::EditRecreateSheet { key: "{id.0}", id: id.clone() }
         },
         Overlay::CreateNetwork => rsx! { crate::sheets::create_network::CreateNetworkSheet {} },
+        Overlay::DeleteProject(id) => rsx! {
+            crate::sheets::delete_project::DeleteProjectSheet { key: "{id.0}", id: id.clone() }
+        },
         other => placeholder(other),
     }
 }

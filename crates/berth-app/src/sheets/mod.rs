@@ -4,6 +4,7 @@
 pub mod clean_up;
 pub mod create_network;
 pub mod create_volume;
+pub mod delete_project;
 pub mod edit_recreate;
 pub mod edit_resources;
 pub mod run;

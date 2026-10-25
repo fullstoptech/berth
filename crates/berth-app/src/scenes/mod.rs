@@ -64,6 +64,7 @@ scene_modules! {
     logs,
     networks,
     palette,
+    project_detail,
     projects,
     terminal,
     volumes,

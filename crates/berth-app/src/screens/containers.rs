@@ -427,7 +427,7 @@ fn status_of(c: &Container) -> StatusKind {
     berth_core::status_of(c.state, c.health, c.exit_code)
 }
 
-fn engine_name<'a>(engines: &'a [Engine], id: &'a berth_core::EngineId) -> &'a str {
+pub(crate) fn engine_name<'a>(engines: &'a [Engine], id: &'a berth_core::EngineId) -> &'a str {
     engines
         .iter()
         .find(|e| e.id == *id)
@@ -768,7 +768,7 @@ pub fn open_command(url: &str) -> (&'static str, Vec<String>) {
     (program, vec![url.to_string()])
 }
 
-fn open_in_browser(host_port: u16) {
+pub(crate) fn open_in_browser(host_port: u16) {
     let url = format!("http://localhost:{host_port}");
     let (program, args) = open_command(&url);
     spawn(async move {
@@ -1026,7 +1026,10 @@ pub fn toggle_selected(state: &mut AppState, id: &ContainerId) {
     });
 }
 
-fn target_of(state: &AppState, id: &ContainerId) -> Option<(ContainerTarget, ContainerState)> {
+pub(crate) fn target_of(
+    state: &AppState,
+    id: &ContainerId,
+) -> Option<(ContainerTarget, ContainerState)> {
     state
         .containers
         .peek()
@@ -1035,7 +1038,7 @@ fn target_of(state: &AppState, id: &ContainerId) -> Option<(ContainerTarget, Con
         .map(|c| (ContainerTarget::from(c), c.state))
 }
 
-fn run_container_action(
+pub(crate) fn run_container_action(
     state: &mut AppState,
     actions: Option<&ActionsService>,
     id: &ContainerId,
@@ -1063,7 +1066,7 @@ fn run_container_action(
     }
 }
 
-fn copy_to_clipboard(text: &str) {
+pub(crate) fn copy_to_clipboard(text: &str) {
     let quoted = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
     let script = format!("navigator.clipboard.writeText({quoted});");
     spawn(async move {
@@ -1135,7 +1138,7 @@ fn apply_nav(state: &mut AppState, view: &ContainersView, action: ActionId) {
 // Components
 // ---------------------------------------------------------------------
 
-fn state_view_from<'a>(
+pub(crate) fn state_view_from<'a>(
     state: &'a AppState,
     engines: &'a [Engine],
     containers: &'a [Container],
@@ -1160,7 +1163,7 @@ fn state_view_from<'a>(
 /// its own `stats` (the list never carries live ones). Without a service,
 /// or without a fresh sample, the listed value stands: a scene's frame
 /// values, or "—".
-fn with_live_stats<'a>(
+pub(crate) fn with_live_stats<'a>(
     listed: &'a Container,
     stats: Option<&StatsService>,
     key: Option<&StatsKey>,

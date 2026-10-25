@@ -19,6 +19,7 @@ pub mod images;
 pub mod logs;
 pub mod networks;
 pub mod ports;
+pub mod project_files;
 pub mod prune;
 pub mod search;
 pub mod stats;

@@ -18,6 +18,7 @@ pub mod logs_scene;
 pub mod network_detail;
 pub mod networks;
 pub mod palette;
+pub mod project_detail;
 pub mod projects;
 mod projects_order;
 pub mod recent_activity;
