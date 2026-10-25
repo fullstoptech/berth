@@ -244,7 +244,7 @@ Reached through `dioxus::desktop` re-exports, never as direct dependencies: `wry
 
 Not approved: Tailwind or any CSS framework, any JS framework, `serde_yaml`/`serde_yml`, `git2`/`gix`, `openssl`, `aws-lc-rs`, `keyring` 4, `portable-pty` (exec needs no local PTY), `notify` (no folder watching), any other UI crate, any ORM.
 
-Node tooling (only for `scripts/build-web.sh`): `@xterm/xterm` 6.0.0, `@xterm/addon-fit` 0.11.0, `@xterm/addon-search` 0.16.0, `@xterm/addon-web-links` 0.12.0, `codemirror` 6.0.2, `@codemirror/lang-yaml` 6.1.3, `@codemirror/view` 6.43, `@codemirror/state` 6.7, `esbuild` 0.28.2 (npm, 2026-10-24). pnpm 12 needs `pnpm approve-builds esbuild` once and refuses packages younger than 24 h (Ferry Mac session).
+Node tooling (only for `scripts/build-web.sh`): `@xterm/xterm` 6.0.0, `@xterm/addon-fit` 0.11.0, `@xterm/addon-search` 0.16.0, `@xterm/addon-web-links` 0.12.0, `codemirror` 6.0.2, `@codemirror/lang-yaml` 6.1.3, `@codemirror/view` 6.43, `@codemirror/state` 6.7, `@codemirror/language` 6.13.1, `@codemirror/lint` 6.9.7, `@lezer/highlight` 1.2.5 (added 2026-10-25, D10), `esbuild` 0.28.2 (npm, 2026-10-24). pnpm 12 needs `pnpm approve-builds esbuild` once and refuses packages younger than 24 h (Ferry Mac session).
 
 ---
 

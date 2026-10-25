@@ -22,9 +22,4 @@ await build({
   charset: "utf8",
   sourcemap: false,
   logLevel: "info",
-  // editor.ts imports @codemirror/language, @codemirror/lint and @lezer/highlight.
-  // `codemirror` and `@codemirror/lang-yaml` already depend on exactly these
-  // packages, so the lockfile pins them; pnpm keeps them in its virtual store
-  // rather than at the top of node_modules, and this path lets esbuild see them.
-  nodePaths: [join(here, "node_modules", ".pnpm", "node_modules")],
 });
