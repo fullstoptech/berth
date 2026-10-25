@@ -188,7 +188,7 @@ Every decision below is final for v1. The workhorse implements them and never re
 | D81 | Engine merge view | The title-bar engine switcher picks one engine or "All engines"; lists show the engine column only in "All engines". Default: the first running Colima profile. |
 | D82 | Problem detection on logs | Only error-marked lines feed the rules; rules never read whole logs. Evidence keeps at most 20 lines. |
 | D83 | Recipes | Node (npm, pnpm, yarn, bun; Next.js, Vite, Express), Python (pip, Poetry, uv; Django, FastAPI, Flask), Go, Rust, PHP (Laravel, plain), Ruby (Rails), Java (Maven, Gradle; Spring Boot), Static (nginx). Services needed from dependencies and `.env` keys: Postgres, MySQL, MongoDB, Redis, RabbitMQ, Meilisearch, MinIO, Mailpit. |
-| D84 | Built-in templates | Postgres 17, MySQL 8.4, MariaDB 11, MongoDB 8, Redis 7, Valkey 8, RabbitMQ 4, Meilisearch 1, MinIO, Mailpit, Adminer. Image tags are pinned in `berth-rules/src/templates.rs` and checked against Docker Hub in P5-T2. |
+| D84 | Built-in templates | Postgres 17, MySQL 8.4, MariaDB 11, MongoDB 8, Redis 7, Valkey 8, RabbitMQ 4, Meilisearch 1, S3 (SeaweedFS, `chrislusf/seaweedfs`; replaces MinIO, whose `minio/minio` is no longer pullable from Docker Hub — D30, 2026-10-25), Mailpit, Adminer. Image tags are pinned in `berth-rules/src/templates.rs` and checked against Docker Hub in P5-T2. |
 
 ---
 
