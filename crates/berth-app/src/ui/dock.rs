@@ -227,6 +227,9 @@ pub struct DockLayout {
     pub pane_px: u32,
     /// In `Split`, the inspector's width in the region.
     pub split_px: u32,
+    /// The Logs/Terminal panel's width: the region less the inspector beside
+    /// it. The terminal toolbar measures itself against it.
+    pub panel_px: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -266,11 +269,16 @@ pub fn layout(input: &LayoutInput) -> DockLayout {
         (InspectorSlot::Bottom, _) => floor_px(region_w),
         (InspectorSlot::Hidden, _) => 0,
     };
+    let panel_px = match region {
+        Some(RegionMode::Split) => floor_px(region_w).saturating_sub(split),
+        _ => floor_px(region_w),
+    };
     DockLayout {
         slot,
         region,
         pane_px,
         split_px: split,
+        panel_px,
     }
 }
 

@@ -152,3 +152,92 @@ mod tabs_tests;
 
 #[path = "launcher_tests.rs"]
 mod launcher_tests;
+
+// --- The toolbar gives buttons to a ⋯ menu as the pane narrows (D22) ---
+
+fn all_tools() -> Vec<Tool> {
+    Tool::ALL.to_vec()
+}
+
+#[test]
+fn terminal_toolbar_keeps_every_button_when_the_pane_is_wide_or_a_window_of_its_own() {
+    let (shown, moved) = toolbar_tools(None, 1.0, true, &all_tools());
+    assert_eq!(shown, all_tools());
+    assert!(moved.is_empty());
+    // 1220 px, the whole bottom region at 1440.
+    let (shown, moved) = toolbar_tools(Some(1220), 1.0, true, &all_tools());
+    assert_eq!(shown, all_tools());
+    assert!(moved.is_empty());
+}
+
+#[test]
+fn terminal_toolbar_gives_way_in_order_as_the_pane_narrows() {
+    // The 1440 split leaves the panel 732 px: Open in Terminal app goes first.
+    let (shown, moved) = toolbar_tools(Some(732), 1.0, true, &all_tools());
+    assert_eq!(moved, [Tool::OpenApp]);
+    assert!(shown.contains(&Tool::PopOut));
+    // Narrower: the menu only grows, and what is in it is always the next
+    // buttons of the give-way order, none skipped.
+    let mut gone = 0;
+    for width in (320..732).rev().step_by(4) {
+        let (_, moved) = toolbar_tools(Some(width), 1.0, true, &all_tools());
+        assert!(moved.len() >= gone, "{width}: the menu only ever grows");
+        gone = moved.len();
+        let mut got = moved.clone();
+        got.sort_by_key(|t| Tool::GIVE_WAY.iter().position(|g| g == t));
+        assert_eq!(got, Tool::GIVE_WAY[..moved.len()].to_vec(), "{width} px");
+    }
+    assert!(gone >= 4, "a 320 px pane keeps at most Clear and Reconnect");
+}
+
+#[test]
+fn terminal_toolbar_fits_its_pane_with_the_more_button_at_every_width_and_text_size() {
+    for scale in crate::text_scale::STEPS {
+        for width in (480..1300).step_by(7) {
+            let (shown, moved) = toolbar_tools(Some(width), scale, true, &all_tools());
+            if moved.is_empty() || shown.is_empty() {
+                continue;
+            }
+            let used = (100.0 + 112.0 + 60.0 + 16.0) * scale
+                + shown.iter().map(|t| t.width() * scale + 8.0).sum::<f32>()
+                + 28.0 * scale
+                + 8.0;
+            assert!(
+                used <= width as f32 + 0.5,
+                "{width} px at {scale}: needs {used} for {shown:?}"
+            );
+        }
+    }
+    // A pane too narrow for even the pickers keeps no button but the ⋯.
+    let (shown, moved) = toolbar_tools(Some(320), 1.5, true, &all_tools());
+    assert!(shown.is_empty());
+    assert_eq!(moved.len(), 6);
+}
+
+#[test]
+fn terminal_toolbar_without_pickers_or_with_fewer_buttons_gives_way_later() {
+    // A docker run session (no Shell, User, directory) has room for more.
+    let with = toolbar_tools(Some(600), 1.0, true, &all_tools()).1.len();
+    let without = toolbar_tools(Some(600), 1.0, false, &all_tools()).1.len();
+    assert!(without < with, "{without} vs {with}");
+    // A popped-out window has no Split and Pop out to give.
+    let tools = [Tool::Reconnect, Tool::Clear, Tool::Copy, Tool::OpenApp];
+    let (_, moved) = toolbar_tools(Some(700), 1.0, true, &tools);
+    assert!(!moved.contains(&Tool::Split) && !moved.contains(&Tool::PopOut));
+}
+
+#[test]
+fn terminal_split_scene_collapses_the_lower_priority_buttons_into_a_menu() {
+    let html = scene_html("Containers / inspector bottom / 1440");
+    assert!(
+        html.contains("aria-label=\"More terminal actions\""),
+        "{html}"
+    );
+    // Pop out still fits at 732 px; Open in Terminal app does not.
+    assert!(html.contains("Pop out"), "{html}");
+    assert!(!html.contains(">Open in Terminal app<"), "{html}");
+    // With the whole region the toolbar keeps every button.
+    let wide = scene_html("Container / terminal / 1440");
+    assert!(!wide.contains("More terminal actions"), "{wide}");
+    assert!(wide.contains("Open in Terminal app"));
+}

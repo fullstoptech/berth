@@ -25,6 +25,135 @@ use crate::state::{AppState, BottomTab, Section, Selection, Toast, ToastTone};
 
 pub const TERMINAL_CSS: &str = include_str!("../../assets/css/terminal.css");
 
+/// A toolbar button that can give way to the ⋯ menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tool {
+    Reconnect,
+    Clear,
+    Copy,
+    Split,
+    PopOut,
+    OpenApp,
+}
+
+impl Tool {
+    /// In toolbar order.
+    pub const ALL: [Tool; 6] = [
+        Tool::Reconnect,
+        Tool::Clear,
+        Tool::Copy,
+        Tool::Split,
+        Tool::PopOut,
+        Tool::OpenApp,
+    ];
+
+    /// The order buttons give way as the pane narrows, first to go first:
+    /// the widest and rarest, then the ones a session needs least.
+    pub const GIVE_WAY: [Tool; 6] = [
+        Tool::OpenApp,
+        Tool::PopOut,
+        Tool::Split,
+        Tool::Copy,
+        Tool::Clear,
+        Tool::Reconnect,
+    ];
+
+    #[must_use]
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Reconnect => "reconnect",
+            Self::Clear => "clear",
+            Self::Copy => "copy",
+            Self::Split => "split",
+            Self::PopOut => "pop-out",
+            Self::OpenApp => "open-app",
+        }
+    }
+
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Reconnect => "Reconnect",
+            Self::Clear => "Clear",
+            Self::Copy => "Copy",
+            Self::Split => "Split",
+            Self::PopOut => "Pop out",
+            Self::OpenApp => "Open in Terminal app",
+        }
+    }
+
+    #[must_use]
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|tool| tool.id() == id)
+    }
+
+    /// The button's width in px at 100 % text, measured from the frame.
+    fn width(self) -> f32 {
+        match self {
+            Self::Reconnect => 84.0,
+            Self::Clear => 52.0,
+            Self::Copy => 50.0,
+            Self::Split => 48.0,
+            Self::PopOut => 64.0,
+            Self::OpenApp => 172.0,
+        }
+    }
+}
+
+/// What the Shell, User and Working directory pickers take of the toolbar at
+/// 100 % text (two selects and the shortest path field).
+const PICKERS_PX: f32 = 100.0 + 112.0 + 60.0 + 2.0 * 8.0;
+/// The ⋯ button, and the toolbar's padding and gaps.
+const MORE_PX: f32 = 28.0;
+const TOOLBAR_PAD_PX: f32 = 16.0;
+const TOOL_GAP_PX: f32 = 8.0;
+
+/// The toolbar buttons that fit a pane `pane_px` wide, and the ones that go
+/// to the ⋯ menu (both in toolbar order). `tools` are the buttons this
+/// session has; `pickers` says the Shell, User and directory fields are
+/// there. Buttons give way in [`Tool::GIVE_WAY`] order until the rest and the
+/// ⋯ button fit. `None` (a window of its own) keeps everything.
+#[must_use]
+pub fn toolbar_tools(
+    pane_px: Option<u32>,
+    text_scale: f32,
+    pickers: bool,
+    tools: &[Tool],
+) -> (Vec<Tool>, Vec<Tool>) {
+    let Some(pane_px) = pane_px else {
+        return (tools.to_vec(), Vec::new());
+    };
+    let room = pane_px as f32 - TOOLBAR_PAD_PX * text_scale.min(1.0);
+    let fixed = if pickers {
+        PICKERS_PX * text_scale
+    } else {
+        0.0
+    };
+    let mut shown: Vec<Tool> = tools.to_vec();
+    let mut moved: Vec<Tool> = Vec::new();
+    loop {
+        let buttons: f32 = shown
+            .iter()
+            .map(|tool| tool.width() * text_scale + TOOL_GAP_PX)
+            .sum();
+        let more = if moved.is_empty() {
+            0.0
+        } else {
+            MORE_PX * text_scale + TOOL_GAP_PX
+        };
+        if fixed + buttons + more <= room || shown.is_empty() {
+            break;
+        }
+        let Some(next) = Tool::GIVE_WAY.into_iter().find(|tool| shown.contains(tool)) else {
+            break;
+        };
+        shown.retain(|tool| *tool != next);
+        moved.push(next);
+    }
+    moved.sort_by_key(|tool| Tool::ALL.iter().position(|t| t == tool));
+    (shown, moved)
+}
+
 /// The window's one bridge, for the panes below [`TerminalHost`].
 #[derive(Clone, Copy)]
 pub struct TermBridge(pub Bridge);
@@ -249,6 +378,10 @@ pub fn TerminalPane(
     font_size: f32,
     #[props(default = true)] toolbar: bool,
     #[props(default)] popped: bool,
+    /// The pane's width in px, which decides how many toolbar buttons give
+    /// way to the ⋯ menu; `None` keeps them all.
+    #[props(default)]
+    pane_px: Option<u32>,
 ) -> Element {
     let core = use_context::<ExecCore>();
     let bridge = use_context::<TermBridge>().0;
@@ -329,6 +462,50 @@ pub fn TerminalPane(
     // The image has no shell at all: the toolbar has nothing to offer.
     let no_shell = matches!(&pane.status, Status::NoShell { tried } if tried.len() > 1);
     let splittable = !popped && is_exec && view_ctx.is_some() && state.is_some();
+    let can_pop_out = state.is_some() && view_ctx.is_some();
+    let text_scale = state.map_or(1.0, |s| s.settings.read().text_scale);
+    let has_tools: Vec<Tool> = Tool::ALL
+        .into_iter()
+        .filter(|tool| match tool {
+            Tool::Split | Tool::PopOut => !popped,
+            Tool::OpenApp => is_exec,
+            _ => true,
+        })
+        .collect();
+    let (inline_tools, menu_tools) = toolbar_tools(pane_px, text_scale, is_exec, &has_tools);
+    let run_tool = {
+        let core = core.clone();
+        let pane = pane.clone();
+        let js_id = js_id.clone();
+        move |tool: Tool| match tool {
+            Tool::Reconnect => core.reconnect(tab),
+            Tool::Clear => core.clear(tab),
+            Tool::Copy => bridge.send(TermCommand::CopySelection { id: js_id.clone() }),
+            Tool::Split => {
+                if let (Some(mut state), Some(mut ctx)) = (state, view_ctx) {
+                    split(&mut state, &mut ctx, &core, tab);
+                }
+            }
+            Tool::PopOut => {
+                if let (Some(mut state), Some(mut ctx)) = (state, view_ctx) {
+                    pop_out(&mut state, &mut ctx, &core, tab);
+                }
+            }
+            Tool::OpenApp => open_in_terminal_app(&core, &pane, state),
+        }
+    };
+    let menu_entries: Vec<super::MenuEntry> = menu_tools
+        .iter()
+        .map(|tool| {
+            let entry = super::MenuEntry::new(tool.id(), tool.label());
+            match tool {
+                Tool::Split if !splittable => entry.disabled("Needs a shell in a container"),
+                Tool::PopOut if !can_pop_out => entry.disabled("Not available here"),
+                _ => entry,
+            }
+        })
+        .collect();
+    let mut more_open = use_signal(|| false);
 
     let on_shell = {
         let core = core.clone();
@@ -423,6 +600,7 @@ pub fn TerminalPane(
                         }
                     }
                     div { class: "term-spacer" }
+                    if inline_tools.contains(&Tool::Reconnect) {
                     Button {
                         label: "Reconnect",
                         variant: ButtonVariant::Ghost,
@@ -432,6 +610,8 @@ pub fn TerminalPane(
                             move |_| core.reconnect(tab)
                         },
                     }
+                    }
+                    if inline_tools.contains(&Tool::Clear) {
                     Button {
                         label: "Clear",
                         variant: ButtonVariant::Ghost,
@@ -441,6 +621,8 @@ pub fn TerminalPane(
                             move |_| core.clear(tab)
                         },
                     }
+                    }
+                    if inline_tools.contains(&Tool::Copy) {
                     Button {
                         label: "Copy",
                         variant: ButtonVariant::Ghost,
@@ -450,7 +632,8 @@ pub fn TerminalPane(
                             move |_| bridge.send(TermCommand::CopySelection { id: js_id.clone() })
                         },
                     }
-                    if !popped {
+                    }
+                    if !popped && inline_tools.contains(&Tool::Split) {
                         Button {
                             label: "Split",
                             variant: ButtonVariant::Ghost,
@@ -467,6 +650,8 @@ pub fn TerminalPane(
                                 }
                             },
                         }
+                    }
+                    if !popped && inline_tools.contains(&Tool::PopOut) {
                         Button {
                             label: "Pop out",
                             variant: ButtonVariant::Ghost,
@@ -482,7 +667,7 @@ pub fn TerminalPane(
                             },
                         }
                     }
-                    if is_exec {
+                    if is_exec && inline_tools.contains(&Tool::OpenApp) {
                         Button {
                             label: "Open in Terminal app",
                             variant: ButtonVariant::Secondary,
@@ -493,6 +678,38 @@ pub fn TerminalPane(
                                 let pane = pane.clone();
                                 move |_| open_in_terminal_app(&core, &pane, state)
                             },
+                        }
+                    }
+                    if !menu_entries.is_empty() {
+                        div { class: "term-more",
+                            super::IconButton {
+                                icon: "more-horizontal",
+                                label: "More terminal actions".to_string(),
+                                tooltip: "More".to_string(),
+                                size: ControlSize::Sm,
+                                pressed: more_open(),
+                                onclick: move |_| {
+                                    let open = *more_open.peek();
+                                    more_open.set(!open);
+                                },
+                            }
+                            if more_open() {
+                                div { class: "term-more-menu",
+                                    super::Menu {
+                                        items: menu_entries.clone(),
+                                        aria_label: "More terminal actions".to_string(),
+                                        on_select: {
+                                            let run_tool = run_tool.clone();
+                                            move |id: String| {
+                                                more_open.set(false);
+                                                if let Some(tool) = Tool::from_id(&id) {
+                                                    run_tool(tool);
+                                                }
+                                            }
+                                        },
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -622,6 +839,8 @@ pub fn TerminalBody() -> Element {
     let settings = state.settings.read().clone();
     let theme = Theme::from(settings.theme);
     let font_size = 12.0 * settings.text_scale;
+    // The width the panel has (the whole region, less the inspector beside it).
+    let pane_px = super::dock::dock_view().map_or(1440 - 220, |view| view.layout.read().panel_px);
 
     // Looking at a tab reads it.
     let seen_core = core.clone();
@@ -674,6 +893,7 @@ pub fn TerminalBody() -> Element {
                                 theme,
                                 font_size,
                                 toolbar: primary,
+                                pane_px: pane_px / u32::try_from(shown.len().max(1)).unwrap_or(1),
                             }
                         }
                     }

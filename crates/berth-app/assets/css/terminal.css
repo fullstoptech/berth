@@ -59,6 +59,9 @@
   background: var(--color-surface);
 }
 .term-spacer { flex: 1; }
+/* The ⋯ menu of the buttons that gave way to a narrow pane. */
+.term-more { position: relative; flex: none; }
+.term-more-menu { position: absolute; top: 100%; right: 0; z-index: 30; margin-top: var(--space-4); }
 .term-pick {
   position: relative;
   display: inline-flex;
