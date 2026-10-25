@@ -34,8 +34,8 @@ use crate::ui::{
 };
 use model::{
     env_rows, header_buttons, header_menu, offers_stop, overview_rows, problem_views,
-    restart_loop_view, short_id, state_note, tab_capacity, tab_strip, DetailTab, EnvRow, EnvShown,
-    Reveals, REVEAL_FOR,
+    restart_loop_view, short_id, state_note, tab_strip, DetailTab, EnvRow, EnvShown, Reveals,
+    REVEAL_FOR,
 };
 
 /// The screen's CSS, rendered with the panel (colours from tokens only).
@@ -150,8 +150,16 @@ fn fix_click(state: &mut AppState, actions: Option<&ActionsService>, fix_id: &st
 
 /// The inspector body for one selected container. Keyed by the caller per
 /// container so tab, menus and revealed values reset on a new selection.
+/// `pane_px` is the width the panel is drawn at, which sets how many tabs
+/// fit before ⋯; `hide_stream_tabs` drops Logs and Terminal while the bottom
+/// panel beside the inspector shows them (D22).
 #[component]
-pub fn ContainerDetailPanel(id: ContainerId, #[props(default)] initial_tab: DetailTab) -> Element {
+pub fn ContainerDetailPanel(
+    id: ContainerId,
+    #[props(default)] initial_tab: DetailTab,
+    #[props(default = 360)] pane_px: u32,
+    #[props(default)] hide_stream_tabs: bool,
+) -> Element {
     let mut state = use_context::<AppState>();
     let store = use_hook(|| try_consume_context::<DetailStore>().unwrap_or_default());
     let services = try_consume_context::<Services>();
@@ -212,9 +220,25 @@ pub fn ContainerDetailPanel(id: ContainerId, #[props(default)] initial_tab: Deta
         (header_buttons(&c, &view), failure_of(&pending, &id), shown)
     };
 
-    let selected = *tab.read();
-    let capacity = tab_capacity(state.settings.read().text_scale);
-    let (tab_items, overflow) = tab_strip(selected, capacity);
+    let hidden: &[DetailTab] = if hide_stream_tabs {
+        &DetailTab::STREAMS
+    } else {
+        &[]
+    };
+    // A tab the strip no longer offers (Logs after the panel opened beside
+    // the inspector) falls back to Overview.
+    let selected = if hidden.contains(&tab.read()) {
+        DetailTab::Overview
+    } else {
+        *tab.read()
+    };
+    let (text_scale, dock) = {
+        let settings = state.settings.read();
+        (settings.text_scale, settings.inspector_dock)
+    };
+    #[allow(clippy::cast_precision_loss)]
+    let (tab_items, overflow) = tab_strip(selected, pane_px as f32, text_scale, hidden);
+    let has_overflow = !overflow.is_empty();
     let status = berth_core::status_of(c.state, c.health, c.exit_code);
     let header_actions = actions.clone();
     let fix_actions = actions.clone();
@@ -236,6 +260,11 @@ pub fn ContainerDetailPanel(id: ContainerId, #[props(default)] initial_tab: Deta
                 buttons,
                 menu: header_menu(&c),
                 menu_open: *menu_open.read(),
+                dock,
+                ondock: move |side: berth_store::InspectorDock| {
+                    menu_open.set(false);
+                    crate::ui::dock::set_dock(&mut state, side);
+                },
                 onbutton: move |button: &'static str| {
                     menu_open.set(false);
                     header_click(&mut state, header_actions.as_ref(), &header_container, button);
@@ -284,29 +313,31 @@ pub fn ContainerDetailPanel(id: ContainerId, #[props(default)] initial_tab: Deta
                         }
                     },
                 }
-                div { class: "cd-more-tabs",
-                    button {
-                        class: "tab cd-more-button",
-                        r#type: "button",
-                        "aria-label": "More tabs",
-                        "aria-expanded": more_tabs_open.read().to_string(),
-                        onclick: move |_| {
-                            let open = *more_tabs_open.peek();
-                            more_tabs_open.set(!open);
-                        },
-                        crate::ui::Icon { name: "more-horizontal", size: crate::ui::IconSize::Sm }
-                    }
-                    if *more_tabs_open.read() {
-                        div { class: "cd-more-menu",
-                            Menu {
-                                items: overflow,
-                                aria_label: "More tabs".to_string(),
-                                on_select: move |tab_id: String| {
-                                    more_tabs_open.set(false);
-                                    if let Some(next) = DetailTab::from_id(&tab_id) {
-                                        tab.set(next);
-                                    }
-                                },
+                if has_overflow {
+                    div { class: "cd-more-tabs",
+                        button {
+                            class: "tab cd-more-button",
+                            r#type: "button",
+                            "aria-label": "More tabs",
+                            "aria-expanded": more_tabs_open.read().to_string(),
+                            onclick: move |_| {
+                                let open = *more_tabs_open.peek();
+                                more_tabs_open.set(!open);
+                            },
+                            crate::ui::Icon { name: "more-horizontal", size: crate::ui::IconSize::Sm }
+                        }
+                        if *more_tabs_open.read() {
+                            div { class: "cd-more-menu",
+                                Menu {
+                                    items: overflow,
+                                    aria_label: "More tabs".to_string(),
+                                    on_select: move |tab_id: String| {
+                                        more_tabs_open.set(false);
+                                        if let Some(next) = DetailTab::from_id(&tab_id) {
+                                            tab.set(next);
+                                        }
+                                    },
+                                }
                             }
                         }
                     }

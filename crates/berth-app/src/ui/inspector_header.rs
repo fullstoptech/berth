@@ -77,6 +77,10 @@ pub fn InspectorHeader(
     buttons: Vec<HeaderButton>,
     menu: Vec<MenuEntry>,
     #[props(default)] menu_open: bool,
+    /// Where the inspector sits now; with it the ⋯ menu offers "Dock side".
+    #[props(default)]
+    dock: Option<berth_store::InspectorDock>,
+    #[props(default)] ondock: Option<EventHandler<berth_store::InspectorDock>>,
     onbutton: EventHandler<&'static str>,
     onmenutoggle: EventHandler<()>,
     onmenu: EventHandler<String>,
@@ -101,6 +105,9 @@ pub fn InspectorHeader(
                                 items: menu.clone(),
                                 aria_label: "More actions".to_string(),
                                 on_select: move |id: String| onmenu.call(id),
+                            }
+                            if let Some(current) = dock {
+                                DockSide { current, ondock }
                             }
                         }
                     }
@@ -148,6 +155,50 @@ pub fn InspectorHeader(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The ⋯ menu's "Dock side" row: Right and Bottom, the current one marked
+/// (D22). The glyphs are drawn here: the icon sprite is generated from the
+/// design file and has no panel icons yet.
+#[component]
+fn DockSide(
+    current: berth_store::InspectorDock,
+    ondock: Option<EventHandler<berth_store::InspectorDock>>,
+) -> Element {
+    use berth_store::InspectorDock::{Bottom, Right};
+    rsx! {
+        div { class: "ih-dock", role: "group", "aria-label": "Dock side",
+            span { class: "ih-dock-label", "Dock side" }
+            for (side, label, divider) in [
+                (Right, "Dock inspector at right", "M10 3v10"),
+                (Bottom, "Dock inspector at bottom", "M2 9.5h12"),
+            ] {
+                button {
+                    key: "{label}",
+                    class: if current == side { "ih-dock-btn ih-dock-btn-on" } else { "ih-dock-btn" },
+                    r#type: "button",
+                    "aria-label": "{label}",
+                    "aria-pressed": (current == side).to_string(),
+                    "data-tooltip": label,
+                    onclick: move |_| {
+                        if let Some(handler) = &ondock {
+                            handler.call(side);
+                        }
+                    },
+                    svg {
+                        class: "icon icon-sm",
+                        view_box: "0 0 16 16",
+                        fill: "none",
+                        stroke: "currentColor",
+                        stroke_width: "1.5",
+                        "aria-hidden": "true",
+                        rect { x: "2", y: "3", width: "12", height: "10", rx: "1.5" }
+                        path { d: divider }
                     }
                 }
             }

@@ -568,6 +568,37 @@ fn terminal_active(state: &mut AppState) {
     show_terminal(first);
 }
 
+/// D22 (no frame yet, owner request 2026-10-25): the inspector docked at the
+/// bottom beside the Terminal panel. The terminal scene with the inspector
+/// shown instead of hidden and `inspector_dock = Bottom`; the region is 360 px
+/// high so both panes have room to read.
+fn inspector_bottom_split(state: &mut AppState) {
+    terminal_active(state);
+    state.settings.write().inspector_dock = berth_store::InspectorDock::Bottom;
+    if let Some(view) = try_consume_context::<crate::screens::containers::ContainersView>() {
+        let mut toggled = view.inspector_toggled;
+        toggled.set(false);
+    }
+    state.bottom.write().height_px = 360;
+}
+
+/// "Containers / selected / 1024" after Space: below 1200 px the inspector
+/// is an overlay over the table, at the stored width (at most half the window).
+fn inspector_overlay(state: &mut AppState) {
+    containers_selected(state);
+    if let Some(view) = try_consume_context::<crate::screens::containers::ContainersView>() {
+        let mut toggled = view.inspector_toggled;
+        toggled.set(true);
+    }
+}
+
+/// The same with the panel closed: the inspector alone, full width.
+fn inspector_bottom_alone(state: &mut AppState) {
+    containers_selected(state);
+    state.settings.write().inspector_dock = berth_store::InspectorDock::Bottom;
+    state.bottom.write().height_px = 320;
+}
+
 /// Dark; the distroless metrics exporter has neither bash nor sh.
 fn terminal_no_shell(state: &mut AppState) {
     use crate::services::exec::Status;
@@ -874,6 +905,19 @@ const SCENES: &[Scene] = &[
         setup: terminal_no_shell,
     },
     Scene {
+        frame: "Containers / inspector bottom / 1440",
+        setup: inspector_bottom_split,
+    },
+    Scene {
+        frame: "Containers / inspector bottom / alone / 1440",
+        setup: inspector_bottom_alone,
+    },
+    // Rendered at 1024x700 (BERTH_WINDOW=1024x700 for shots).
+    Scene {
+        frame: "Containers / inspector overlay / 1024",
+        setup: inspector_overlay,
+    },
+    Scene {
         frame: "Containers / selected / 1440 / light",
         setup: containers_selected_light,
     },
@@ -912,15 +956,29 @@ pub fn find(frame: &str) -> Option<&'static Scene> {
     SCENES.iter().find(|s| s.frame == frame)
 }
 
+/// The window width a frame is drawn at: the number its name ends with
+/// ("Containers / selected / 1024"), when it is a window width.
+fn frame_width(frame: &str) -> Option<f64> {
+    let last = frame.rsplit(" / ").next()?;
+    let width: f64 = last.trim().parse().ok()?;
+    (900.0..=3000.0).contains(&width).then_some(width)
+}
+
 #[component]
 fn SceneRoot(frame: String) -> Element {
     let mut state = use_app_state();
     use_context_provider(|| state);
     crate::screens::containers::provide_containers_view();
+    let dock = crate::ui::dock::use_dock_view(state);
     crate::services::exec::provide_scene_terminals();
     let details = crate::services::detail::provide_detail_store();
     let setup_frame = frame.clone();
     use_hook(move || {
+        // A frame is drawn at the width its name ends with.
+        if let Some(width) = frame_width(&setup_frame) {
+            let mut window_w = dock.window_w;
+            window_w.set(width);
+        }
         if let Some(scene) = find(&setup_frame) {
             (scene.setup)(&mut state);
             seed_details(&state, details);
@@ -951,7 +1009,7 @@ mod tests {
         assert!(find("Projects / empty / 1440").is_some());
         assert!(find("Components / primitives").is_some());
         assert!(find("Containers / selected / 1440").is_some());
-        assert_eq!(scenes().len(), 22);
+        assert_eq!(scenes().len(), 25);
         assert!(find("No such frame").is_none());
     }
 

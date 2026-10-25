@@ -569,16 +569,178 @@ fn shell_inspector_shows_for_a_matching_selection_only() {
 }
 
 #[test]
-fn shell_inspector_overlay_class_is_what_shows_it_below_1200() {
-    let docked = render(rsx! { Inspector {} });
+fn shell_inspector_frames_carry_their_class_width_and_handle() {
+    let docked = render(rsx! { Inspector { width_px: 420 } });
     assert!(docked.contains("class=\"inspector\""), "{docked}");
-    let overlay = render(rsx! { Inspector { overlay_open: true } });
-    assert!(overlay.contains("inspector inspector-open"), "{overlay}");
-    // The CSS rule that makes those classes mean "collapsed" and "overlay".
+    assert!(
+        docked.contains("style=\"width: 420px; min-width: 420px;\""),
+        "{docked}"
+    );
+    let overlay = render(rsx! { Inspector { frame: InspectorFrame::Overlay } });
+    assert!(
+        overlay.contains("class=\"inspector inspector-overlay\""),
+        "{overlay}"
+    );
+    let bottom = render(rsx! { Inspector { frame: InspectorFrame::Bottom } });
+    assert!(
+        bottom.contains("class=\"inspector inspector-bottom\""),
+        "{bottom}"
+    );
+    assert!(
+        !bottom.contains("style="),
+        "no width: the region gives it all: {bottom}"
+    );
+    // The body scrolls inside the frame so the handle stays on the edge.
+    assert!(docked.contains("class=\"inspector-body\""));
+    // The CSS: the overlay floats over the main area, the handle is an 8 px
+    // col-resize strip, the body scrolls.
     let css = include_str!("../../assets/css/shell.css");
-    assert!(css.contains("@media (max-width: 1199px)"));
-    assert!(css.contains(".inspector { display: none; }"));
-    assert!(css.contains(".inspector.inspector-open"));
+    let rule = |header: &str| crate::screens::css_tracks::block(css, header);
+    assert!(rule("\n.inspector-overlay {").contains("position: absolute;"));
+    assert!(rule("\n.split-handle {").contains("width: 8px;"));
+    assert!(rule("\n.split-handle {").contains("cursor: col-resize;"));
+    assert!(rule("\n.inspector-body {").contains("overflow-y: auto;"));
+}
+
+#[test]
+fn shell_right_column_has_a_resize_separator_with_the_aria_values() {
+    let html = scene_html();
+    let at = html.find("split-handle-width").expect("a width handle");
+    let handle = &html[at - 40..at + 400];
+    for needle in [
+        "role=\"separator\"",
+        "tabindex=\"0\"",
+        "aria-orientation=\"vertical\"",
+        "aria-valuenow=\"360\"",
+        "aria-valuemin=\"320\"",
+        "aria-valuemax=\"560\"",
+    ] {
+        assert!(handle.contains(needle), "{needle} in {handle}");
+    }
+    assert!(html.contains("width: 360px; min-width: 360px;"), "{html}");
+}
+
+#[test]
+fn shell_window_under_1200_overlays_the_inspector_and_hides_it_until_space() {
+    // The frame names its window width: 1440 docks, 1024 does not.
+    let wide = scenes::render_scene_html("Containers / selected / 1440").expect("scene");
+    assert!(wide.contains("<aside class=\"inspector\""), "{wide}");
+    let narrow = scenes::render_scene_html("Containers / selected / 1024").expect("scene");
+    assert!(!narrow.contains("<aside"), "{narrow}");
+    // Space opens it as an overlay at the stored width.
+    let open = scenes::render_scene_html("Containers / inspector overlay / 1024").expect("scene");
+    assert!(
+        open.contains("class=\"inspector inspector-overlay\""),
+        "{open}"
+    );
+    assert!(open.contains("width: 360px; min-width: 360px;"), "{open}");
+}
+
+fn select_first_container(s: &mut AppState) {
+    let world = mock_world();
+    s.engines.set(world.engines.clone());
+    s.containers.set(world.containers.clone());
+    s.projects.set(world.projects.clone());
+    s.section.set(Section::Containers);
+    s.selection
+        .set(Selection::Containers(vec![world.containers[0].id.clone()]));
+}
+
+fn dock_bottom_inspector_alone(s: &mut AppState) {
+    select_first_container(s);
+    s.settings.write().inspector_dock = berth_store::InspectorDock::Bottom;
+}
+
+fn dock_bottom_split(s: &mut AppState) {
+    dock_bottom_inspector_alone(s);
+    let mut bottom = s.bottom.write();
+    bottom.open = true;
+    bottom.tab = BottomTab::Problems;
+}
+
+#[test]
+fn shell_bottom_dock_alone_fills_the_region_with_the_inspector_at_the_shared_height() {
+    let html = render_shell(dock_bottom_inspector_alone);
+    assert!(html.contains("data-mode=\"inspector\""), "{html}");
+    assert!(
+        html.contains("class=\"inspector inspector-bottom\""),
+        "{html}"
+    );
+    assert!(
+        !html.contains("class=\"inspector\""),
+        "not also in a right column"
+    );
+    assert!(!html.contains("bottom-main"), "the panel is closed");
+    assert!(
+        !html.contains("split-handle"),
+        "no divider without a second pane"
+    );
+    // One height for the whole region: the panel's own, 320 px by default.
+    assert!(html.contains("height: 320px;"), "{html}");
+    // The inspector alone keeps its Logs and Terminal tabs.
+    assert_eq!(html.matches("<span>Terminal</span>").count(), 1, "{html}");
+}
+
+#[test]
+fn shell_bottom_dock_split_puts_the_panel_left_and_the_inspector_right_without_duplicate_tabs() {
+    let html = render_shell(dock_bottom_split);
+    assert!(html.contains("data-mode=\"split\""), "{html}");
+    let panel = html.find("bottom-main").expect("the panel pane");
+    let inspector = html
+        .find("inspector inspector-bottom")
+        .expect("the inspector pane");
+    assert!(
+        panel < inspector,
+        "panel on the left, inspector on the right"
+    );
+    // 40 % of the 1220 px region.
+    assert!(html.contains("width: 488px; min-width: 488px;"), "{html}");
+    let at = html.find("split-handle-split").expect("a divider");
+    let handle = &html[at - 40..at + 400];
+    for needle in [
+        "role=\"separator\"",
+        "tabindex=\"0\"",
+        "aria-orientation=\"vertical\"",
+        "aria-valuenow=\"488\"",
+        "aria-valuemin=\"320\"",
+        "aria-valuemax=\"900\"",
+    ] {
+        assert!(handle.contains(needle), "{needle} in {handle}");
+    }
+    // The panel's Logs and Terminal tabs are the only ones.
+    assert_eq!(html.matches("<span>Terminal</span>").count(), 1, "{html}");
+    assert_eq!(html.matches("<span>Logs</span>").count(), 1, "{html}");
+    assert!(html.contains("<span>Stats</span>"), "{html}");
+}
+
+#[test]
+fn shell_right_dock_with_the_panel_open_keeps_both_sets_of_tabs() {
+    let html = render_shell(|s| {
+        select_first_container(s);
+        let mut bottom = s.bottom.write();
+        bottom.open = true;
+        bottom.tab = BottomTab::Problems;
+    });
+    assert!(html.contains("data-mode=\"panel\""), "{html}");
+    assert!(html.contains("<aside class=\"inspector\""), "{html}");
+    assert_eq!(html.matches("<span>Terminal</span>").count(), 2, "{html}");
+}
+
+#[test]
+fn shell_bottom_dock_without_a_selection_shows_the_panel_alone() {
+    let html = render_shell(|s| {
+        s.section.set(Section::Containers);
+        s.settings.write().inspector_dock = berth_store::InspectorDock::Bottom;
+        s.bottom.write().open = true;
+    });
+    assert!(html.contains("data-mode=\"panel\""), "{html}");
+    assert!(!html.contains("<aside"), "{html}");
+    // And with the panel closed too there is no region at all.
+    let none = render_shell(|s| {
+        s.section.set(Section::Containers);
+        s.settings.write().inspector_dock = berth_store::InspectorDock::Bottom;
+    });
+    assert!(!none.contains("bottom-panel"), "{none}");
 }
 
 #[test]

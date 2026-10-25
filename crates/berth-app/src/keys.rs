@@ -125,6 +125,7 @@ pub fn map_key(key: &str, mods: Modifiers, ctx: KeyContext) -> Option<ActionId> 
                 // ⌘⇧= types "+" on most layouts; same as ⌘+.
                 "+" | "=" => Some("view.text_bigger"),
                 "L" | "l" => Some("global.logs_section"),
+                "D" | "d" => Some("view.dock_inspector"),
                 "." if ctx.in_folder_browser => Some("folders.toggle_hidden"),
                 _ => None,
             };
@@ -244,6 +245,7 @@ pub fn dispatch(state: &mut AppState, action: ActionId) {
         "global.open_folder" => state.overlays.write().push(Overlay::OpenFolder),
         "global.new_project" => state.overlays.write().push(Overlay::NewProject),
         "global.settings" => state.section.set(Section::Settings),
+        "view.dock_inspector" => crate::ui::dock::flip_dock(state),
         "view.text_bigger" => step_text_scale(state, crate::text_scale::Step::Bigger),
         "view.text_smaller" => step_text_scale(state, crate::text_scale::Step::Smaller),
         "view.text_reset" => step_text_scale(state, crate::text_scale::Step::Reset),
@@ -619,6 +621,39 @@ mod tests {
             state.settings.write().text_scale = 1.12;
             dispatch(&mut state, "view.text_bigger");
             assert_eq!(scale(&state), 1.2);
+        });
+    }
+
+    #[test]
+    fn dock_shortcut_maps_and_flips_the_inspector_between_the_two_sides() {
+        use berth_store::InspectorDock::{Bottom, Right};
+        let shift_meta = Modifiers {
+            meta: true,
+            shift: true,
+            ..Modifiers::NONE
+        };
+        for key in ["D", "d"] {
+            assert_eq!(
+                map_key(key, shift_meta, KeyContext::default()),
+                Some("view.dock_inspector")
+            );
+        }
+        // ⌘D alone and ⇧D alone are not the dock key.
+        assert_eq!(map_key("d", Modifiers::META, KeyContext::default()), None);
+        assert_eq!(map_key("D", Modifiers::SHIFT, KeyContext::default()), None);
+
+        let mut dom = VirtualDom::new(Harness);
+        let _ = dom.rebuild_to_vec();
+        let mut state = SLOT
+            .with(|slot| slot.borrow_mut().take())
+            .expect("harness captured AppState");
+        dom.in_scope(ScopeId::APP, || {
+            let dock = |state: &AppState| state.settings.peek().inspector_dock;
+            assert_eq!(dock(&state), Right);
+            dispatch(&mut state, "view.dock_inspector");
+            assert_eq!(dock(&state), Bottom);
+            dispatch(&mut state, "view.dock_inspector");
+            assert_eq!(dock(&state), Right);
         });
     }
 }

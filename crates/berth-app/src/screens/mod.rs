@@ -7,7 +7,7 @@ pub mod container_detail;
 pub mod container_limits;
 pub mod containers;
 #[cfg(test)]
-mod css_tracks;
+pub(crate) mod css_tracks;
 pub mod logs;
 pub mod logs_scene;
 pub mod palette;

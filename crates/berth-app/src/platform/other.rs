@@ -20,6 +20,9 @@ pub fn use_traffic_lights() {}
 /// No native menu bar off macOS yet (D3).
 pub fn use_menu_events(_state: crate::state::AppState) {}
 
+/// No native menu bar off macOS yet (D3), so no item to relabel.
+pub fn set_dock_menu_label(_dock: berth_store::InspectorDock) {}
+
 /// What to run in a terminal app (macOS only, D42).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecTarget {

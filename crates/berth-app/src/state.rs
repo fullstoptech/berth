@@ -102,7 +102,7 @@ impl Default for BottomPanel {
     fn default() -> Self {
         Self {
             open: false,
-            height_px: 260,
+            height_px: 320,
             tab: BottomTab::Logs,
             terminals: Vec::new(),
         }

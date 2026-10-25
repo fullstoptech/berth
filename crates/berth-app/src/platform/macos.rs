@@ -211,6 +211,7 @@ struct SubmenuSpec {
 }
 
 const QUIT_ID: &str = "app.quit";
+const DOCK_ID: &str = "view.dock_inspector";
 const HELP_SHORTCUTS_ID: &str = "help.shortcuts";
 
 const fn item(id: &'static str, label: &'static str, accelerator: Option<&'static str>) -> Entry {
@@ -275,6 +276,8 @@ fn menu_spec() -> Vec<SubmenuSpec> {
                     Some("Ctrl+`"),
                 ),
                 item("global.toggle_inspector", "Toggle Inspector", None),
+                // The label names the side a click moves to; `set_dock_menu_label` flips it.
+                item(DOCK_ID, "Dock Inspector at Bottom", Some("Cmd+Shift+D")),
                 Sep,
                 item("view.text_bigger", "Bigger Text", Some("Cmd+=")),
                 item("view.text_smaller", "Smaller Text", Some("Cmd+-")),
@@ -361,7 +364,11 @@ fn build_menu() -> Menu {
                     accelerator,
                 } => {
                     let accelerator = accelerator.and_then(|a| a.parse().ok());
-                    submenu.append(&MenuItem::with_id(id, label, true, accelerator))
+                    let menu_item = MenuItem::with_id(id, label, true, accelerator);
+                    if id == DOCK_ID {
+                        DOCK_ITEM.with(|slot| *slot.borrow_mut() = Some(menu_item.clone()));
+                    }
+                    submenu.append(&menu_item)
                 }
                 Entry::Predefined(kind) => submenu.append(&predefined(kind)),
                 Entry::Separator => submenu.append(&PredefinedMenuItem::separator()),
@@ -380,6 +387,21 @@ fn build_menu() -> Menu {
         }
     }
     menu
+}
+
+thread_local! {
+    /// The View menu's dock item, kept to change its label (main thread only).
+    static DOCK_ITEM: std::cell::RefCell<Option<MenuItem>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Name the side the dock item moves the inspector to ("Dock Inspector at
+/// Bottom" while it is at the right).
+pub fn set_dock_menu_label(dock: berth_store::InspectorDock) {
+    DOCK_ITEM.with(|slot| {
+        if let Some(item) = slot.borrow().as_ref() {
+            item.set_text(crate::ui::dock::dock_menu_label(dock));
+        }
+    });
 }
 
 /// Route clicks on Berth's own menu items (everything but the predefined
@@ -475,6 +497,7 @@ mod tests {
         accelerator
             .replace("Cmd+", "\u{2318}")
             .replace("Ctrl+", "\u{2303}")
+            .replace("Shift+", "\u{21e7}")
     }
 
     #[test]
@@ -503,6 +526,31 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn shell_menu_dock_item_flips_the_inspector_and_starts_with_the_right_dock_label() {
+        let spec = menu_spec();
+        let view = spec.iter().find(|s| s.title == "View").expect("View menu");
+        let entry = view
+            .entries
+            .iter()
+            .find_map(|e| match e {
+                Entry::Item {
+                    id: DOCK_ID, label, ..
+                } => Some(*label),
+                _ => None,
+            })
+            .expect("a dock item in View");
+        // The inspector starts at the right, so the item offers the bottom.
+        assert_eq!(
+            entry,
+            crate::ui::dock::dock_menu_label(berth_store::InspectorDock::Right)
+        );
+        assert_eq!(
+            menu_action(DOCK_ID),
+            Some(MenuAction::Dispatch("view.dock_inspector"))
+        );
     }
 
     #[test]

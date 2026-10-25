@@ -41,7 +41,37 @@
   font-weight: var(--text-body-weight);
 }
 .ih-more { position: relative; flex: none; }
-.ih-menu { position: absolute; top: 100%; right: 0; z-index: 30; }
+.ih-menu { position: absolute; top: 100%; right: 0; z-index: 30; display: flex; flex-direction: column; align-items: flex-end; }
+/* "Dock side" (D22): the two sides as icon buttons, the current one marked. */
+.ih-dock {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: var(--size-sidebar);
+  margin-top: var(--space-4);
+  padding: var(--space-4) var(--space-8);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+}
+.ih-dock-label { flex: 1; white-space: nowrap; font-size: var(--text-body-size); }
+.ih-dock-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+.ih-dock-btn:hover { background: var(--color-surface-hover); }
+.ih-dock-btn-on { color: var(--color-ink); background: var(--color-surface-hover); border-color: var(--color-line); }
+.ih-dock-btn:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .ih-status { display: flex; align-items: center; gap: var(--space-8); flex-wrap: wrap; }
 .ih-note {
   color: var(--color-ink-muted);

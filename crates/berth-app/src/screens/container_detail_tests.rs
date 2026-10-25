@@ -76,6 +76,8 @@ struct Panel {
     problems: Vec<Problem>,
     pending: BTreeMap<PendingKey, PendingState>,
     tab: DetailTab,
+    pane_px: u32,
+    hide_stream_tabs: bool,
 }
 
 impl Panel {
@@ -87,6 +89,8 @@ impl Panel {
             problems: Vec::new(),
             pending: BTreeMap::new(),
             tab: DetailTab::Overview,
+            pane_px: 360,
+            hide_stream_tabs: false,
         }
     }
 
@@ -122,7 +126,12 @@ fn PanelRoot(panel: Panel) -> Element {
         }
     });
     rsx! {
-        ContainerDetailPanel { id: panel.id.clone(), initial_tab: panel.tab }
+        ContainerDetailPanel {
+            id: panel.id.clone(),
+            initial_tab: panel.tab,
+            pane_px: panel.pane_px,
+            hide_stream_tabs: panel.hide_stream_tabs,
+        }
     }
 }
 
@@ -429,40 +438,106 @@ fn inspector_loading_and_failed_details_say_so_instead_of_an_empty_body() {
 
 #[test]
 fn inspector_tab_strip_shows_five_tabs_and_keeps_a_selected_overflow_tab_visible() {
-    let (items, overflow) = tab_strip(DetailTab::Overview, 5);
+    let (items, overflow) = tab_strip(DetailTab::Overview, 360.0, 1.0, &[]);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert_eq!(labels, ["Overview", "Logs", "Terminal", "Stats", "Inspect"]);
     let menu: Vec<&str> = overflow.iter().map(|e| e.label.as_str()).collect();
     assert_eq!(menu, ["Env", "Mounts", "Files", "Limits"]);
 
-    let (items, overflow) = tab_strip(DetailTab::Env, 5);
+    let (items, overflow) = tab_strip(DetailTab::Env, 360.0, 1.0, &[]);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert_eq!(labels, ["Overview", "Logs", "Terminal", "Stats", "Env"]);
     assert!(overflow.iter().any(|e| e.label == "Inspect"));
     assert!(!overflow.iter().any(|e| e.label == "Env"));
-    assert_eq!(visible_tabs(DetailTab::Limits, 5)[4], DetailTab::Limits);
+    assert_eq!(
+        visible_tabs(DetailTab::Limits, 360.0, 1.0, &[])[4],
+        DetailTab::Limits
+    );
 }
 
 #[test]
 fn inspector_tab_strip_shows_fewer_tabs_as_the_text_grows() {
     use crate::text_scale::STEPS;
     for (scale, want) in [(0.85, 5), (1.0, 5), (1.1, 4), (1.2, 4), (1.3, 4), (1.5, 3)] {
-        assert_eq!(tab_capacity(scale), want, "{scale}");
+        assert_eq!(tab_capacity(360.0, scale), want, "{scale}");
     }
     // The strip never grows with the text, and every tab stays reachable.
     let mut last = usize::MAX;
     for scale in STEPS {
-        let capacity = tab_capacity(scale);
+        let capacity = tab_capacity(360.0, scale);
         assert!(capacity <= last, "{scale}");
         last = capacity;
-        let (items, overflow) = tab_strip(DetailTab::Overview, capacity);
+        let (items, overflow) = tab_strip(DetailTab::Overview, 360.0, scale, &[]);
         assert_eq!(items.len() + overflow.len(), DetailTab::ALL.len());
     }
     // A selected tab under ⋯ takes the last place, however few fit.
-    let (items, overflow) = tab_strip(DetailTab::Env, 3);
+    let (items, overflow) = tab_strip(DetailTab::Env, 360.0, 1.5, &[]);
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert_eq!(labels, ["Overview", "Logs", "Env"]);
     assert!(overflow.iter().any(|e| e.label == "Terminal"));
+}
+
+#[test]
+fn inspector_tab_overflow_follows_the_pane_width_not_a_fixed_360() {
+    // A wider pane shows more tabs, a narrower one fewer, at every text size.
+    assert_eq!(tab_capacity(320.0, 1.0), 4);
+    assert_eq!(tab_capacity(360.0, 1.0), 5);
+    assert_eq!(tab_capacity(488.0, 1.0), 7);
+    assert_eq!(tab_capacity(560.0, 1.0), 8);
+    // The full-width bottom dock has room for all nine: no ⋯ at all.
+    assert_eq!(tab_capacity(1220.0, 1.0), DetailTab::ALL.len());
+    let (items, overflow) = tab_strip(DetailTab::Overview, 1220.0, 1.0, &[]);
+    assert_eq!(items.len(), 9);
+    assert!(overflow.is_empty());
+    // Every width and text size keeps every tab reachable, and never shows
+    // more tabs than fit.
+    for width in [320.0, 360.0, 420.0, 488.0, 560.0, 804.0] {
+        let mut last = usize::MAX;
+        for scale in crate::text_scale::STEPS {
+            let (items, overflow) = tab_strip(DetailTab::Overview, width, scale, &[]);
+            assert_eq!(items.len() + overflow.len(), DetailTab::ALL.len());
+            assert!(items.len() <= last, "{width} px at {scale}");
+            last = items.len();
+        }
+    }
+    // The rule is the label (grows with the text) plus fixed padding: the
+    // strip a 322 px pane (1024 split) gets at 100 % is four tabs.
+    assert_eq!(tab_capacity(322.0, 1.0), 4);
+}
+
+#[test]
+fn inspector_split_mode_hides_the_logs_and_terminal_tabs() {
+    let hidden = &DetailTab::STREAMS;
+    let (items, overflow) = tab_strip(DetailTab::Overview, 488.0, 1.0, hidden);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"Logs") && !labels.contains(&"Terminal"),
+        "{labels:?}"
+    );
+    assert_eq!(labels[..3], ["Overview", "Stats", "Inspect"]);
+    // Hidden means gone from ⋯ too: the panel beside shows them.
+    assert!(!overflow
+        .iter()
+        .any(|e| e.label == "Logs" || e.label == "Terminal"));
+    assert_eq!(items.len() + overflow.len(), 7);
+    // Outside split mode both tabs are there.
+    let (items, _) = tab_strip(DetailTab::Overview, 488.0, 1.0, &[]);
+    assert!(items.iter().any(|i| i.label == "Logs"));
+    assert!(items.iter().any(|i| i.label == "Terminal"));
+    // A selected Logs tab is not forced back into a strip that hides it.
+    let tabs = visible_tabs(DetailTab::Logs, 360.0, 1.0, hidden);
+    assert!(!tabs.contains(&DetailTab::Logs));
+    // The panel marks hidden tabs only with the flag set.
+    let api = container("shop-api-api-1");
+    let mut split = Panel::of(&api);
+    split.hide_stream_tabs = true;
+    split.pane_px = 488;
+    let html = render(split);
+    assert!(!html.contains(">Terminal<"), "{html}");
+    assert!(html.contains(">Stats<"), "{html}");
+    let mut alone = Panel::of(&api);
+    alone.pane_px = 488;
+    assert!(render(alone).contains(">Terminal<"));
 }
 
 #[test]

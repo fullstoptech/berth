@@ -7,7 +7,8 @@ use crate::services::actions::ActionsService;
 use crate::services::stats::{use_window_visibility, StatsService};
 use crate::services::{action_runners, activity, engines, Services};
 use crate::state::{theme_script, use_app_state, AppState, Overlay, Selection};
-use crate::ui::{inspector_visible, BottomPanel, Inspector, Sidebar, StatusBar, TitleBar};
+use crate::ui::dock::{InspectorSlot, InspectorSplitHandle, InspectorWidthHandle, RegionMode};
+use crate::ui::{BottomPanel, Inspector, InspectorFrame, Sidebar, StatusBar, TitleBar};
 
 struct Boot {
     services: Services,
@@ -47,6 +48,10 @@ fn boot_services(state: AppState) -> Boot {
         Ok(mut settings) => {
             // A stored value that is not one of the steps snaps to the nearest.
             settings.text_scale = crate::text_scale::snap(settings.text_scale);
+            // The same for a width or share edited by hand.
+            settings.inspector_width_px =
+                crate::ui::dock::clamp_stored_width(settings.inspector_width_px);
+            settings.inspector_split_pct = settings.inspector_split_pct.clamp(1, 99);
             let mut state = state;
             state.settings.set(settings);
         }
@@ -98,6 +103,8 @@ pub fn App() -> Element {
     let mut state = use_app_state();
     use_context_provider(|| state);
     crate::screens::containers::provide_containers_view();
+    let dock = crate::ui::dock::use_dock_view(state);
+    crate::ui::dock::use_window_width(dock);
     let details = crate::services::detail::provide_detail_store();
     platform::use_menu_events(state);
 
@@ -150,24 +157,37 @@ pub fn App() -> Element {
         if let Some(scale) = crate::text_scale::forced_from_env() {
             state.settings.write().text_scale = scale;
         }
+        // BERTH_INSPECTOR_WIDTH forces the inspector width for shots.
+        if let Some(width) = crate::ui::dock::forced_width_from_env() {
+            state.settings.write().inspector_width_px = width;
+        }
     });
 
-    // Text size changes are saved as they happen (one small write, off the
-    // UI path). The first run only records the loaded value, and a forced
-    // BERTH_TEXT_SCALE is never written to the owner's settings.
+    // Text size and inspector changes are saved as they happen (one small
+    // write, off the UI path; a drag writes once, on mouse-up). The first
+    // run only records the loaded values, and a forced BERTH_TEXT_SCALE or
+    // BERTH_INSPECTOR_WIDTH, or a scene, is never written to the owner's
+    // settings.
     let store = boot.services.store.clone();
-    let saved_scale = use_hook(|| std::rc::Rc::new(std::cell::Cell::new(f32::NAN)));
+    let saved = use_hook(|| std::rc::Rc::new(std::cell::Cell::new(None)));
     use_effect(move || {
         let settings = state.settings.read().clone();
-        if saved_scale.get().is_nan() {
-            saved_scale.set(settings.text_scale);
+        let key = (
+            settings.text_scale.to_bits(),
+            settings.inspector_width_px,
+            settings.inspector_dock,
+            settings.inspector_split_pct,
+        );
+        if saved.get() == Some(key) {
             return;
         }
-        if (saved_scale.get() - settings.text_scale).abs() < f32::EPSILON {
-            return;
-        }
-        saved_scale.set(settings.text_scale);
-        if crate::text_scale::forced_from_env().is_some() {
+        let first_run = saved.get().is_none();
+        saved.set(Some(key));
+        if first_run
+            || crate::text_scale::forced_from_env().is_some()
+            || crate::ui::dock::forced_width_from_env().is_some()
+            || std::env::var_os("BERTH_SCENE").is_some()
+        {
             return;
         }
         let store = store.clone();
@@ -177,6 +197,12 @@ pub fn App() -> Element {
                 tracing::warn!("settings save failed");
             }
         });
+    });
+
+    // The View menu item names the side a click moves the inspector to.
+    use_effect(move || {
+        let dock = state.settings.read().inspector_dock;
+        platform::set_dock_menu_label(dock);
     });
 
     // Theme and density ride on <html> so tokens.css media rules apply (D7).
@@ -273,7 +299,41 @@ fn OverlayStack() -> Element {
 #[component]
 pub fn Shell() -> Element {
     let state = use_context::<AppState>();
-    let show_inspector = inspector_visible(*state.section.read(), &state.selection.read());
+    let dock = crate::ui::dock::use_dock_view(state);
+    let layout = *dock.layout.read();
+    // One body, drawn in the right column, as an overlay or at the bottom.
+    let hide_stream_tabs = layout.region == Some(RegionMode::Split);
+    let body = rsx! {
+        // Keyed per container: a new selection remounts the panel.
+        if let Selection::Containers(ids) = &*state.selection.read() {
+            for id in ids.iter().take(1) {
+                crate::screens::container_detail::ContainerDetailPanel {
+                    key: "{id.0}",
+                    id: id.clone(),
+                    pane_px: layout.pane_px,
+                    hide_stream_tabs,
+                }
+            }
+        }
+    };
+    let right = match layout.slot {
+        InspectorSlot::Docked(width) => Some((InspectorFrame::Docked, width)),
+        InspectorSlot::Overlay(width) => Some((InspectorFrame::Overlay, width)),
+        InspectorSlot::Bottom | InspectorSlot::Hidden => None,
+    };
+    let bottom_inspector = if layout.slot == InspectorSlot::Bottom {
+        let split = layout.region == Some(RegionMode::Split);
+        rsx! {
+            Inspector {
+                frame: InspectorFrame::Bottom,
+                width_px: if split { layout.split_px },
+                handle: rsx! { if split { InspectorSplitHandle {} } },
+                {body.clone()}
+            }
+        }
+    } else {
+        rsx! {}
+    };
     rsx! {
         div {
             class: "shell",
@@ -315,21 +375,16 @@ pub fn Shell() -> Element {
                                 crate::screens::logs::LogsScreen {}
                             }
                         }
-                        if show_inspector {
-                            Inspector { overlay_open: crate::screens::containers::inspector_toggled(),
-                                // Keyed per container: a new selection remounts the panel.
-                                if let Selection::Containers(ids) = &*state.selection.read() {
-                                    for id in ids.iter().take(1) {
-                                        crate::screens::container_detail::ContainerDetailPanel {
-                                            key: "{id.0}",
-                                            id: id.clone(),
-                                        }
-                                    }
-                                }
+                        if let Some((frame, width)) = right {
+                            Inspector {
+                                frame,
+                                width_px: width,
+                                handle: rsx! { InspectorWidthHandle {} },
+                                {body}
                             }
                         }
                     }
-                    BottomPanel {}
+                    BottomPanel { inspector: bottom_inspector }
                 }
             }
             StatusBar {}

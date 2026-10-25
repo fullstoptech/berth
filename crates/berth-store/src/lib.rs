@@ -3,7 +3,10 @@ pub mod settings;
 pub mod store;
 
 pub use secret::{secret_store, InMemorySecretStore, KeyringStore, SecretStore};
-pub use settings::{Density, Settings, Theme};
+pub use settings::{
+    Density, InspectorDock, Settings, Theme, INSPECTOR_SPLIT_DEFAULT, INSPECTOR_WIDTH_DEFAULT,
+    INSPECTOR_WIDTH_MAX, INSPECTOR_WIDTH_MIN,
+};
 pub use store::{ActivityFilter, EngineSnapshot, SessionRecord, Store, UserEngine};
 
 #[derive(Debug, thiserror::Error)]

@@ -36,6 +36,8 @@ pub enum DetailTab {
 }
 
 impl DetailTab {
+    /// In strip order: the first five fit the frame's 360 px, the rest sit
+    /// under ⋯ ("Containers / selected / 1440").
     pub const ALL: [DetailTab; 9] = [
         Self::Overview,
         Self::Logs,
@@ -48,15 +50,9 @@ impl DetailTab {
         Self::Limits,
     ];
 
-    /// The five that fit a 360 px strip; the rest sit under ⋯ (frame
-    /// "Containers / selected / 1440").
-    pub const PRIMARY: [DetailTab; 5] = [
-        Self::Overview,
-        Self::Logs,
-        Self::Terminal,
-        Self::Stats,
-        Self::Inspect,
-    ];
+    /// Logs and Terminal live in the bottom panel's own tabs, so the
+    /// inspector hides them while that panel sits beside it (D22).
+    pub const STREAMS: [DetailTab; 2] = [Self::Logs, Self::Terminal];
 
     #[must_use]
     pub fn id(self) -> &'static str {
@@ -94,27 +90,38 @@ impl DetailTab {
     }
 }
 
-/// How many tabs the 360 px strip holds at a text scale. Each label's width
-/// grows with the text but the strip does not, so the strip shows fewer tabs
-/// (the rest sit under the ⋯ menu): five up to 100 %, four up to 130 %,
-/// three above that. Measured against the frame's 360 px at each step.
+/// How many tabs a strip `pane_px` wide holds at a text scale. A tab is its
+/// label, which grows with the text (about 41 px at 100 %), and 24 px of
+/// padding, which does not; the ⋯ button takes 28 px. Measured against the
+/// frame's 360 px at each step this gives five tabs up to 100 %, four up to
+/// 130 %, three above that; a wider pane shows more, a narrower one fewer.
 #[must_use]
-pub fn tab_capacity(text_scale: f32) -> usize {
-    if text_scale <= 1.0 {
-        5
-    } else if text_scale <= 1.3 {
-        4
-    } else {
-        3
-    }
+pub fn tab_capacity(pane_px: f32, text_scale: f32) -> usize {
+    let room = pane_px - 28.0;
+    let per_tab = 24.0 + 41.0 * text_scale;
+    // Truncation is the point: whole tabs only.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let fit = (room / per_tab).floor().max(0.0) as usize;
+    fit.clamp(2, DetailTab::ALL.len())
 }
 
-/// The tabs in the strip: the primary ones that fit, with a selected tab
-/// that lives under ⋯ taking the last place so the selection is always seen.
+/// The tabs in the strip: the first `capacity` that are not `hidden`, with a
+/// selected tab that lives under ⋯ taking the last place so the selection
+/// is always seen. A hidden tab is never shown, selected or not.
 #[must_use]
-pub fn visible_tabs(selected: DetailTab, capacity: usize) -> Vec<DetailTab> {
-    let mut tabs: Vec<DetailTab> = DetailTab::PRIMARY.into_iter().take(capacity).collect();
-    if !tabs.contains(&selected) {
+pub fn visible_tabs(
+    selected: DetailTab,
+    pane_px: f32,
+    text_scale: f32,
+    hidden: &[DetailTab],
+) -> Vec<DetailTab> {
+    let capacity = tab_capacity(pane_px, text_scale);
+    let mut tabs: Vec<DetailTab> = DetailTab::ALL
+        .into_iter()
+        .filter(|tab| !hidden.contains(tab))
+        .take(capacity)
+        .collect();
+    if !tabs.contains(&selected) && !hidden.contains(&selected) {
         if let Some(last) = tabs.last_mut() {
             *last = selected;
         }
@@ -124,15 +131,20 @@ pub fn visible_tabs(selected: DetailTab, capacity: usize) -> Vec<DetailTab> {
 
 /// The strip's items and the ⋯ menu's entries.
 #[must_use]
-pub fn tab_strip(selected: DetailTab, capacity: usize) -> (Vec<TabItem>, Vec<MenuEntry>) {
-    let visible = visible_tabs(selected, capacity);
+pub fn tab_strip(
+    selected: DetailTab,
+    pane_px: f32,
+    text_scale: f32,
+    hidden: &[DetailTab],
+) -> (Vec<TabItem>, Vec<MenuEntry>) {
+    let visible = visible_tabs(selected, pane_px, text_scale, hidden);
     let items = visible
         .iter()
         .map(|tab| TabItem::new(tab.id(), tab.label()))
         .collect();
     let overflow = DetailTab::ALL
         .iter()
-        .filter(|tab| !visible.contains(tab))
+        .filter(|tab| !visible.contains(tab) && !hidden.contains(tab))
         .map(|tab| MenuEntry::new(tab.id(), tab.label()))
         .collect();
     (items, overflow)

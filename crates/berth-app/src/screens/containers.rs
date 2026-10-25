@@ -31,10 +31,10 @@ use crate::ui::container_row::{
     ContainerRow, ContainerRowData, Meter, PortLink, RowAction, RowButton,
 };
 use crate::ui::{
-    count_label, inspector_visible, scope_includes, Badge, BadgeKind, Banner, BannerTone,
-    BulkAction, BulkBar, Button, ButtonVariant, CellAlign, ControlSize, EmptyState, GroupHeaderRow,
-    IconButton, InlineMessage, InlineTone, Menu, MenuEntry, SearchField, Select, SelectOption,
-    SkeletonRows, SortDirection, TableHeaderCell, VirtualTable,
+    count_label, scope_includes, Badge, BadgeKind, Banner, BannerTone, BulkAction, BulkBar, Button,
+    ButtonVariant, CellAlign, ControlSize, EmptyState, GroupHeaderRow, IconButton, InlineMessage,
+    InlineTone, Menu, MenuEntry, SearchField, Select, SelectOption, SkeletonRows, SortDirection,
+    TableHeaderCell, VirtualTable,
 };
 
 /// The screen's CSS. Rendered with the screen (`style` element) so the
@@ -1551,11 +1551,10 @@ pub fn ContainersScreen() -> Element {
     };
     let chip_list = chips(&engines, &scope, &filters);
     let banners = engine_banners(&engines, &scope);
-    let toggled = *view.inspector_toggled.read();
-    let docked_inspector = {
-        let section = *state.section.read();
-        inspector_visible(section, &state.selection.read()) && !toggled
-    };
+    // The inspector takes the table's room only docked at the right (D21);
+    // overlaid, hidden or at the bottom the table has the full width.
+    let docked_inspector = crate::ui::dock::inspector_docked();
+    let overlay_inspector = crate::ui::dock::inspector_is_overlay();
     let show_uptime = !docked_inspector;
     let show_engine = matches!(scope, EngineScope::All);
     let bulk_ids: Option<Vec<ContainerId>> = match &*state.selection.read() {
@@ -1582,11 +1581,7 @@ pub fn ContainersScreen() -> Element {
             return rsx! {};
         };
         let engine_scope_all = matches!(&*state.engine_scope.read(), EngineScope::All);
-        let toggled = *view.inspector_toggled.read();
-        let docked = {
-            let section = *state.section.read();
-            inspector_visible(section, &state.selection.read()) && !toggled
-        };
+        let docked = crate::ui::dock::inspector_docked();
         match row {
             ListRow::Group(info) => rsx! { GroupRowHost { key: "{info.key}", info: info.clone() } },
             ListRow::Container(id) => rsx! {
@@ -1704,7 +1699,8 @@ pub fn ContainersScreen() -> Element {
                         },
                     }
                 }
-                div { class: "ct-inspector-toggle",
+                div {
+                    class: if overlay_inspector { "ct-inspector-toggle ct-inspector-toggle-on" } else { "ct-inspector-toggle" },
                     Button {
                         label: "Inspector".to_string(),
                         icon: "file-text",

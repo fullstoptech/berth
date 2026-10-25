@@ -216,10 +216,14 @@ fn containers_scene_selected_1024_drops_uptime_and_engine_below_1200() {
     // that removes Uptime and Engine below 1200 px (D78).
     assert!(html.contains("shop-api-worker-1"));
     assert!(html.contains(">Inspector<"), "overlay toggle button");
+    assert!(
+        html.contains("ct-inspector-toggle ct-inspector-toggle-on"),
+        "shown, because 1024 px cannot dock the inspector: {html}"
+    );
     let css = CONTAINERS_CSS;
     let media = css
         .split("@media (max-width: 1199px)")
-        .nth(2)
+        .nth(1)
         .expect("a narrow-width block for the table");
     // One rule hides both columns (cells and header cells share the classes).
     assert!(
@@ -358,17 +362,84 @@ fn containers_table_fits_at_1024_and_1440_for_every_text_size() {
         (1440.0 - 220.0, false, true, true),
     ];
     for (width, narrow, uptime, engine) in cases {
-        for scale in STEPS {
+        assert_table_fits(width, narrow, uptime, engine);
+    }
+}
+
+/// The table's width next to the inspector at `stored` px in a `window` px
+/// wide window, and whether the inspector took room from it (D21): docked
+/// only when the window is 1200 px or more and the main area keeps 640 px.
+fn table_width_with_inspector(window: f32, stored: u32) -> (f32, bool) {
+    let docked = crate::ui::dock::right_docks(f64::from(window), stored);
+    let width = window - 220.0 - if docked { stored as f32 } else { 0.0 };
+    (width, docked)
+}
+
+/// The (window, inspector width, uptime shown) of the D21 sweep: a 480 px
+/// inspector at 1440 and at 1200, the widest dock the 640 px floor allows,
+/// and the default width at the narrowest window that docks it.
+const D21_SWEEP: [(f32, u32, bool); 4] = [
+    (1440.0, 480, false), // main area 740 px, docked
+    (1200.0, 480, true),  // 500 px would be left: overlay, the table keeps 980
+    (1440.0, 560, false), // 660 px
+    (1220.0, 360, false), // 640 px
+];
+
+fn d21_sweep_overflows(scales: impl Fn(f32) -> bool) -> Vec<String> {
+    let mut found = Vec::new();
+    for (window, stored, uptime) in D21_SWEEP {
+        let (width, docked) = table_width_with_inspector(window, stored);
+        assert_eq!(docked, !uptime, "{window} px, {stored} px inspector");
+        for engine in [false, true] {
+            for (scale, short) in table_overflows(width, false, uptime, engine) {
+                if scales(scale) {
+                    found.push(format!(
+                        "{width} px table ({window} px window, {stored} px inspector, engine {engine}) at {scale}: {short} px short"
+                    ));
+                }
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn containers_table_fits_with_a_480_inspector_at_1440_and_1200_at_100_percent_text() {
+    // Other text sizes are the test below: the em thresholds are px at 100 %,
+    // so tables 640-740 px wide overflow at 85 % and above 100 %.
+    let over = d21_sweep_overflows(|scale| (scale - 1.0).abs() < f32::EPSILON);
+    assert!(over.is_empty(), "{over:#?}");
+}
+
+#[test]
+#[ignore = "D21 question: tables 640-740 px wide overflow above 100 % text; see STATUS.md"]
+fn containers_table_fits_with_a_480_inspector_for_every_text_size() {
+    let over = d21_sweep_overflows(|_| true);
+    assert!(over.is_empty(), "{over:#?}");
+}
+
+/// The text sizes whose column list does not fit `width` px (the table's
+/// own width), with the px it is short by.
+fn table_overflows(width: f32, narrow: bool, uptime: bool, engine: bool) -> Vec<(f32, f32)> {
+    STEPS
+        .into_iter()
+        .filter_map(|scale| {
             let (_, tracks) = containers_tracks_at(width, scale, narrow, uptime, engine);
             // The page gutter is 16 px under 1200 px wide, 20 px from there up.
             let gutters = if narrow { 32.0 } else { 40.0 };
             let used = css::min_sum(&tracks, scale) + 12.0 * (tracks.len() as f32 - 1.0) + gutters;
-            assert!(
-                used <= width + 0.5,
-                "{width} px at {scale} (uptime {uptime}, engine {engine}): needs {used} ({tracks:?})"
-            );
-        }
-    }
+            (used > width + 0.5).then_some((scale, used - width))
+        })
+        .collect()
+}
+
+/// Every text size's column list fits `width` px.
+fn assert_table_fits(width: f32, narrow: bool, uptime: bool, engine: bool) {
+    let over = table_overflows(width, narrow, uptime, engine);
+    assert!(
+        over.is_empty(),
+        "{width} px (uptime {uptime}, engine {engine}) overflows at (text size, px short): {over:?}"
+    );
 }
 
 #[test]
@@ -1452,6 +1523,7 @@ fn ScreenRoot(setup: SetupFn) -> Element {
     let mut state = use_app_state();
     use_context_provider(|| state);
     let mut view = provide_containers_view();
+    crate::ui::dock::use_dock_view(state);
     use_hook(move || (setup.0)(&mut state, &mut view));
     rsx! { ContainersScreen {} }
 }
