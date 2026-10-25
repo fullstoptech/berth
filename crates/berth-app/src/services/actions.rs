@@ -288,10 +288,7 @@ fn volume_reason(name: &str, action: &str, state: &StateView<'_>) -> Option<Stri
             plural(volume.used_by.len(), "container", "containers")
         ));
     }
-    match crate::services::volumes::owner_engine(volume, state.containers, state.engines) {
-        Some(engine) => engine_unavailable(&engine, state),
-        None => Some(crate::services::volumes::OWNER_UNKNOWN.to_string()),
-    }
+    engine_unavailable(&volume.engine, state)
 }
 
 fn network_reason(id: &str, action: &str, state: &StateView<'_>) -> Option<String> {

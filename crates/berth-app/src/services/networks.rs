@@ -7,20 +7,17 @@
 //!   [`FieldError`]s the sheet shows inline.
 //! * [`NetOp`] and [`run_net`] are the engine work behind the actions
 //!   service (create, delete, connect, disconnect).
-//! * [`engine_of`], [`project_of`] and [`connectable`] answer the questions
-//!   the data model leaves open: `Network` carries no engine id (PLAN §6.2),
-//!   and Compose project names come from the containers on it.
+//! * [`project_of`] and [`connectable`] answer the questions the data model
+//!   leaves open: Compose project names come from the containers on it.
+//!   A network knows its engine (`Network::engine`, D27).
 
 use std::net::IpAddr;
 
 use tokio_util::sync::CancellationToken;
 
-use berth_core::{
-    Container, ContainerId, Engine, EngineId, EngineState, Network, NetworkSpec, Project,
-};
+use berth_core::{Container, ContainerId, EngineId, Network, NetworkSpec, Project};
 
 use crate::services::edit::{guard, Done};
-use crate::state::EngineScope;
 
 /// Why a built-in network has no Delete (`bridge`, `host`, `none`).
 pub const BUILT_IN_REASON: &str = "Built-in networks cannot be removed";
@@ -414,34 +411,6 @@ pub fn create_blocker(errors: &[FieldError]) -> Option<String> {
 // What the data model leaves open
 // ---------------------------------------------------------------------
 
-/// The engine a network lives on. `Network` has no engine id (PLAN §6.2),
-/// so: the engine of a container on it; else the selected engine; else the
-/// only running engine; else `None` and the caller asks the user to pick.
-#[must_use]
-pub fn engine_of(
-    network: &Network,
-    containers: &[Container],
-    engines: &[Engine],
-    scope: &EngineScope,
-) -> Option<EngineId> {
-    if let Some(engine) = network
-        .containers
-        .iter()
-        .find_map(|id| containers.iter().find(|c| c.id == *id))
-        .map(|c| c.engine.clone())
-    {
-        return Some(engine);
-    }
-    if let EngineScope::One(engine) = scope {
-        return Some(engine.clone());
-    }
-    let mut running = engines.iter().filter(|e| e.state == EngineState::Running);
-    match (running.next(), running.next()) {
-        (Some(only), None) => Some(only.id.clone()),
-        _ => None,
-    }
-}
-
 /// The project a network belongs to, by name: the engine's own answer, else
 /// the one project every container on it belongs to (Compose creates the
 /// default network of a project; the engine's list has no label for it).
@@ -526,18 +495,12 @@ pub fn network_named<'a>(
 /// on it, user networks first, then the built-in ones, by name. `host` and
 /// `none` are never offered (Docker refuses either next to another network).
 #[must_use]
-pub fn joinable<'a>(
-    container: &Container,
-    networks: &'a [Network],
-    containers: &[Container],
-    engines: &[Engine],
-    scope: &EngineScope,
-) -> Vec<&'a Network> {
+pub fn joinable<'a>(container: &Container, networks: &'a [Network]) -> Vec<&'a Network> {
     let mut list: Vec<&Network> = networks
         .iter()
         .filter(|n| !container.networks.contains(&n.name))
         .filter(|n| !matches!(n.name.as_str(), "host" | "none"))
-        .filter(|n| engine_of(n, containers, engines, scope).as_ref() == Some(&container.engine))
+        .filter(|n| n.engine == container.engine)
         .collect();
     list.sort_by(|a, b| {
         a.built_in

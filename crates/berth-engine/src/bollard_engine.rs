@@ -413,7 +413,7 @@ impl EngineClient for BollardEngine {
             .map_err(|e| self.err(e))?;
         Ok(summaries
             .iter()
-            .map(|s| mappers::image(s, &containers))
+            .map(|s| mappers::image(&self.id, s, &containers))
             .collect())
     }
 
@@ -432,7 +432,7 @@ impl EngineClient for BollardEngine {
             .await
             .map_err(|e| self.err(e))?;
         let containers = self.raw_containers().await?;
-        let image = mappers::image_from_inspect(&inspect, &containers);
+        let image = mappers::image_from_inspect(&self.id, &inspect, &containers);
         let layers = history
             .iter()
             .map(|h| berth_core::ImageLayer {
@@ -481,7 +481,7 @@ impl EngineClient for BollardEngine {
             .volumes
             .unwrap_or_default()
             .iter()
-            .map(|v| mappers::volume(v, &containers))
+            .map(|v| mappers::volume(&self.id, v, &containers))
             .collect())
     }
 
@@ -495,7 +495,7 @@ impl EngineClient for BollardEngine {
         Ok(list
             .iter()
             .map(|n| {
-                let mut network = mappers::network(n);
+                let mut network = mappers::network(&self.id, n);
                 network.containers = containers
                     .iter()
                     .filter(|c| c.networks.iter().any(|name| name == &network.name))
@@ -1148,7 +1148,7 @@ impl EngineClient for BollardEngine {
             .create_volume(config)
             .await
             .map_err(|e| self.err(e))?;
-        Ok(mappers::volume(&volume, &[]))
+        Ok(mappers::volume(&self.id, &volume, &[]))
     }
 
     async fn remove_volume(&self, name: &str) -> Result<(), EngineError> {

@@ -353,23 +353,9 @@ fn locate(
     scope: &crate::state::EngineScope,
     id: &str,
 ) -> Option<(EngineId, Image)> {
-    let by_engine = store.by_engine.read();
-    let prefer = match scope {
-        crate::state::EngineScope::One(engine) => Some(engine),
-        crate::state::EngineScope::All => None,
-    };
-    let find = |engine: &EngineId| {
-        by_engine
-            .get(engine)
-            .and_then(|images| images.iter().find(|i| i.id == id))
-            .cloned()
-    };
-    if let Some(found) = prefer.and_then(|e| find(e).map(|i| (e.clone(), i))) {
-        return Some(found);
-    }
-    by_engine
-        .keys()
-        .find_map(|engine| find(engine).map(|image| (engine.clone(), image)))
+    store
+        .find(id, scope)
+        .map(|image| (image.engine.clone(), image))
 }
 
 #[component]

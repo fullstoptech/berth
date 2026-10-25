@@ -20,6 +20,7 @@ fn image(tag: &str) -> Image {
         os: "linux".to_string(),
         used_by: Vec::new(),
         dangling: tag.is_empty(),
+        engine: berth_core::EngineId("colima:default".to_string()),
     }
 }
 

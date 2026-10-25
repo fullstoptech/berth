@@ -304,23 +304,9 @@ fn find_image(
     scope: &crate::state::EngineScope,
     id: &str,
 ) -> Option<(EngineId, Image)> {
-    let by_engine = store.by_engine.read();
-    let prefer = match scope {
-        crate::state::EngineScope::One(engine) => Some(engine),
-        crate::state::EngineScope::All => None,
-    };
-    let has = |engine: &EngineId| {
-        by_engine
-            .get(engine)
-            .and_then(|images| images.iter().find(|i| i.id == id))
-            .cloned()
-    };
-    if let Some(found) = prefer.and_then(|e| has(e).map(|i| (e.clone(), i))) {
-        return Some(found);
-    }
-    by_engine
-        .keys()
-        .find_map(|engine| has(engine).map(|image| (engine.clone(), image)))
+    store
+        .find(id, scope)
+        .map(|image| (image.engine.clone(), image))
 }
 
 /// The inspector body for one selected image. Keyed by the caller per image

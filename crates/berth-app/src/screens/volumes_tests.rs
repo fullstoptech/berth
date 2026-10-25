@@ -191,6 +191,8 @@ struct Rig {
     dom: VirtualDom,
     state: AppState,
     engine: Arc<berth_engine::MockEngine>,
+    /// The second engine, `colima:work`.
+    work: Arc<berth_engine::MockEngine>,
     service: ActionsService,
     finished: tokio::sync::mpsc::UnboundedReceiver<crate::services::actions::Finished>,
 }
@@ -207,6 +209,12 @@ fn rig() -> Rig {
     clients.lock().expect("clients").insert(
         default_engine(),
         Arc::clone(&engine) as Arc<dyn berth_engine::EngineClient>,
+    );
+    let work_id = EngineId("colima:work".to_string());
+    let work = Arc::new(berth_engine::MockEngine::bundled(&work_id));
+    clients.lock().expect("clients").insert(
+        work_id,
+        Arc::clone(&work) as Arc<dyn berth_engine::EngineClient>,
     );
     let store = Arc::new(berth_store::Store::open_in_memory().expect("store"));
     let (service, finished) = ActionsService::new(
@@ -234,6 +242,7 @@ fn rig() -> Rig {
         dom,
         state,
         engine,
+        work,
         service,
         finished,
     }
@@ -325,29 +334,64 @@ fn volumes_backspace_on_an_unused_volume_opens_the_dialog_only_on_this_screen() 
     }
 }
 
-#[test]
-fn volumes_nothing_acts_on_a_volume_whose_engine_is_unknown() {
-    let rig = rig();
-    // A second running engine makes an unused volume's home a guess.
+#[tokio::test]
+async fn volumes_with_two_engines_running_an_unused_volume_on_the_second_is_deleted_there() {
+    let mut rig = rig();
+    let work = EngineId("colima:work".to_string());
+    // Both engines run, and the second has an unused volume of its own.
+    let made = berth_engine::EngineClient::create_volume(
+        rig.work.as_ref(),
+        &berth_core::VolumeSpec {
+            name: "berthfx-work-scratch".to_string(),
+            driver: "local".to_string(),
+            driver_opts: std::collections::BTreeMap::new(),
+            labels: std::collections::BTreeMap::new(),
+        },
+    )
+    .await
+    .expect("created on the second engine");
+    assert_eq!(made.engine, work, "the engine stamps the volume");
     rig.dom.in_runtime(|| {
         let mut state = rig.state;
         for engine in state.engines.write().iter_mut() {
             engine.state = berth_core::EngineState::Running;
         }
+        state.volumes.write().push(made.clone());
     });
-    assert!(rig.model("stale-cache").is_none());
-    let reason = rig.dom.in_runtime(|| {
-        crate::services::actions::with_view(&rig.state, |view| {
-            crate::services::actions::disabled_reason(
-                &Subject::Volume("stale-cache".to_string()),
-                "volume.delete",
-                view,
-            )
-        })
+    let model = rig.model("berthfx-work-scratch").expect("dialog");
+    assert!(matches!(
+        &model.action,
+        EngineAction::Remove { engine, .. } if *engine == work
+    ));
+    let launched = rig.dom.in_runtime(|| {
+        let mut state = rig.state;
+        confirm::run(&mut state, &rig.service, &model, false)
     });
-    assert_eq!(
-        reason.as_deref(),
-        Some(crate::services::volumes::OWNER_UNKNOWN)
+    assert_eq!(launched.refused, Vec::<String>::new());
+    let done = tokio::time::timeout(std::time::Duration::from_secs(5), rig.finished.recv())
+        .await
+        .expect("finishes")
+        .expect("open");
+    assert_eq!(done.result, Ok(()));
+    let on_work: Vec<String> = berth_engine::EngineClient::volumes(rig.work.as_ref())
+        .await
+        .expect("volumes")
+        .into_iter()
+        .map(|v| v.name)
+        .collect();
+    assert!(
+        !on_work.contains(&"berthfx-work-scratch".to_string()),
+        "{on_work:?}"
+    );
+    let on_default: Vec<String> = berth_engine::EngineClient::volumes(rig.engine.as_ref())
+        .await
+        .expect("volumes")
+        .into_iter()
+        .map(|v| v.name)
+        .collect();
+    assert!(
+        on_default.contains(&"stale-cache".to_string()),
+        "the first engine kept its volumes"
     );
 }
 

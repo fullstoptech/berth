@@ -429,7 +429,11 @@ fn used_by_image(
         .collect()
 }
 
-pub fn image(s: &ImageSummary, used_by: &[berth_core::Container]) -> berth_core::Image {
+pub fn image(
+    engine: &berth_core::EngineId,
+    s: &ImageSummary,
+    used_by: &[berth_core::Container],
+) -> berth_core::Image {
     let repo_tags: Vec<String> = s
         .repo_tags
         .iter()
@@ -470,11 +474,13 @@ pub fn image(s: &ImageSummary, used_by: &[berth_core::Container]) -> berth_core:
         created: from_unix(s.created),
         arch,
         os,
+        engine: engine.clone(),
     }
 }
 
 /// Image built from an inspect response (used by `EngineClient::image`).
 pub(crate) fn image_from_inspect(
+    engine: &berth_core::EngineId,
     i: &bollard::models::ImageInspect,
     used_by: &[berth_core::Container],
 ) -> berth_core::Image {
@@ -506,10 +512,15 @@ pub(crate) fn image_from_inspect(
             berth_core::Arch::parse,
         ),
         os: i.os.clone().unwrap_or_default(),
+        engine: engine.clone(),
     }
 }
 
-pub fn volume(v: &Volume, used_by: &[berth_core::Container]) -> berth_core::Volume {
+pub fn volume(
+    engine: &berth_core::EngineId,
+    v: &Volume,
+    used_by: &[berth_core::Container],
+) -> berth_core::Volume {
     berth_core::Volume {
         name: v.name.clone(),
         driver: v.driver.clone(),
@@ -531,10 +542,11 @@ pub fn volume(v: &Volume, used_by: &[berth_core::Container]) -> berth_core::Volu
         project: None,
         created: v.created_at,
         labels: labels(Some(&v.labels)),
+        engine: engine.clone(),
     }
 }
 
-pub fn network(n: &Network) -> berth_core::Network {
+pub fn network(engine: &berth_core::EngineId, n: &Network) -> berth_core::Network {
     let name = n.name.clone().unwrap_or_default();
     let first_ipam = n
         .ipam
@@ -553,6 +565,7 @@ pub fn network(n: &Network) -> berth_core::Network {
         // engine fills this from the container list (see BollardEngine).
         containers: Vec::new(),
         project: None,
+        engine: engine.clone(),
     }
 }
 
@@ -912,7 +925,8 @@ mod tests {
         let summaries: Vec<ImageSummary> =
             serde_json::from_str(include_str!("../../../fixtures/docker/images.json"))
                 .expect("images fixture parses");
-        let images: Vec<berth_core::Image> = summaries.iter().map(|s| image(s, &[])).collect();
+        let images: Vec<berth_core::Image> =
+            summaries.iter().map(|s| image(&engine(), s, &[])).collect();
         assert_eq!(images.len(), 4);
         let mut tags: Vec<&str> = images
             .iter()
@@ -943,7 +957,7 @@ mod tests {
             .iter()
             .find(|s| s.repo_tags.contains(&"nginx:alpine".to_string()))
             .expect("nginx");
-        let mapped = image(nginx, &cs);
+        let mapped = image(&engine(), nginx, &cs);
         assert_eq!(mapped.used_by, [by_name(&cs, "berthfx-web-1").id.clone()]);
     }
 
@@ -959,7 +973,7 @@ mod tests {
         // the inspect-derived db container, which does.
         let db = detail(&engine(), &inspect("db")).container;
         let _ = &cs;
-        let v = volume(&volumes[0], std::slice::from_ref(&db));
+        let v = volume(&engine(), &volumes[0], std::slice::from_ref(&db));
         assert_eq!(v.name, "berthfx_berthfx_pgdata");
         assert_eq!(v.driver, "local");
         assert_eq!(v.size, None);
@@ -977,7 +991,7 @@ mod tests {
             serde_json::from_str(include_str!("../../../fixtures/docker/networks.json"))
                 .expect("networks fixture parses");
         assert_eq!(networks.len(), 1);
-        let n = network(&networks[0]);
+        let n = network(&engine(), &networks[0]);
         assert_eq!(n.name, "berthfx_default");
         assert_eq!(n.driver, "bridge");
         assert_eq!(n.subnet.as_deref(), Some("172.28.0.0/16"));
@@ -1144,7 +1158,8 @@ mod tests {
         let summaries: Vec<ImageSummary> =
             serde_json::from_str(include_str!("../../../fixtures/docker/images.json"))
                 .expect("images fixture parses");
-        let mut images: Vec<berth_core::Image> = summaries.iter().map(|s| image(s, &[])).collect();
+        let mut images: Vec<berth_core::Image> =
+            summaries.iter().map(|s| image(&engine(), s, &[])).collect();
         for image in &mut images {
             image.id = "[id]".to_string();
             image.created = DateTime::<Utc>::UNIX_EPOCH;

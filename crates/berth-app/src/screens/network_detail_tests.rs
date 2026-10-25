@@ -105,32 +105,20 @@ fn network_detail_delete_is_locked_disabled_or_allowed() {
         .find(|n| n.name == "bridge")
         .expect("bridge");
     assert_eq!(
-        delete_state(&bridge, None, true),
+        delete_state(&bridge, None),
         DeleteState::Locked("Built-in networks cannot be removed".to_string())
     );
     // Built-in wins over any other reason.
     assert!(matches!(
-        delete_state(
-            &bridge,
-            Some("13 containers are connected".to_string()),
-            true
-        ),
+        delete_state(&bridge, Some("13 containers are connected".to_string())),
         DeleteState::Locked(_)
     ));
     bridge.built_in = false;
     assert_eq!(
-        delete_state(
-            &bridge,
-            Some("13 containers are connected".to_string()),
-            true
-        ),
+        delete_state(&bridge, Some("13 containers are connected".to_string())),
         DeleteState::Disabled("13 containers are connected".to_string())
     );
-    assert_eq!(
-        delete_state(&bridge, None, false),
-        DeleteState::Disabled("Choose an engine in the title bar first".to_string())
-    );
-    assert_eq!(delete_state(&bridge, None, true), DeleteState::Allowed);
+    assert_eq!(delete_state(&bridge, None), DeleteState::Allowed);
 }
 
 #[test]

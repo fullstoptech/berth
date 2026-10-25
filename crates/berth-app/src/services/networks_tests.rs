@@ -23,6 +23,7 @@ fn network(name: &str, subnet: Option<&str>) -> Network {
         containers: Vec::new(),
         project: None,
         built_in: false,
+        engine: berth_core::EngineId("colima:default".to_string()),
     }
 }
 
@@ -278,45 +279,6 @@ fn mock_network(world: &berth_engine::MockWorld, name: &str) -> Network {
 }
 
 #[test]
-fn networks_engine_comes_from_the_containers_on_it_then_the_scope() {
-    let world = world();
-    let all_containers = world.containers.clone();
-    let shop = mock_network(&world, "shop-api_default");
-    assert_eq!(
-        engine_of(&shop, &all_containers, &world.engines, &EngineScope::All),
-        Some(default_engine())
-    );
-    // An unused network has no container to tell: the selected engine wins.
-    let unused = network("berthfx-net", None);
-    let work = EngineId("colima:work".to_string());
-    assert_eq!(
-        engine_of(
-            &unused,
-            &all_containers,
-            &world.engines,
-            &EngineScope::One(work.clone())
-        ),
-        Some(work.clone())
-    );
-    // With every engine in view and several running it cannot be told.
-    let mut two = world.engines.clone();
-    for engine in &mut two {
-        if engine.id == work {
-            engine.state = berth_core::EngineState::Running;
-        }
-    }
-    assert_eq!(
-        engine_of(&unused, &all_containers, &two, &EngineScope::All),
-        None
-    );
-    // One running engine is the answer (the bundled world runs only default).
-    assert_eq!(
-        engine_of(&unused, &all_containers, &world.engines, &EngineScope::All),
-        Some(default_engine())
-    );
-}
-
-#[test]
 fn networks_project_is_the_one_every_container_on_it_belongs_to() {
     let world = world();
     let containers = world.containers_for(&default_engine());
@@ -366,6 +328,26 @@ fn networks_connectable_lists_containers_of_the_engine_not_yet_on_it() {
 }
 
 #[test]
+fn networks_joinable_offers_only_networks_on_the_containers_engine() {
+    let world = world();
+    let containers = world.containers_for(&default_engine());
+    let api = containers
+        .iter()
+        .find(|c| c.name == "shop-api-api-1")
+        .expect("api");
+    let mut elsewhere = network("berthfx-elsewhere", None);
+    elsewhere.engine = EngineId("colima:work".to_string());
+    let mut here = network("berthfx-here", None);
+    here.engine = default_engine();
+    let all = [elsewhere, here];
+    let names: Vec<&str> = joinable(api, &all)
+        .into_iter()
+        .map(|n| n.name.as_str())
+        .collect();
+    assert_eq!(names, ["berthfx-here"]);
+}
+
+#[test]
 fn networks_joinable_skips_host_none_and_what_the_container_is_on() {
     let world = world();
     let containers = world.containers_for(&default_engine());
@@ -374,8 +356,7 @@ fn networks_joinable_skips_host_none_and_what_the_container_is_on() {
         .iter()
         .find(|c| c.name == "shop-api-api-1")
         .expect("api");
-    let scope = EngineScope::One(default_engine());
-    let names: Vec<&str> = joinable(api, &networks, &containers, &world.engines, &scope)
+    let names: Vec<&str> = joinable(api, &networks)
         .into_iter()
         .map(|n| n.name.as_str())
         .collect();
@@ -518,7 +499,9 @@ impl Rig {
             state
                 .networks
                 .set(world.networks_by_engine["colima:default"].clone());
-            state.engine_scope.set(EngineScope::One(default_engine()));
+            state
+                .engine_scope
+                .set(crate::state::EngineScope::One(default_engine()));
         });
         Self {
             dom,

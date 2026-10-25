@@ -108,11 +108,14 @@ fn push_toast(mut state: AppState, text: String, tone: ToastTone) {
     });
 }
 
+/// Why nothing can act on a volume the lists no longer have.
+const GONE: &str = "This volume no longer exists";
+
 fn client_of(
     services: Option<&Services>,
     engine: Option<&EngineId>,
 ) -> Result<Arc<dyn berth_engine::EngineClient>, String> {
-    let engine = engine.ok_or_else(|| volumes::OWNER_UNKNOWN.to_string())?;
+    let engine = engine.ok_or_else(|| GONE.to_string())?;
     services
         .and_then(|s| s.client(engine))
         .ok_or_else(|| format!("Engine {} is not connected", engine.0))
@@ -196,9 +199,7 @@ pub fn VolumeDetailPanel(name: String) -> Element {
         .iter()
         .find(|v| v.name == name)
         .cloned();
-    let owner = found
-        .as_ref()
-        .and_then(|v| volumes::owner_engine(v, &state.containers.read(), &state.engines.read()));
+    let owner = found.as_ref().map(|v| v.engine.clone());
     let engine_name = owner.as_ref().and_then(|id| {
         state
             .engines
@@ -479,7 +480,7 @@ pub fn VolumeDetailPanel(name: String) -> Element {
     let busy_reason = working
         .as_ref()
         .map(|b| format!("{} is still running", b.text));
-    let owner_reason = owner.is_none().then(|| volumes::OWNER_UNKNOWN.to_string());
+    let owner_reason = owner.is_none().then(|| GONE.to_string());
     let transfer_reason = busy_reason.clone().or(owner_reason);
     let now = chrono::Utc::now();
     let unused = volume.used_by.is_empty();

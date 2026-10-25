@@ -15,7 +15,7 @@ use berth_core::{ContainerId, EngineId, EngineState, Network};
 
 use crate::services::actions::{dismiss, ActionsService};
 use crate::services::networks::{
-    self as net, create_blocker, validate, Draft, Field, FieldError, NetOp, DRIVERS,
+    create_blocker, validate, Draft, Field, FieldError, NetOp, DRIVERS,
 };
 use crate::state::{AppState, EngineScope, Overlay, PendingKey, PendingState, Toast, ToastTone};
 use crate::ui::{
@@ -59,18 +59,11 @@ pub fn create_status(
 }
 
 /// The networks `name` and `subnet` are checked against: the ones on this
-/// engine, plus the ones whose engine cannot be told (a false "taken" is
-/// better than Docker's "Pool overlaps" after the click).
-fn existing_on(
-    engine: &EngineId,
-    networks: &[Network],
-    containers: &[berth_core::Container],
-    engines: &[berth_core::Engine],
-    scope: &EngineScope,
-) -> Vec<Network> {
+/// engine.
+fn existing_on(engine: &EngineId, networks: &[Network]) -> Vec<Network> {
     networks
         .iter()
-        .filter(|n| net::engine_of(n, containers, engines, scope).is_none_or(|e| e == *engine))
+        .filter(|n| n.engine == *engine)
         .cloned()
         .collect()
 }
@@ -134,12 +127,10 @@ pub fn CreateNetworkSheet() -> Element {
 
     let networks = state.networks.read().clone();
     let containers = state.containers.read().clone();
-    let engines = state.engines.read().clone();
-    let scope = state.engine_scope.read().clone();
     let current = draft.read().clone();
     let existing = engine
         .as_ref()
-        .map(|e| existing_on(e, &networks, &containers, &engines, &scope))
+        .map(|e| existing_on(e, &networks))
         .unwrap_or_default();
     let built = validate(&current, &existing);
     let errors = built.as_ref().err().cloned().unwrap_or_default();

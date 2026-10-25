@@ -540,19 +540,14 @@ pub fn recreate_latest_model(
 }
 
 /// The delete dialog for one network. `None` when the network is gone or
-/// its engine cannot be told (the screen's Delete says why in that case).
+/// built in.
 #[must_use]
 pub fn network_delete_model(state: &AppState, id: &str) -> Option<ConfirmModel> {
     let networks = state.networks.peek();
     // A built-in network has no delete dialog: it has no Delete.
     let network = networks.iter().find(|n| n.id == id && !n.built_in)?;
     let containers = state.containers.peek();
-    let engine = crate::services::networks::engine_of(
-        network,
-        &containers,
-        &state.engines.peek(),
-        &state.engine_scope.peek(),
-    )?;
+    let engine = network.engine.clone();
     let project =
         crate::services::networks::project_of(network, &containers, &state.projects.peek());
     Some(ConfirmModel {
@@ -603,17 +598,15 @@ pub fn engine_model(
 
 /// The delete dialog for a volume: typed name, and `EngineAction::Remove`
 /// of the volume on the engine that has it (D25a). `None` when the volume
-/// is gone, in use, or its engine cannot be told.
+/// is gone or in use.
 #[must_use]
 pub fn delete_volume_model(state: &AppState, name: &str) -> Option<ConfirmModel> {
     let volumes = state.volumes.peek();
-    let containers = state.containers.peek();
-    let engines = state.engines.peek();
     let volume = volumes.iter().find(|v| v.name == name)?;
     if !volume.used_by.is_empty() {
         return None;
     }
-    let engine = crate::services::volumes::owner_engine(volume, &containers, &engines)?;
+    let engine = volume.engine.clone();
     Some(ConfirmModel {
         title: format!("Delete volume {name}?"),
         effect: delete_volume_effect(name, volume.size),

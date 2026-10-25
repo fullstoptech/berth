@@ -20,7 +20,7 @@ use crate::screens::networks::{failure_text, DeleteState};
 use crate::services::actions::{disabled_reason, dismiss, with_view, ActionsService};
 use crate::services::confirm;
 use crate::services::networks::{self as net, NetOp, BUILT_IN_REASON};
-use crate::state::{AppState, EngineScope, PendingKey, PendingState, Section, Toast, ToastTone};
+use crate::state::{AppState, PendingKey, PendingState, Section, Toast, ToastTone};
 use crate::ui::{
     Badge, BadgeKind, Button, ButtonVariant, ControlSize, InlineMessage, InlineTone, KeyValue,
     KeyValueList, Menu, MenuEntry, StatusDot,
@@ -89,17 +89,11 @@ pub fn members(network: &Network, containers: &[Container]) -> Vec<MemberRow> {
 /// The network detail's Delete: absent on a built-in network, disabled with
 /// its reason while containers are on it.
 #[must_use]
-pub fn delete_state(
-    network: &Network,
-    view_reason: Option<String>,
-    engine_known: bool,
-) -> DeleteState {
+pub fn delete_state(network: &Network, view_reason: Option<String>) -> DeleteState {
     if network.built_in {
         DeleteState::Locked(BUILT_IN_REASON.to_string())
     } else if let Some(reason) = view_reason {
         DeleteState::Disabled(reason)
-    } else if !engine_known {
-        DeleteState::Disabled("Choose an engine in the title bar first".to_string())
     } else {
         DeleteState::Allowed
     }
@@ -182,18 +176,12 @@ pub fn NetworkDetailPanel(id: String) -> Element {
     let containers = state.containers.read().clone();
     let projects: Vec<Project> = state.projects.read().clone();
     let engines: Vec<Engine> = state.engines.read().clone();
-    let scope: EngineScope = state.engine_scope.read().clone();
     let pending = state.pending.read().clone();
 
-    let engine = net::engine_of(&network, &containers, &engines, &scope);
+    let engine = network.engine.clone();
     let project = net::project_of(&network, &containers, &projects);
-    let engine_name = (engines.len() > 1)
-        .then(|| {
-            engine
-                .as_ref()
-                .map(|e| crate::screens::activity::engine_name(&engines, e))
-        })
-        .flatten();
+    let engine_name =
+        (engines.len() > 1).then(|| crate::screens::activity::engine_name(&engines, &engine));
     let rows = detail_rows(&network, project.as_deref(), engine_name.as_deref());
     let on_it = members(&network, &containers);
     let busy = running_label(&pending, &network.id);
@@ -206,24 +194,17 @@ pub fn NetworkDetailPanel(id: String) -> Element {
         )
     });
     // Delete is its own busy state: only the built-in reason is a lock.
-    let delete = delete_state(&network, reason, engine.is_some());
-    let offered: Vec<Container> = engine
-        .as_ref()
-        .map(|e| {
-            net::connectable(&network, e, &containers)
-                .into_iter()
-                .cloned()
-                .collect()
-        })
-        .unwrap_or_default();
+    let delete = delete_state(&network, reason);
+    let offered: Vec<Container> = net::connectable(&network, &engine, &containers)
+        .into_iter()
+        .cloned()
+        .collect();
     let menu_items: Vec<MenuEntry> = offered
         .iter()
         .map(|c| MenuEntry::new(c.id.0.clone(), c.name.clone()))
         .collect();
     let connect_reason = if busy.is_some() {
         busy.clone().map(|l| format!("{l} is still in progress"))
-    } else if engine.is_none() {
-        Some("Choose an engine in the title bar first".to_string())
     } else if offered.is_empty() {
         Some("Every container on this engine is already connected".to_string())
     } else {
@@ -319,12 +300,12 @@ pub fn NetworkDetailPanel(id: String) -> Element {
                                             let picked = connect_offered
                                                 .iter()
                                                 .find(|c| c.id.0 == container_id);
-                                            if let (Some(picked), Some(engine)) = (picked, connect_engine.as_ref()) {
+                                            if let Some(picked) = picked {
                                                 let op = NetOp::Connect {
                                                     network: connect_network.name.clone(),
                                                     container: picked.id.clone(),
                                                 };
-                                                send(&mut state, connect_actions.as_ref(), engine, &connect_network, op);
+                                                send(&mut state, connect_actions.as_ref(), &connect_engine, &connect_network, op);
                                             }
                                         },
                                     }
@@ -434,12 +415,10 @@ pub fn ContainerNetworks(id: ContainerId) -> Element {
         return rsx! {};
     };
     let networks = state.networks.read().clone();
-    let engines = state.engines.read().clone();
-    let scope = state.engine_scope.read().clone();
     let pending = state.pending.read().clone();
 
     let rows = container_rows(&container, &networks);
-    let offered: Vec<Network> = net::joinable(&container, &networks, &containers, &engines, &scope)
+    let offered: Vec<Network> = net::joinable(&container, &networks)
         .into_iter()
         .cloned()
         .collect();

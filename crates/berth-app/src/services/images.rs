@@ -3,9 +3,9 @@
 //! buttons. The UI reads the store; this file owns every engine call.
 //!
 //! `AppState::images` is one flat list over all engines and an `Image`
-//! carries no engine, so the store keeps its own per-engine lists (one
+//! knows its engine (D27). The store keeps its own per-engine lists (one
 //! `client.images()` per engine, refreshed whenever the flat list changes)
-//! and takes scope and owner from those. Pulls are folded into per-layer
+//! so the screen can tell an engine that answered from one that did not. Pulls are folded into per-layer
 //! progress ([`PullState`], pure) as Docker streams them.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -509,20 +509,19 @@ impl ImageStore {
         self.pulls.read().iter().filter(|p| p.is_running()).count()
     }
 
-    /// The engine that has `image_id`, preferring `prefer` (the engine the
-    /// scope names), else the first that lists it.
+    /// The image with this id, preferring the one on an engine the scope
+    /// names, else the first any engine lists. The image knows its engine
+    /// (`Image::engine`, D27).
     #[must_use]
-    pub fn owner_of(&self, image_id: &str, prefer: Option<&EngineId>) -> Option<EngineId> {
-        let by_engine = self.by_engine.peek();
-        let has = |engine: &EngineId| {
-            by_engine
-                .get(engine)
-                .is_some_and(|images| images.iter().any(|i| i.id == image_id))
-        };
-        if let Some(engine) = prefer.filter(|e| has(e)) {
-            return Some(engine.clone());
-        }
-        by_engine.keys().find(|e| has(e)).cloned()
+    pub fn find(&self, image_id: &str, scope: &crate::state::EngineScope) -> Option<Image> {
+        let by_engine = self.by_engine.read();
+        let mut all = by_engine.values().flatten().filter(|i| i.id == image_id);
+        let first = all.next()?;
+        std::iter::once(first)
+            .chain(all)
+            .find(|i| crate::ui::scope_includes(scope, &i.engine))
+            .or(Some(first))
+            .cloned()
     }
 
     /// List every connected engine's images again.

@@ -34,23 +34,15 @@ pub fn candidates(
         .collect()
 }
 
-/// Is `name` already a volume on `engine`? A volume whose engine is not
-/// known counts as taken: better a refusal here than the engine's.
+/// Is `name` already a volume on `engine`?
 #[must_use]
 pub fn name_taken(state: &AppState, name: &str, engine: &EngineId) -> bool {
     let name = name.trim();
-    let containers = state.containers.peek();
-    let engines = state.engines.peek();
     state
         .volumes
         .peek()
         .iter()
-        .filter(|v| v.name == name)
-        .any(|v| {
-            volumes::owner_engine(v, &containers, &engines)
-                .as_ref()
-                .is_none_or(|owner| owner == engine)
-        })
+        .any(|v| v.name == name && v.engine == *engine)
 }
 
 #[component]

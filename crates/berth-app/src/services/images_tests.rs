@@ -205,6 +205,7 @@ fn image(tags: &[&str]) -> Image {
         os: "linux".to_string(),
         used_by: Vec::new(),
         dangling: tags.is_empty(),
+        engine: berth_core::EngineId("colima:default".to_string()),
     }
 }
 
@@ -612,24 +613,32 @@ async fn images_store_run_reports_what_create_said() {
 }
 
 #[test]
-fn images_owner_of_prefers_the_scope_engine_then_any_that_has_it() {
+fn images_find_prefers_the_scope_engine_then_any_that_has_it() {
     let (dom, store) = captured();
     let other = EngineId("colima:work".to_string());
     dom.in_scope(ScopeId::APP, || {
         store.seed(&default_engine(), vec![image(&["a:1"])]);
-        store.seed(&other, vec![image(&["a:1"])]);
+        let mut there = image(&["a:1"]);
+        there.engine = other.clone();
+        store.seed(&other, vec![there]);
     });
     let id = "sha256:abcdef0123456789";
+    let engine_of = |scope: &crate::state::EngineScope| {
+        dom.in_runtime(|| store.find(id, scope)).map(|i| i.engine)
+    };
     assert_eq!(
-        dom.in_runtime(|| store.owner_of(id, Some(&other))),
+        engine_of(&crate::state::EngineScope::One(other.clone())),
         Some(other.clone())
     );
     // BTreeMap order: colima:default sorts before colima:work.
     assert_eq!(
-        dom.in_runtime(|| store.owner_of(id, None)),
+        engine_of(&crate::state::EngineScope::All),
         Some(default_engine())
     );
-    assert_eq!(dom.in_runtime(|| store.owner_of("sha256:none", None)), None);
+    assert_eq!(
+        dom.in_runtime(|| store.find("sha256:none", &crate::state::EngineScope::All)),
+        None
+    );
 }
 
 // ---------------------------------------------------------------------

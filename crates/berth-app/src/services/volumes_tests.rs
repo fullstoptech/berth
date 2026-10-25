@@ -33,7 +33,6 @@ fn list(
         volumes: &volumes,
         containers: &world.containers,
         projects: &world.projects,
-        engines: &world.engines,
         scope,
         sizes: &sizes,
         text,
@@ -174,7 +173,6 @@ fn volumes_size_reads_calculating_until_the_fetch_answers() {
             volumes: &volumes,
             containers: &world.containers,
             projects: &world.projects,
-            engines: &world.engines,
             scope: &scope_default(),
             sizes: cache,
             text: "pgdata",
@@ -195,7 +193,7 @@ fn volumes_size_reads_calculating_until_the_fetch_answers() {
 fn volumes_used_by_cell_names_the_container_and_counts_the_rest() {
     let row = VolumeRow {
         name: "v".to_string(),
-        owner: None,
+        engine: engine_id("colima:default"),
         project: None,
         size: None,
         used_by: vec!["a-1".to_string(), "b-1".to_string(), "c-1".to_string()],
@@ -219,60 +217,33 @@ fn volumes_used_by_cell_names_the_container_and_counts_the_rest() {
 // --- which engine ---
 
 #[test]
-fn volumes_owner_is_the_engine_of_the_container_that_uses_it() {
+fn volumes_row_carries_the_engine_the_volume_says() {
     let world = world();
-    let all = all_volumes(&world);
-    let crm = all.iter().find(|v| v.name == "crm_pgdata").expect("crm");
-    assert_eq!(
-        owner_engine(crm, &world.containers, &world.engines),
-        Some(engine_id("colima:work"))
-    );
+    let rows = list(&world, &EngineScope::All, "", UsageFilter::All, None);
+    let engine_of = |name: &str| {
+        rows.rows
+            .iter()
+            .find(|r| r.name == name)
+            .map(|r| r.engine.clone())
+    };
+    assert_eq!(engine_of("crm_pgdata"), Some(engine_id("colima:work")));
+    assert_eq!(engine_of("stale-cache"), Some(engine_id("colima:default")));
 }
 
 #[test]
-fn volumes_owner_of_an_unused_volume_is_the_only_running_engine() {
+fn volumes_scope_keeps_the_volumes_of_that_engine_only() {
     let world = world();
-    let all = all_volumes(&world);
-    let stale = all.iter().find(|v| v.name == "stale-cache").expect("stale");
-    assert_eq!(
-        owner_engine(stale, &world.containers, &world.engines),
-        Some(engine_id("colima:default"))
+    let work = list(
+        &world,
+        &EngineScope::One(engine_id("colima:work")),
+        "",
+        UsageFilter::All,
+        None,
     );
-}
-
-#[test]
-fn volumes_owner_is_unknown_when_two_engines_run_and_nothing_uses_it() {
-    let mut world = world();
-    for engine in &mut world.engines {
-        if engine.id == engine_id("colima:work") {
-            engine.state = berth_core::EngineState::Running;
-        }
-    }
-    let all = all_volumes(&world);
-    let stale = all.iter().find(|v| v.name == "stale-cache").expect("stale");
-    assert_eq!(owner_engine(stale, &world.containers, &world.engines), None);
-    // A used volume is still placed by its user.
-    let pg = all
-        .iter()
-        .find(|v| v.name == "shop-api_pgdata")
-        .expect("pgdata");
-    assert_eq!(
-        owner_engine(pg, &world.containers, &world.engines),
-        Some(engine_id("colima:default"))
-    );
-}
-
-#[test]
-fn volumes_unknown_owner_volume_stays_listed_in_every_scope() {
-    let mut world = world();
-    for engine in &mut world.engines {
-        if engine.id == engine_id("colima:work") {
-            engine.state = berth_core::EngineState::Running;
-        }
-    }
-    let rows = list(&world, &scope_default(), "stale", UsageFilter::All, None);
-    assert_eq!(names(&rows), ["stale-cache"]);
-    assert_eq!(rows.rows[0].owner, None);
+    assert_eq!(names(&work), ["crm_pgdata"]);
+    // An unused volume belongs to its own engine whatever else runs.
+    let default = list(&world, &scope_default(), "stale", UsageFilter::All, None);
+    assert_eq!(names(&default), ["stale-cache"]);
 }
 
 // --- names and options ---

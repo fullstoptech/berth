@@ -252,12 +252,9 @@ pub fn delete_selected(state: &mut AppState) {
     let Some(store) = try_consume_context::<ImageStore>() else {
         return;
     };
-    let prefer = match &*state.engine_scope.peek() {
-        EngineScope::One(engine) => Some(engine.clone()),
-        EngineScope::All => None,
-    };
-    if let Some(engine) = store.owner_of(&id, prefer.as_ref()) {
-        open_delete(state, &store, &engine, &id);
+    let scope = state.engine_scope.peek().clone();
+    if let Some(image) = store.find(&id, &scope) {
+        open_delete(state, &store, &image.engine, &id);
     }
 }
 

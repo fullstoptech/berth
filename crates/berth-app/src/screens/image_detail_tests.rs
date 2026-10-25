@@ -17,6 +17,7 @@ fn detail() -> ImageDetail {
             os: "linux".to_string(),
             used_by: vec![ContainerId("c1".to_string())],
             dangling: false,
+            engine: berth_core::EngineId("colima:default".to_string()),
         },
         layers: vec![
             ImageLayer {

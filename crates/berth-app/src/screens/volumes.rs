@@ -176,10 +176,6 @@ fn VolumeRowView(row: VolumeRow) -> Element {
         });
         (reason, busy)
     };
-    let browse_reason = row
-        .owner
-        .is_none()
-        .then(|| crate::services::volumes::OWNER_UNKNOWN.to_string());
     let class = if selected {
         "vl-row vl-selected"
     } else {
@@ -234,8 +230,7 @@ fn VolumeRowView(row: VolumeRow) -> Element {
                     icon: "folder",
                     label: format!("Browse files in {name}"),
                     size: ControlSize::Sm,
-                    tooltip: browse_reason.clone().unwrap_or_else(|| "Browse files".to_string()),
-                    disabled: browse_reason.is_some(),
+                    tooltip: "Browse files",
                     onclick: move |e: MouseEvent| {
                         e.stop_propagation();
                         let mut browse = view.browse;
@@ -270,7 +265,6 @@ pub fn VolumesScreen() -> Element {
         let volumes = state.volumes.read();
         let containers = state.containers.read();
         let projects = state.projects.read();
-        let engines = state.engines.read();
         let scope = state.engine_scope.read();
         let sizes = view.sizes.read();
         let text = view.text.read();
@@ -280,7 +274,6 @@ pub fn VolumesScreen() -> Element {
             volumes: &volumes,
             containers: &containers,
             projects: &projects,
-            engines: &engines,
             scope: &scope,
             sizes: &sizes,
             text: &text,

@@ -90,23 +90,6 @@ pub struct Input<'a> {
     pub sort: Option<(SortColumn, SortDirection)>,
 }
 
-/// Whether a network belongs to the engine in view. `Network` has no engine
-/// id (PLAN §6.2): one with containers belongs where they run; an unused one
-/// cannot be told and shows everywhere.
-fn in_scope(network: &Network, containers: &[Container], scope: &EngineScope) -> bool {
-    match scope {
-        EngineScope::All => true,
-        EngineScope::One(engine) => {
-            network.containers.is_empty()
-                || network.containers.iter().any(|id| {
-                    containers
-                        .iter()
-                        .any(|c| c.id == *id && c.engine == *engine)
-                })
-        }
-    }
-}
-
 fn matches_text(row: &NetworkRow, terms: &[String]) -> bool {
     let haystack = format!(
         "{} {} {} {}",
@@ -180,12 +163,7 @@ fn compare(a: &NetworkRow, b: &NetworkRow, column: SortColumn, dir: SortDirectio
     ord.then_with(by_name)
 }
 
-fn delete_state(
-    network: &Network,
-    view: &StateView<'_>,
-    containers: &[Container],
-    scope: &EngineScope,
-) -> DeleteState {
+fn delete_state(network: &Network, view: &StateView<'_>) -> DeleteState {
     if network.built_in {
         return DeleteState::Locked(BUILT_IN_REASON.to_string());
     }
@@ -195,9 +173,6 @@ fn delete_state(
         view,
     ) {
         return DeleteState::Disabled(reason);
-    }
-    if net::engine_of(network, containers, view.engines, scope).is_none() {
-        return DeleteState::Disabled("Choose an engine in the title bar first".to_string());
     }
     DeleteState::Allowed
 }
@@ -236,7 +211,7 @@ pub fn build_rows(input: &Input<'_>) -> ListModel {
     let mut seen_unused_built_in: Vec<&str> = Vec::new();
     let mut rows: Vec<NetworkRow> = Vec::new();
     for network in input.networks {
-        if !in_scope(network, input.containers, input.scope) {
+        if !crate::ui::scope_includes(input.scope, &network.engine) {
             continue;
         }
         if network.built_in && network.containers.is_empty() {
@@ -246,9 +221,7 @@ pub fn build_rows(input: &Input<'_>) -> ListModel {
             seen_unused_built_in.push(&network.name);
         }
         let engine_tag = tag_engines
-            .then(|| net::engine_of(network, input.containers, input.engines, input.scope))
-            .flatten()
-            .map(|id| crate::screens::activity::engine_name(input.engines, &id));
+            .then(|| crate::screens::activity::engine_name(input.engines, &network.engine));
         rows.push(NetworkRow {
             id: network.id.clone(),
             name: network.name.clone(),
@@ -258,7 +231,7 @@ pub fn build_rows(input: &Input<'_>) -> ListModel {
             project: net::project_of(network, input.containers, input.projects),
             built_in: network.built_in,
             engine_tag,
-            delete: delete_state(network, &view, input.containers, input.scope),
+            delete: delete_state(network, &view),
             busy: busy_label(input.pending, &network.id),
         });
     }

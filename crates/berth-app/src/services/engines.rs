@@ -444,9 +444,9 @@ fn store_pins(store: &berth_store::Store) -> Vec<berth_core::PinnedFolder> {
     }
 }
 
-/// Owns the per-engine resource slices the flat signals cannot key by
-/// engine (`Image`/`Volume`/`Network` carry no engine field) and applies
-/// updates to the signals. One applier lives in the receiver task.
+/// Owns the per-engine resource slices, so one engine's update replaces
+/// only its own rows in the flat signals, and applies updates to the
+/// signals. One applier lives in the receiver task.
 #[derive(Default)]
 pub struct Applier {
     pins: Vec<berth_core::PinnedFolder>,

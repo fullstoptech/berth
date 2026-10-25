@@ -70,6 +70,7 @@ fn image(id: &str, tags: &[&str], mb: u64, arch: Arch, used: usize) -> Image {
         os: "linux".to_string(),
         used_by: (0..used).map(|n| ContainerId(format!("c{n}"))).collect(),
         dangling: tags.is_empty(),
+        engine: berth_core::EngineId("colima:default".to_string()),
     }
 }
 

@@ -50,6 +50,7 @@ fn user_network(name: &str, subnet: Option<&str>) -> Network {
         containers: Vec::new(),
         project: None,
         built_in: false,
+        engine: berth_core::EngineId("colima:default".to_string()),
     }
 }
 
@@ -159,23 +160,20 @@ fn networks_a_network_in_use_has_a_disabled_delete_with_the_count() {
 }
 
 #[test]
-fn networks_an_unused_user_network_can_be_deleted_when_its_engine_is_known() {
+fn networks_an_unused_user_network_can_be_deleted_whichever_engines_are_in_view() {
     let mut fx = Fixture::new();
     fx.networks
         .push(user_network("berthfx-net", Some("172.31.250.0/24")));
     let model = fx.model(&one("colima:default"), "berthfx", None);
     assert_eq!(names(&model), ["berthfx-net"]);
     assert_eq!(model.rows[0].delete, DeleteState::Allowed);
-    // With several engines running and nothing to tell which one, the
-    // button is disabled and says what to do.
+    // Several engines running and every engine in view: the network knows
+    // its own engine, so nothing asks the user to choose one.
     for engine in &mut fx.world.engines {
         engine.state = berth_core::EngineState::Running;
     }
     let all = fx.model(&EngineScope::All, "berthfx", None);
-    assert_eq!(
-        all.rows[0].delete,
-        DeleteState::Disabled("Choose an engine in the title bar first".to_string())
-    );
+    assert_eq!(all.rows[0].delete, DeleteState::Allowed);
 }
 
 #[test]

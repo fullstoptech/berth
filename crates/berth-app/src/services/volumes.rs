@@ -1,11 +1,7 @@
-//! Volumes (P4-T4): what the Volumes table lists, how a volume finds its
-//! engine, the create and remove work the actions service runs, the size
-//! fetch and the helper image check. Backup and restore are in
-//! [`super::volume_backup`].
-//!
-//! Volumes carry no engine id (PLAN §6.2), so the engine of one is read
-//! from the containers that use it, or from the only running engine
-//! ([`owner_engine`]); when that cannot be told, nothing acts on it.
+//! Volumes (P4-T4): what the Volumes table lists, the create work the
+//! actions service runs, the size fetch and the helper image check. Backup
+//! and restore are in [`super::volume_backup`]. A volume knows its engine
+//! (`Volume::engine`, D27).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -14,7 +10,7 @@ use bytesize::ByteSize;
 use chrono::{DateTime, Utc};
 use tokio_util::sync::CancellationToken;
 
-use berth_core::{Container, Engine, EngineId, EngineState, Project, Volume, VolumeSpec};
+use berth_core::{Container, EngineId, Project, Volume, VolumeSpec};
 use berth_engine::EngineClient;
 
 use crate::state::EngineScope;
@@ -27,44 +23,6 @@ pub const HELPER_IMAGE: &str = "alpine:3";
 /// What the first-use dialog says the helper weighs: `alpine:3` is 13.6 MB
 /// on disk on this Mac's engine; the size is known only once it is there.
 pub const HELPER_SIZE: ByteSize = ByteSize::mb(14);
-
-// ---------------------------------------------------------------------
-// Which engine
-// ---------------------------------------------------------------------
-
-/// The engine a volume is on. A volume in use is on the engine of the
-/// containers that use it. An unused one is on the only running engine;
-/// with two running engines nothing says which, so `None`.
-#[must_use]
-pub fn owner_engine(
-    volume: &Volume,
-    containers: &[Container],
-    engines: &[Engine],
-) -> Option<EngineId> {
-    let mut users: Vec<&EngineId> = volume
-        .used_by
-        .iter()
-        .filter_map(|id| containers.iter().find(|c| c.id == *id))
-        .map(|c| &c.engine)
-        .collect();
-    users.sort();
-    users.dedup();
-    if let [only] = users.as_slice() {
-        return Some((*only).clone());
-    }
-    if !users.is_empty() {
-        return None;
-    }
-    let mut running = engines.iter().filter(|e| e.state == EngineState::Running);
-    match (running.next(), running.next()) {
-        (Some(only), None) => Some(only.id.clone()),
-        _ => None,
-    }
-}
-
-/// Why nothing can act on a volume whose engine is not known.
-pub const OWNER_UNKNOWN: &str =
-    "Berth cannot tell which engine this volume is on while several are running";
 
 // ---------------------------------------------------------------------
 // The table
@@ -120,7 +78,7 @@ pub enum SortColumn {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VolumeRow {
     pub name: String,
-    pub owner: Option<EngineId>,
+    pub engine: EngineId,
     pub project: Option<String>,
     /// `None` until the size fetch has answered.
     pub size: Option<ByteSize>,
@@ -158,7 +116,6 @@ pub struct ListInput<'a> {
     pub volumes: &'a [Volume],
     pub containers: &'a [Container],
     pub projects: &'a [Project],
-    pub engines: &'a [Engine],
     pub scope: &'a EngineScope,
     /// Sizes the fetch has found, for volumes whose own size is empty.
     pub sizes: &'a BTreeMap<String, ByteSize>,
@@ -181,7 +138,7 @@ pub struct VolumeList {
 fn row_of(input: &ListInput<'_>, volume: &Volume) -> VolumeRow {
     VolumeRow {
         name: volume.name.clone(),
-        owner: owner_engine(volume, input.containers, input.engines),
+        engine: volume.engine.clone(),
         project: volume
             .project
             .as_ref()
@@ -252,9 +209,7 @@ fn compare(
     }
 }
 
-/// The volumes of the engine scope, filtered and sorted. A volume whose
-/// engine is not known stays in the list (it is real and the owner may want
-/// to see it); its buttons say why they do nothing.
+/// The volumes of the engine scope, filtered and sorted.
 #[must_use]
 pub fn build_list(input: &ListInput<'_>) -> VolumeList {
     let terms: Vec<String> = input
@@ -266,11 +221,7 @@ pub fn build_list(input: &ListInput<'_>) -> VolumeList {
         .volumes
         .iter()
         .map(|v| row_of(input, v))
-        .filter(|row| {
-            row.owner
-                .as_ref()
-                .is_none_or(|e| crate::ui::scope_includes(input.scope, e))
-        })
+        .filter(|row| crate::ui::scope_includes(input.scope, &row.engine))
         .collect();
     let total = in_scope.len();
     let unused = in_scope.iter().filter(|r| r.unused()).count();
