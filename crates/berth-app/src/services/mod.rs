@@ -4,6 +4,7 @@
 pub mod actions;
 pub mod activity;
 pub mod assistant;
+pub mod assistant_entry;
 pub mod backing;
 pub mod colima;
 pub mod compose;

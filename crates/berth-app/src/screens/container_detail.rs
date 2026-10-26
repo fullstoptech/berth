@@ -111,8 +111,13 @@ fn fix_click(
     state: &mut AppState,
     actions: Option<&ActionsService>,
     plans: Option<&PlanStore>,
+    assistant: Option<crate::services::assistant::AssistantService>,
     fix_id: &str,
 ) {
+    let problems = state.problems.peek().clone();
+    if crate::screens::problems::model::run_harness_fix(state, assistant, &problems, fix_id) {
+        return;
+    }
     if let Some(id) = fix_id.strip_prefix("stop-loop:") {
         run_container(
             state,
@@ -196,7 +201,9 @@ pub fn ContainerDetailPanel(
             pending: &pending,
             backing: *state.backing.peek(),
         };
-        let mut shown = card_views(&c, &problems, &view, now);
+        let harnesses = state.harnesses.read();
+        let mut shown = card_views(&c, &problems, &view, now, &harnesses);
+        drop(harnesses);
         if c.state == berth_core::ContainerState::Restarting && !offers_stop(&problems, &c) {
             shown.push(restart_loop_view(&c, &view));
         }
@@ -226,6 +233,8 @@ pub fn ContainerDetailPanel(
     let header_actions = actions.clone();
     let fix_actions = actions.clone();
     let fix_plans = try_consume_context::<PlanStore>();
+    let fix_assistant =
+        try_consume_context::<Option<crate::services::assistant::AssistantService>>().flatten();
     let header_container = c.clone();
     let menu_container = c.clone();
     let menu_actions = actions.clone();
@@ -336,7 +345,13 @@ pub fn ContainerDetailPanel(
                         entry,
                         overview_problems,
                         move |fix: String| {
-                            fix_click(&mut state, fix_actions.as_ref(), fix_plans.as_ref(), &fix);
+                            fix_click(
+                                &mut state,
+                                fix_actions.as_ref(),
+                                fix_plans.as_ref(),
+                                fix_assistant.clone(),
+                                &fix,
+                            );
                         },
                     )
                 }

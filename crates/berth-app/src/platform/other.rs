@@ -48,3 +48,16 @@ pub struct ExecTarget {
 pub async fn open_in_terminal_app(_target: ExecTarget) -> Result<&'static str, String> {
     Err("Open in Terminal app is available on macOS only".to_string())
 }
+
+/// A host command to run in a terminal app (macOS only, D42).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandTarget {
+    pub program: std::path::PathBuf,
+    pub args: Vec<String>,
+    pub cwd: std::path::PathBuf,
+    pub cleanup: Option<std::path::PathBuf>,
+}
+
+pub async fn open_command_in_terminal_app(_target: CommandTarget) -> Result<&'static str, String> {
+    Err("Open in Terminal app is available on macOS only".to_string())
+}

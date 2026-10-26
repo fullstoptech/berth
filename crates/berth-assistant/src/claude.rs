@@ -276,6 +276,22 @@ fn write_mcp_config(cfg: &SessionConfig) -> Result<std::path::PathBuf, Assistant
     Ok(path)
 }
 
+/// The same config for a harness the user drives themselves in a
+/// terminal (P7-T6, AD38): its own file, so closing the live session
+/// cannot delete the terminal's copy. The caller removes it when the
+/// terminal session ends.
+///
+/// # Errors
+/// The runtime dir or the file cannot be written.
+pub fn write_terminal_mcp_config(
+    cfg: &SessionConfig,
+) -> Result<std::path::PathBuf, AssistantError> {
+    let dir = berth_sys::paths::runtime_dir();
+    let path = dir.join(format!("mcp-{}-terminal.json", cfg.session.0));
+    write_mcp_config_at(cfg, &path)?;
+    Ok(path)
+}
+
 fn write_mcp_config_at(cfg: &SessionConfig, path: &std::path::Path) -> Result<(), AssistantError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)

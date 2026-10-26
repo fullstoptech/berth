@@ -12,9 +12,13 @@ use dioxus::prelude::*;
 
 use berth_core::{Detection, ServiceKind};
 
+use crate::services::assistant::AssistantService;
+use crate::services::assistant_entry;
+use crate::services::folders::{self, Known, OpenOutcome};
 use crate::services::plans::{blocking, target_engine, PendingPlan, PlanRun, PlanStore};
 use crate::services::ports::taken_ports;
-use crate::state::{AppState, Overlay};
+use crate::services::Services;
+use crate::state::{AppState, Overlay, Toast, ToastTone};
 use crate::ui::{
     Button, ButtonVariant, CheckState, Checkbox, ControlSize, InlineMessage, InlineTone, Select,
     SelectOption, TextField,
@@ -112,6 +116,9 @@ pub fn GenerateBody(
 ) -> Element {
     let mut state = use_context::<AppState>();
     let store = try_consume_context::<PlanStore>();
+    let services = try_consume_context::<Services>();
+    let link = try_consume_context::<Option<crate::services::engines::EngineLink>>().flatten();
+    let assistant = try_consume_context::<Option<AssistantService>>().flatten();
     let seed = try_consume_context::<SeedDetection>();
 
     let mut loaded = use_signal({
@@ -208,9 +215,10 @@ pub fn GenerateBody(
                 .find(|h| h.id.0 == *harness.read())
                 .map(|h| h.name.clone());
             let disabled_reason = block.clone().or_else(|| port_error.clone()).or_else(|| {
-                harness_name
-                    .as_ref()
-                    .map(|n| format!("Generating with {n} arrives with the assistant (P7-T6)."))
+                harness_name.as_ref().and_then(|n| {
+                    (assistant.is_none())
+                        .then(|| format!("Generating with {n} needs the assistant connected."))
+                })
             });
             let can_node = d
                 .stack
@@ -255,6 +263,10 @@ pub fn GenerateBody(
             let click_store = store.clone();
             let click_engine = engine.clone();
             let click_taken = taken.clone();
+            let click_harness = picked_harness.clone().filter(|_| !harness_value.is_empty());
+            let click_assistant = assistant.clone();
+            let click_services = services.clone();
+            let click_link = link.clone();
             let on_review = move |_| {
                 if *building.peek() {
                     return;
@@ -270,6 +282,55 @@ pub fn GenerateBody(
                 let taken = click_taken.clone();
                 let folder = folder_for_click.clone();
                 let engine = click_engine.clone();
+                // Generate with a harness (P7-T6): pin the folder so its
+                // project exists to hold the session, then the harness
+                // proposes the files in the Assistant; they land in
+                // Review changes through files.propose_edit.
+                if let Some(chosen) = click_harness.clone() {
+                    let Some(service) = click_assistant.clone() else {
+                        building.set(false);
+                        notice.set(Some("The assistant is not connected.".to_string()));
+                        return;
+                    };
+                    let Some(engine_id) = engine.clone() else {
+                        building.set(false);
+                        notice.set(Some(
+                            "No engine is running, so there is nowhere to generate for."
+                                .to_string(),
+                        ));
+                        return;
+                    };
+                    if let Some(services) = click_services.clone() {
+                        let known = Known::from_projects(&state.projects.peek());
+                        if let Ok(OpenOutcome::Pinned) = folders::record_open(
+                            &services.store,
+                            &folder,
+                            &engine_id,
+                            &known,
+                            chrono::Utc::now(),
+                        ) {
+                            if let Some(link) = click_link.clone() {
+                                link.pins_changed();
+                            }
+                        }
+                    }
+                    let entry = assistant_entry::generate_entry(&folder, &engine_id, &chosen, &d);
+                    let project_id = entry.request.project.clone();
+                    building.set(false);
+                    on_close.call(());
+                    spawn(async move {
+                        match assistant_entry::run(&service, entry).await {
+                            Ok(_) => assistant_entry::show(&mut state, &project_id),
+                            Err(reason) => state.toasts.write().push(Toast {
+                                id: uuid::Uuid::now_v7(),
+                                text: reason,
+                                tone: ToastTone::Danger,
+                                action: None,
+                            }),
+                        }
+                    });
+                    return;
+                }
                 spawn(async move {
                     let built = {
                         let d = d.clone();

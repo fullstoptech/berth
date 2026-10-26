@@ -164,7 +164,8 @@ fn logs_errors_frame_shows_chips_toolbar_selection_and_search() {
     assert!(html.contains("Last 15 min"));
     assert!(html.contains("Next error"));
     assert!(html.contains(">F8<"));
-    // Two lines selected: Explain is live (the rules run for the lines), Ask is disabled and says why.
+    // Two lines selected: Explain is live (the rules run for the lines). Ask names the harness
+    // and, in a scene with no assistant service, is disabled saying so (P7-T6).
     assert!(html.contains("2 lines selected"), "{html}");
     assert_eq!(count(&html, "log-selected"), 2, "{html}");
     assert!(!html.contains("Explain arrives with Problems"));
@@ -175,7 +176,7 @@ fn logs_errors_frame_shows_chips_toolbar_selection_and_search() {
         "{}",
         &html[button_start..explain]
     );
-    assert!(html.contains("Ask needs a harness"));
+    assert!(html.contains("The assistant is not connected"), "{html}");
     // Follow is on: no pill.
     assert!(!html.contains("new lines"));
     assert!(html.contains("Ask Claude Code"), "{html}");
@@ -185,7 +186,7 @@ fn logs_errors_frame_shows_chips_toolbar_selection_and_search() {
 fn logs_explained_scene_shows_what_the_rules_say_under_the_selection_bar() {
     let html = frame("Logs / explained / 1440");
     // The explanation sits between the selection bar and the lines, with the fix the rules offer
-    // and a harness fix that waits for a harness.
+    // and the harness fix the view builds (P7-T6): the scene has Claude Code, so it is live.
     let bar = html.find("log-selbar").expect("the selection bar");
     let explain = html.find("class=\"explain\"").expect("the explanation");
     let rows = html.find("log-list").expect("the lines");
@@ -193,7 +194,8 @@ fn logs_explained_scene_shows_what_the_rules_say_under_the_selection_bar() {
     let panel = &html[explain..rows];
     assert!(panel.contains("shop-api-worker-1 cannot reach db"));
     assert!(panel.contains("Restart shop-api-db-1"));
-    assert!(panel.contains("Needs a harness (P7-T6)"));
+    assert!(panel.contains("Fix with Claude Code"), "{panel}");
+    assert!(!panel.contains("Needs a harness"), "{panel}");
     // Without a result nothing is drawn: the plain frame has no explanation.
     assert!(!frame("Logs / errors / 1440").contains("class=\"explain\""));
 }

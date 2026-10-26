@@ -1252,7 +1252,7 @@ pub trait HarnessSession: Send {
 }
 pub async fn start(cfg: SessionConfig, cancel: tokio_util::sync::CancellationToken)
     -> Result<(Box<dyn HarnessSession>, tokio::sync::mpsc::Receiver<AssistantEvent>), AssistantError>;
-pub mod claude { pub const FLAGS: &[&str]; pub fn args(cfg: &super::SessionConfig, mcp_config: &std::path::Path) -> Vec<String>; pub fn parse_line(line: &str) -> Vec<super::AssistantEvent>; }
+pub mod claude { pub const FLAGS: &[&str]; pub fn args(cfg: &super::SessionConfig, mcp_config: &std::path::Path) -> Vec<String>; pub fn parse_line(line: &str) -> Vec<super::AssistantEvent>; pub fn write_terminal_mcp_config(cfg: &super::SessionConfig) -> Result<std::path::PathBuf, AssistantError>; }   // AD38 (2026-10-26): the terminal TUI's own 0600 config (`mcp-<session>-terminal.json`), removed by the .command script's EXIT trap
 pub mod muse   { pub fn serve_args() -> Vec<String>; pub fn session_start(cfg: &super::SessionConfig) -> serde_json::Value; pub fn parse_notification(v: &serde_json::Value) -> Vec<super::AssistantEvent>; pub fn approval_decision(params: &serde_json::Value) -> serde_json::Value; }   // AD37 (2026-10-26): approval_decision is the pure, testable answer to approval/requested (allow for berth tools, deny otherwise)
 pub mod context { pub fn render(items: &[berth_core::ContextItem], resolve: &dyn Fn(&berth_core::ContextItem) -> String) -> String; }
 ```

@@ -509,6 +509,40 @@ pub fn reconcile_proposals(session: &mut AssistantSession, exists: &dyn Fn(&uuid
     }
 }
 
+/// The turn Watch and fix sends after a change is written (D71): the
+/// harness re-reads the logs through its tools and may only propose.
+/// `None` unless the session watches, rests idle, and the written
+/// plan is one of its proposals. This is the whole watch loop's reach:
+/// it produces a question, never an approval or a write.
+#[must_use]
+pub fn watch_follow_up(
+    session: &AssistantSession,
+    plan_id: &uuid::Uuid,
+) -> Option<(String, String)> {
+    if !session.watch || session.state != SessionState::Idle {
+        return None;
+    }
+    let title = session
+        .turns
+        .iter()
+        .flat_map(|turn| &turn.parts)
+        .find_map(|part| match part {
+            TurnPart::ProposedChange {
+                change_id,
+                title,
+                state: ProposalState::Written,
+                ..
+            } if change_id == plan_id => Some(title.clone()),
+            _ => None,
+        })?;
+    Some((
+        format!(
+            "The change \"{title}\" was written. Watch what happens now: read the newest logs and the problems list with your tools. If the problem is gone, say so and stop. If it is still there, propose the next smallest fix with files.propose_edit. Propose only; nothing is applied without my click."
+        ),
+        format!("Watch \u{b7} after writing {title}"),
+    ))
+}
+
 /// The session of one project in the state's map, if it has been opened.
 #[must_use]
 pub fn session_for_project<'a>(
@@ -550,6 +584,17 @@ pub struct OpenRequest {
     pub project: ProjectId,
     pub project_name: String,
     pub folder: PathBuf,
+}
+
+/// A harness to run in a terminal the user drives (P7-T6): the same
+/// bridge and tools, their hands on the keyboard. `cleanup` is the
+/// 0600 mcp-config file to remove when the terminal session ends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalLaunch {
+    pub program: PathBuf,
+    pub args: Vec<String>,
+    pub cwd: PathBuf,
+    pub cleanup: Option<PathBuf>,
 }
 
 /// The user's answer to one approval card.
@@ -795,6 +840,58 @@ impl AssistantService {
         Ok(id)
     }
 
+    /// "Open in Terminal": the harness TUI for this project with
+    /// Berth's tools attached through the same bridge, resuming the
+    /// harness conversation when it left an id. The session is opened
+    /// first so its folder is registered with the tool executor.
+    /// muse's interactive TUI has no verified way to attach the
+    /// `berth` MCP server (its MSP session config serves `muse
+    /// serve`, not the TUI), so it says so instead of launching a
+    /// harness without the tools.
+    ///
+    /// # Errors
+    /// A sentence when no bridge runs or the harness cannot take the
+    /// tools into a terminal.
+    pub async fn terminal_launch(&self, req: OpenRequest) -> Result<TerminalLaunch, String> {
+        let id = self.open(req.clone()).await?;
+        let Some(mcp) = self.inner.mcp.clone() else {
+            return Err("the assistant bridge is not running".to_string());
+        };
+        if req.harness.transport != berth_core::HarnessTransport::ClaudeStreamJson {
+            return Err(format!(
+                "{} cannot take Berth's tools into a terminal yet",
+                req.harness.name
+            ));
+        }
+        let resume = self.inner.snapshot(&id).and_then(|s| s.harness_session);
+        let cfg = SessionConfig {
+            harness: req.harness.clone(),
+            session: id,
+            workspace: req.folder.clone(),
+            resume: resume.clone(),
+            mcp,
+            path: super::login_path::search_path().await.path_var(),
+            system_prompt: system_prompt(&req.project_name),
+        };
+        let config =
+            berth_assistant::claude::write_terminal_mcp_config(&cfg).map_err(|e| e.to_string())?;
+        let mut args = vec![
+            "--mcp-config".to_string(),
+            config.to_string_lossy().into_owned(),
+            "--strict-mcp-config".to_string(),
+        ];
+        if let Some(resume) = resume {
+            args.push("--resume".to_string());
+            args.push(resume);
+        }
+        Ok(TerminalLaunch {
+            program: req.harness.binary.clone(),
+            args,
+            cwd: req.folder.clone(),
+            cleanup: Some(config),
+        })
+    }
+
     async fn ensure_live(&self, req: &OpenRequest, id: SessionId) {
         if lock(&self.inner.live).contains_key(&id) {
             return;
@@ -1005,19 +1102,29 @@ impl AssistantService {
     }
 
     /// Review changes wrote this plan: its card rests as Written, which
-    /// is what unblocks a "Then:" approval.
+    /// is what unblocks a "Then:" approval. A watching session then
+    /// gets its follow-up turn (D71: it proposes, never applies).
     pub fn plan_written(&self, plan_id: uuid::Uuid) {
         let mut changed = Vec::new();
+        let mut follow_ups = Vec::new();
         let mut sessions = lock(&self.inner.sessions);
         for (id, session) in &mut *sessions {
             if proposal_state(session, &plan_id).is_some() {
                 set_proposal_state(session, &plan_id, ProposalState::Written);
                 changed.push(*id);
+                if let Some(follow_up) = watch_follow_up(session, &plan_id) {
+                    follow_ups.push((*id, follow_up));
+                }
             }
         }
         drop(sessions);
         for id in changed {
             self.inner.notify_session(id);
+        }
+        for (id, (text, origin)) in follow_ups {
+            if let Err(reason) = self.send(id, text, Some(origin)) {
+                tracing::warn!(%reason, "the watch follow-up could not be sent");
+            }
         }
     }
 

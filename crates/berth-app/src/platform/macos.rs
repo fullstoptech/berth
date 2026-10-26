@@ -335,18 +335,59 @@ pub fn command_script(docker: &std::path::Path, target: &ExecTarget) -> String {
     )
 }
 
+/// A host command to run in the terminal app (the harness TUI of
+/// P7-T6). `cleanup` is removed when the command ends (the 0600
+/// mcp-config holding the bridge token).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandTarget {
+    pub program: std::path::PathBuf,
+    pub args: Vec<String>,
+    pub cwd: std::path::PathBuf,
+    pub cleanup: Option<std::path::PathBuf>,
+}
+
+/// The `.command` text for a host command: self-removing, in the
+/// project folder, and the cleanup file goes when the command ends.
+pub fn command_target_script(target: &CommandTarget) -> String {
+    let mut line = shell_quote(&target.program.to_string_lossy());
+    for arg in &target.args {
+        line.push(' ');
+        line.push_str(&shell_quote(arg));
+    }
+    let trap = target.cleanup.as_ref().map_or_else(String::new, |path| {
+        format!(
+            "BERTH_CLEANUP={}\ntrap 'rm -f -- \"$BERTH_CLEANUP\"' EXIT\n",
+            shell_quote(&path.to_string_lossy())
+        )
+    });
+    format!(
+        "#!/bin/bash\nrm -f -- \"$0\"\n{trap}cd {}\n{line}\n",
+        shell_quote(&target.cwd.to_string_lossy())
+    )
+}
+
 /// Write the script (mode 0700, in Berth's run directory) and open it with
 /// the first terminal app found. Returns the app's name.
 pub async fn open_in_terminal_app(target: ExecTarget) -> Result<&'static str, String> {
+    let search = crate::services::login_path::search_path().await;
+    let docker = search
+        .find("docker")
+        .ok_or_else(|| "The docker command was not found on this Mac".to_string())?;
+    open_script(&command_script(&docker, &target)).await
+}
+
+/// Open a host command in the terminal app. Returns the app's name.
+pub async fn open_command_in_terminal_app(target: CommandTarget) -> Result<&'static str, String> {
+    open_script(&command_target_script(&target)).await
+}
+
+async fn open_script(script: &str) -> Result<&'static str, String> {
     use std::io::Write;
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let apps = terminal_apps();
     let app = pick_terminal(&apps, preferred_terminal().as_deref())
         .ok_or_else(|| "No terminal app was found in /Applications".to_string())?;
     let search = crate::services::login_path::search_path().await;
-    let docker = search
-        .find("docker")
-        .ok_or_else(|| "The docker command was not found on this Mac".to_string())?;
     let open = search
         .find("open")
         .ok_or_else(|| "The open command was not found".to_string())?;
@@ -362,7 +403,7 @@ pub async fn open_in_terminal_app(target: ExecTarget) -> Result<&'static str, St
             .mode(0o700)
             .open(&file)
             .map_err(|e| e.to_string())?;
-        out.write_all(command_script(&docker, &target).as_bytes())
+        out.write_all(script.as_bytes())
             .map_err(|e| e.to_string())?;
     }
     let status = tokio::process::Command::new(open)
@@ -680,6 +721,41 @@ pub fn use_menu_events(state: AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_app_command_script_cds_quotes_and_removes_the_config_on_exit() {
+        let target = CommandTarget {
+            program: std::path::PathBuf::from("/Users/me/.local/bin/claude"),
+            args: vec![
+                "--mcp-config".to_string(),
+                "/run/mcp-x-terminal.json".to_string(),
+                "--strict-mcp-config".to_string(),
+            ],
+            cwd: std::path::PathBuf::from("/Users/me/Dev/my app"),
+            cleanup: Some(std::path::PathBuf::from("/run/mcp-x-terminal.json")),
+        };
+        let script = command_target_script(&target);
+        assert!(
+            script.contains("BERTH_CLEANUP='/run/mcp-x-terminal.json'\n"),
+            "{script}"
+        );
+        assert!(
+            script.contains("trap 'rm -f -- \"$BERTH_CLEANUP\"' EXIT\n"),
+            "{script}"
+        );
+        assert!(script.contains("cd '/Users/me/Dev/my app'\n"), "{script}");
+        assert!(
+            script.contains(
+                "'/Users/me/.local/bin/claude' '--mcp-config' '/run/mcp-x-terminal.json' '--strict-mcp-config'\n"
+            ),
+            "{script}"
+        );
+        let bare = CommandTarget {
+            cleanup: None,
+            ..target
+        };
+        assert!(!command_target_script(&bare).contains("trap"));
+    }
 
     #[test]
     fn terminal_app_script_sets_the_host_and_quotes_every_word() {

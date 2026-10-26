@@ -24,6 +24,8 @@ use super::log_toolbar::{
 };
 use super::virtual_table::visible_range;
 use crate::screens::problems::ExplainPanel;
+use crate::services::assistant::AssistantService;
+use crate::services::assistant_entry;
 use crate::services::logs::{save_file_name, write_lines, LogCore, LogHandle, LogStatus};
 use crate::services::problems::{ExplainLine, ProblemsService, World};
 use crate::services::Services;
@@ -414,9 +416,11 @@ pub fn LogViewer(
     #[props(default)] merged: bool,
     #[props(default)] prefs: ViewPrefs,
 ) -> Element {
-    let state = use_context::<AppState>();
+    let mut state = use_context::<AppState>();
     let core_id = handle.core.id();
     let services = try_consume_context::<Services>();
+    let assistant = try_consume_context::<Option<AssistantService>>().flatten();
+    let mut ask_refusal = use_signal(|| None::<String>);
     let problems_service = use_hook(|| {
         try_consume_context::<ProblemsService>().unwrap_or_else(ProblemsService::inert)
     });
@@ -489,15 +493,20 @@ pub fn LogViewer(
         )
     });
     let status = handle.core.status();
-    let ask_label = state
-        .harnesses
-        .read()
-        .iter()
-        .find(|h| h.available)
-        .map_or_else(
-            || "Ask a harness".to_string(),
-            |h| format!("Ask {}", h.name),
-        );
+    let ask_harness = assistant_entry::first_available(&state.harnesses.read());
+    let ask_label = ask_harness.as_ref().map_or_else(
+        || "Ask a harness".to_string(),
+        |h| format!("Ask {}", h.name),
+    );
+    // The project is only known once the selected lines are read; the
+    // click reports it when none of them has a folder.
+    let ask_disabled = if assistant.is_none() {
+        Some("The assistant is not connected".to_string())
+    } else if ask_harness.is_none() {
+        Some("Needs a harness: install Claude Code or muse".to_string())
+    } else {
+        None
+    };
     let search_error = handle.core.search_error();
     let new_lines = handle.core.new_lines();
 
@@ -652,6 +661,67 @@ pub fn LogViewer(
         ));
     };
 
+    // Ask about these lines (P7-T6): the selection becomes log chips on
+    // the project's assistant session; what Explain found rides along.
+    let ask_core = std::sync::Arc::clone(&handle.core);
+    let on_ask = {
+        let assistant = assistant.clone();
+        let harness = ask_harness.clone();
+        move |_| {
+            let (Some(service), Some(harness)) = (assistant.clone(), harness.clone()) else {
+                return;
+            };
+            let core = std::sync::Arc::clone(&ask_core);
+            let spans = selection.peek().clone();
+            let containers = state.containers.peek().clone();
+            let projects = state.projects.peek().clone();
+            let rules_say: Vec<String> = explained
+                .peek()
+                .clone()
+                .flatten()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| p.title.clone())
+                .collect();
+            ask_refusal.set(None);
+            spawn(async move {
+                let found = core
+                    .run(move |view| selected_lines(view, &spans))
+                    .await
+                    .unwrap_or_default();
+                let lines: Vec<(berth_core::ContainerId, String)> = found
+                    .into_iter()
+                    .map(|l| (berth_core::ContainerId(l.container), l.text))
+                    .collect();
+                let project = lines.iter().find_map(|(id, _)| {
+                    assistant_entry::project_of_container(&containers, &projects, id)
+                        .filter(|p| p.folder.is_some())
+                        .cloned()
+                });
+                let Some(project) = project else {
+                    ask_refusal.set(Some(
+                        "Ask needs a project with a folder on this Mac".to_string(),
+                    ));
+                    return;
+                };
+                let Some(entry) = assistant_entry::logs_entry(
+                    &project,
+                    &harness,
+                    &lines,
+                    &containers,
+                    &rules_say,
+                ) else {
+                    ask_refusal.set(Some("Select a line first".to_string()));
+                    return;
+                };
+                match assistant_entry::run(&service, entry).await {
+                    Ok(_) => assistant_entry::show(&mut state, &project.id),
+                    Err(reason) => ask_refusal.set(Some(reason)),
+                }
+            });
+        }
+    };
+
     let explain_core = std::sync::Arc::clone(&handle.core);
     let on_explain = move |_| {
         let core = std::sync::Arc::clone(&explain_core);
@@ -776,8 +846,9 @@ pub fn LogViewer(
                         label: ask_label.clone(),
                         variant: ButtonVariant::Secondary,
                         icon: "sparkles",
-                        disabled: true,
-                        disabled_reason: "Ask needs a harness (Phase 7)".to_string(),
+                        disabled: ask_disabled.is_some(),
+                        disabled_reason: ask_disabled.clone().unwrap_or_default(),
+                        onclick: on_ask,
                     }
                     Button {
                         label: "Copy".to_string(),
@@ -791,6 +862,9 @@ pub fn LogViewer(
                         onclick: move |_| selection.set(Vec::new()),
                     }
                 }
+            }
+            if let Some(reason) = ask_refusal() {
+                InlineMessage { message: reason, tone: InlineTone::Warning }
             }
             if let Some(result) = explained.read().clone() {
                 ExplainPanel { problems: result, onclose: move |()| explained.set(None) }

@@ -508,6 +508,49 @@ pub fn AssistantPanel() -> Element {
                                 },
                             }
                         }
+                        Button {
+                            label: "Open in Terminal",
+                            variant: ButtonVariant::Ghost,
+                            size: crate::ui::ControlSize::Sm,
+                            icon: "terminal",
+                            disabled: service.is_none() || request.is_none(),
+                            disabled_reason: if service.is_none() {
+                                "The assistant is not connected".to_string()
+                            } else {
+                                "Open a project first".to_string()
+                            },
+                            onclick: {
+                                let service = service.clone();
+                                let request = request.clone();
+                                move |_| {
+                                    let (Some(service), Some(request)) =
+                                        (service.clone(), request.clone())
+                                    else {
+                                        return;
+                                    };
+                                    refusal.set(None);
+                                    spawn(async move {
+                                        let opened = async {
+                                            let launch =
+                                                service.terminal_launch(request).await?;
+                                            crate::platform::open_command_in_terminal_app(
+                                                crate::platform::CommandTarget {
+                                                    program: launch.program,
+                                                    args: launch.args,
+                                                    cwd: launch.cwd,
+                                                    cleanup: launch.cleanup,
+                                                },
+                                            )
+                                            .await
+                                            .map(|_| ())
+                                        };
+                                        if let Err(reason) = opened.await {
+                                            refusal.set(Some(reason));
+                                        }
+                                    });
+                                }
+                            },
+                        }
                         Switch {
                             on: session.as_ref().is_some_and(|s| s.watch),
                             label: "Watch and fix",
