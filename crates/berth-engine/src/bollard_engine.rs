@@ -1,5 +1,6 @@
-//! `BollardEngine`: `EngineClient` over a unix socket. Read side P1-T4,
-//! streams and actions P1-T5, mutations (create/recreate/exec/files/
+//! `BollardEngine`: `EngineClient` over a unix socket and, since P8-T1,
+//! ssh and tcp (with TLS) remote transports. Read side P1-T4, streams and
+//! actions P1-T5, mutations (create/recreate/exec/files/
 //! images/volumes/networks/prune) P1-T6.
 
 use std::collections::HashMap;
@@ -62,28 +63,67 @@ fn map_err(engine_name: &str, err: bollard::errors::Error) -> EngineError {
 
 impl BollardEngine {
     pub fn connect(engine: &berth_core::Engine) -> Result<Self, EngineError> {
+        let timeout = LIST_INSPECT.as_secs();
+        // A remote kind carries its transport (and TLS files), so dispatch on
+        // it first; the docker_host string follows from the transport (D47).
+        if let berth_core::EngineKind::Remote { transport } = &engine.kind {
+            let host = crate::remote::docker_host_for_transport(transport);
+            let docker = match transport {
+                berth_core::RemoteTransport::Ssh { .. } => bollard::Docker::connect_with_ssh(
+                    &host,
+                    timeout,
+                    bollard::API_DEFAULT_VERSION,
+                    None,
+                ),
+                berth_core::RemoteTransport::Tcp {
+                    url,
+                    tls: Some(tls),
+                } => {
+                    crate::remote::validate_tls_files(tls)?;
+                    bollard::Docker::connect_with_ssl(
+                        url.as_str(),
+                        &tls.key,
+                        &tls.cert,
+                        &tls.ca,
+                        timeout,
+                        bollard::API_DEFAULT_VERSION,
+                    )
+                }
+                berth_core::RemoteTransport::Tcp { url, tls: None } => {
+                    bollard::Docker::connect_with_http(
+                        url.as_str(),
+                        timeout,
+                        bollard::API_DEFAULT_VERSION,
+                    )
+                }
+            }
+            .map_err(|e| map_err(&engine.name, e))?;
+            return Ok(Self {
+                docker,
+                id: engine.id.clone(),
+                docker_host: host,
+                engine_name: engine.name.clone(),
+            });
+        }
         let host = engine
             .docker_host
             .clone()
-            .or_else(|| match &engine.kind {
-                berth_core::EngineKind::Socket { path, .. } => {
-                    Some(format!("unix://{}", path.display()))
-                }
-                _ => None,
-            })
+            .or_else(|| crate::remote::docker_host_for_kind(&engine.kind))
             .ok_or_else(|| EngineError::Unreachable {
                 engine: engine.name.clone(),
                 reason: "engine has no docker host".to_string(),
             })?;
-        let Some(socket) = host.strip_prefix("unix://") else {
-            // ssh/tcp engines arrive in P8-T1.
+        // Docker contexts can also name ssh/tcp hosts; they carry no TLS
+        // files, so https stays unsupported without a Remote kind.
+        let docker = if host.starts_with("ssh://") {
+            bollard::Docker::connect_with_ssh(&host, timeout, bollard::API_DEFAULT_VERSION, None)
+        } else if host.starts_with("tcp://") || host.starts_with("http://") {
+            bollard::Docker::connect_with_http(&host, timeout, bollard::API_DEFAULT_VERSION)
+        } else if let Some(socket) = host.strip_prefix("unix://") {
+            bollard::Docker::connect_with_unix(socket, timeout, bollard::API_DEFAULT_VERSION)
+        } else {
             return Err(EngineError::Unsupported(format!("connect to {host}")));
-        };
-        let docker = bollard::Docker::connect_with_unix(
-            socket,
-            LIST_INSPECT.as_secs(),
-            bollard::API_DEFAULT_VERSION,
-        )
+        }
         .map_err(|e| map_err(&engine.name, e))?;
         Ok(Self {
             docker,

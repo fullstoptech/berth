@@ -150,7 +150,7 @@ fn engine_for_profile(profile: &berth_core::ColimaProfile) -> berth_core::Engine
         docker_host: profile
             .docker_socket
             .as_ref()
-            .map(|path| format!("unix://{}", path.display())),
+            .map(|path| crate::remote::docker_host_unix(path)),
         docker_version: None,
         resources: profile
             .vm_type
@@ -207,17 +207,10 @@ fn engine_for_user(user: &UserEngineRef) -> berth_core::Engine {
                     last_seen: None,
                 }
             },
-            Some(format!("unix://{}", path.display())),
+            Some(crate::remote::docker_host_unix(path)),
         ),
         berth_core::EngineKind::Remote { transport } => {
-            let host = match transport {
-                berth_core::RemoteTransport::Ssh { host, user, port } => {
-                    let user = user.as_ref().map_or(String::new(), |u| format!("{u}@"));
-                    let port = port.map_or(String::new(), |p| format!(":{p}"));
-                    format!("ssh://{user}{host}{port}")
-                }
-                berth_core::RemoteTransport::Tcp { url, .. } => url.to_string(),
-            };
+            let host = crate::remote::docker_host_for_transport(transport);
             (
                 berth_core::EngineState::Unreachable {
                     reason: "not yet connected".to_string(),
