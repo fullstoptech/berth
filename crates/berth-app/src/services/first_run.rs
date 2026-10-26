@@ -546,9 +546,7 @@ pub fn refresh(mut state: AppState, store: FirstRunStore, mock: bool, scan: Scan
     scanning.set(true);
     let overrides = state.settings.peek().harness_paths.clone();
     let io = tokio::spawn(async move {
-        let search = berth_sys::SearchPath::from_process()
-            .with_login_shell()
-            .await;
+        let search = crate::services::login_path::search_path().await;
         let found = if mock {
             Probe::all_found()
         } else {

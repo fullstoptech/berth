@@ -953,9 +953,7 @@ impl Inner {
         client: &Arc<dyn berth_engine::EngineClient>,
         args: &[String],
     ) {
-        let search = berth_sys::SearchPath::from_process()
-            .with_login_shell()
-            .await;
+        let search = crate::services::login_path::search_path().await;
         let Some(docker) = search.find("docker") else {
             let message = "The docker command was not found on this Mac".to_string();
             self.update(tab, generation, |s| s.status = Status::Failed(message));

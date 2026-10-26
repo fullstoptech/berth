@@ -20,9 +20,12 @@ pub fn config() -> Config {
         .with_titlebar_transparent(true)
         .with_fullsize_content_view(true)
         .with_title_hidden(true);
+    // No menu bar yet: it is built and handed to AppKit after the first paint (P6-T3, see
+    // [`install_menu`]). Building it and the first `setMainMenu:` cost about 0.5 s together
+    // and would hold the window back.
     Config::new()
         .with_window(window)
-        .with_menu(build_menu())
+        .with_menu(None::<Menu>)
         .with_custom_head(assets::head_html())
         // D38: closing the window leaves the menu bar item running; `platform::quit` flips this.
         .with_close_behaviour(WindowCloseBehaviour::WindowHides)
@@ -340,9 +343,7 @@ pub async fn open_in_terminal_app(target: ExecTarget) -> Result<&'static str, St
     let apps = terminal_apps();
     let app = pick_terminal(&apps, preferred_terminal().as_deref())
         .ok_or_else(|| "No terminal app was found in /Applications".to_string())?;
-    let search = berth_sys::SearchPath::from_process()
-        .with_login_shell()
-        .await;
+    let search = crate::services::login_path::search_path().await;
     let docker = search
         .find("docker")
         .ok_or_else(|| "The docker command was not found on this Mac".to_string())?;
@@ -604,6 +605,29 @@ fn build_menu() -> Menu {
 }
 
 thread_local! {
+    /// The installed menu bar, kept alive for the run (main thread only).
+    static INSTALLED_MENU: std::cell::RefCell<Option<Menu>> = const { std::cell::RefCell::new(None) };
+    /// The side the dock item last named, for an item that did not exist yet.
+    static DOCK_LABEL: std::cell::Cell<Option<berth_store::InspectorDock>> = const { std::cell::Cell::new(None) };
+}
+
+/// Build the menu bar and hand it to AppKit. The App root calls it once, after the first paint,
+/// on the main thread: building it and the first `setMainMenu:` (AppKit loads its Writing Tools
+/// UI to add that Edit item) cost about 0.5 s, which would hold the window back. A second call
+/// does nothing.
+pub fn install_menu() {
+    if INSTALLED_MENU.with(|slot| slot.borrow().is_some()) {
+        return;
+    }
+    let menu = build_menu();
+    menu.init_for_nsapp();
+    INSTALLED_MENU.with(|slot| *slot.borrow_mut() = Some(menu));
+    if let Some(dock) = DOCK_LABEL.with(std::cell::Cell::get) {
+        set_dock_menu_label(dock);
+    }
+}
+
+thread_local! {
     /// The View menu's dock item, kept to change its label (main thread only).
     static DOCK_ITEM: std::cell::RefCell<Option<MenuItem>> = const { std::cell::RefCell::new(None) };
 }
@@ -611,6 +635,7 @@ thread_local! {
 /// Name the side the dock item moves the inspector to ("Dock Inspector at
 /// Bottom" while it is at the right).
 pub fn set_dock_menu_label(dock: berth_store::InspectorDock) {
+    DOCK_LABEL.with(|slot| slot.set(Some(dock)));
     DOCK_ITEM.with(|slot| {
         if let Some(item) = slot.borrow().as_ref() {
             item.set_text(crate::ui::dock::dock_menu_label(dock));

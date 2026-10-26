@@ -312,9 +312,7 @@ pub async fn version(mock: bool) -> Option<String> {
     if mock {
         return Some("0.10.3".to_string());
     }
-    let search = berth_sys::SearchPath::from_process()
-        .with_login_shell()
-        .await;
+    let search = crate::services::login_path::search_path().await;
     let binary = search.find("colima")?;
     let output = berth_sys::run_capture(
         &binary,
@@ -348,9 +346,7 @@ pub async fn control(mock: bool) -> Arc<dyn berth_engine::ColimaControl> {
     if mock {
         return Arc::new(berth_engine::MockColima::bundled());
     }
-    let search = berth_sys::SearchPath::from_process()
-        .with_login_shell()
-        .await;
+    let search = crate::services::login_path::search_path().await;
     Arc::new(berth_engine::ColimaCli::new(search))
 }
 

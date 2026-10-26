@@ -6,12 +6,12 @@ mod other;
 
 #[cfg(target_os = "macos")]
 pub use macos::{
-    config, open_in_terminal_app, set_dock_icon_visible, set_dock_menu_label,
+    config, install_menu, open_in_terminal_app, set_dock_icon_visible, set_dock_menu_label,
     set_preferred_terminal, use_menu_events, use_traffic_lights, use_tray, ExecTarget,
 };
 #[cfg(not(target_os = "macos"))]
 pub use other::{
-    config, open_in_terminal_app, set_dock_icon_visible, set_dock_menu_label,
+    config, install_menu, open_in_terminal_app, set_dock_icon_visible, set_dock_menu_label,
     set_preferred_terminal, use_menu_events, use_traffic_lights, use_tray, ExecTarget,
 };
 

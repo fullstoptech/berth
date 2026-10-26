@@ -282,9 +282,7 @@ pub async fn runner(mock: bool) -> Arc<dyn berth_engine::ComposeRunner> {
     if mock {
         return Arc::new(berth_engine::MockCompose::bundled());
     }
-    let search = berth_sys::SearchPath::from_process()
-        .with_login_shell()
-        .await;
+    let search = crate::services::login_path::search_path().await;
     Arc::new(berth_engine::CliCompose::new(search))
 }
 

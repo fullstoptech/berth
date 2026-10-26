@@ -1,4 +1,5 @@
 fn main() {
+    berth_app::services::timing::init();
     // `berth mcp` serves the MCP bridge (D44); P7-T2 fills it in.
     if std::env::args().nth(1).as_deref() == Some("mcp") {
         eprintln!("not implemented yet");
@@ -9,9 +10,19 @@ fn main() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     init_tracing();
+    berth_app::services::timing::mark("main");
 
+    // The login shell's PATH takes 0.1-3 s; ask for it while the window is being built. A
+    // scene or the mock world never runs a real binary.
+    let mock = std::env::var("BERTH_MOCK").is_ok_and(|v| v == "1");
+    if !mock && std::env::var_os("BERTH_SCENE").is_none() {
+        berth_app::services::login_path::prewarm();
+    }
+
+    let config = berth_app::platform::config();
+    berth_app::services::timing::mark("config");
     dioxus::LaunchBuilder::desktop()
-        .with_cfg(berth_app::platform::config())
+        .with_cfg(config)
         .launch(berth_app::app::App);
 }
 

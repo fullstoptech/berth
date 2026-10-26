@@ -273,6 +273,12 @@ fn subject_name_for(kind: &berth_core::EventKind) -> String {
     }
 }
 
+/// An `exec_create`/`exec_start`/`exec_die` event: a command ran in the container (a health
+/// check does it every few seconds). It changes nothing a row shows, so it is not refetched.
+fn is_exec_event(action: &str) -> bool {
+    action.starts_with("exec_")
+}
+
 /// Refetch the one container an event names. `destroy` needs no refetch;
 /// a refetch that 404s also reads as "gone". A transient error yields no
 /// update (the row stays; the next event or reconnect corrects it).
@@ -281,6 +287,9 @@ async fn container_update(
     id: &berth_core::ContainerId,
     action: &str,
 ) -> Option<EngineUpdate> {
+    if is_exec_event(action) {
+        return None;
+    }
     let engine = client.id().clone();
     if action == "destroy" {
         return Some(EngineUpdate::ContainerChanged {
@@ -317,38 +326,66 @@ fn spawn_io(future: impl std::future::Future<Output = ()> + Send + 'static) {
     }
 }
 
-/// Snapshot-first startup over already-connected clients: engines, then
-/// snapshot rows, then the per-engine loops (so the first engine answer
-/// can only land after snapshot data is in the signals).
-pub async fn run_with_clients(
-    engines: Vec<berth_core::Engine>,
-    clients: Vec<Arc<dyn berth_engine::EngineClient>>,
+/// What discovery found: the engines, a client for each running one, and the pinned folders.
+pub struct Discovered {
+    pub engines: Vec<berth_core::Engine>,
+    pub clients: Vec<Arc<dyn berth_engine::EngineClient>>,
+    pub pins: Vec<berth_core::PinnedFolder>,
+}
+
+/// Send every stored snapshot as the first update (P6-T3): the Projects table has rows
+/// before discovery or `colima list` has answered. The read runs off the UI thread. Returns
+/// false when the receiver is gone.
+async fn paint_snapshots(
+    store: &Arc<berth_store::Store>,
+    tx: &tokio::sync::mpsc::Sender<EngineUpdate>,
+) -> bool {
+    let reader = Arc::clone(store);
+    let snapshots = match tokio::task::spawn_blocking(move || reader.snapshots()).await {
+        Ok(Ok(snapshots)) => snapshots,
+        Ok(Err(err)) => {
+            tracing::warn!(%err, "snapshot load failed");
+            Vec::new()
+        }
+        Err(err) => {
+            tracing::warn!(%err, "snapshot load task failed");
+            Vec::new()
+        }
+    };
+    tx.send(EngineUpdate::Snapshots(snapshots)).await.is_ok()
+}
+
+/// Snapshot-first startup: the stored snapshots go out at once, then `discover` runs (Colima
+/// profiles, contexts, connecting), then the engine list and the per-engine loops (so the
+/// first engine answer can only land after snapshot data is in the signals).
+pub async fn run_startup(
+    discover: impl std::future::Future<Output = Discovered>,
     store: Arc<berth_store::Store>,
-    pins: Vec<berth_core::PinnedFolder>,
     tx: tokio::sync::mpsc::Sender<EngineUpdate>,
     cancel: CancellationToken,
     reconnect_delay: std::time::Duration,
 ) {
+    if !paint_snapshots(&store, &tx).await {
+        return;
+    }
+    let found = tokio::select! {
+        () = cancel.cancelled() => return,
+        found = discover => found,
+    };
+    let Discovered {
+        engines,
+        clients,
+        pins,
+    } = found;
     let remote_by_engine: std::collections::BTreeMap<berth_core::EngineId, bool> = engines
         .iter()
         .map(|e| (e.id.clone(), is_remote(&e.kind)))
         .collect();
     if tx
-        .send(EngineUpdate::EnginesDiscovered(engines.clone()))
+        .send(EngineUpdate::EnginesDiscovered(engines))
         .await
         .is_err()
     {
-        return;
-    }
-    let mut snapshots = Vec::new();
-    for engine in &engines {
-        match store.snapshot(&engine.id) {
-            Ok(Some(snapshot)) => snapshots.push(snapshot),
-            Ok(None) => {}
-            Err(err) => tracing::warn!(%err, engine = %engine.id.0, "snapshot load failed"),
-        }
-    }
-    if tx.send(EngineUpdate::Snapshots(snapshots)).await.is_err() {
         return;
     }
     for client in clients {
@@ -366,6 +403,30 @@ pub async fn run_with_clients(
     cancel.cancelled().await;
 }
 
+/// [`run_startup`] over engines that are already known and connected (the mock world, tests).
+pub async fn run_with_clients(
+    engines: Vec<berth_core::Engine>,
+    clients: Vec<Arc<dyn berth_engine::EngineClient>>,
+    store: Arc<berth_store::Store>,
+    pins: Vec<berth_core::PinnedFolder>,
+    tx: tokio::sync::mpsc::Sender<EngineUpdate>,
+    cancel: CancellationToken,
+    reconnect_delay: std::time::Duration,
+) {
+    run_startup(
+        std::future::ready(Discovered {
+            engines,
+            clients,
+            pins,
+        }),
+        store,
+        tx,
+        cancel,
+        reconnect_delay,
+    )
+    .await;
+}
+
 /// Real discovery: Colima profiles + docker contexts + user engines from
 /// the store (`berth_engine::discovery` is the only socket lookup, D29),
 /// one `BollardEngine` per running engine.
@@ -373,9 +434,7 @@ async fn discover_and_connect(
     store: &berth_store::Store,
     clients: &ClientMap,
 ) -> Vec<berth_core::Engine> {
-    let search = berth_sys::SearchPath::from_process()
-        .with_login_shell()
-        .await;
+    let search = crate::services::login_path::search_path().await;
     let colima = berth_engine::ColimaCli::new(search);
     let user: Vec<berth_engine::discovery::UserEngineRef> = match store.user_engines() {
         Ok(rows) => rows
@@ -515,6 +574,15 @@ impl Applier {
                     })
                     .map(|e| EngineScope::One(e.id.clone()))
                     .unwrap_or(EngineScope::All);
+                // Snapshot rows painted before discovery that belong to an engine that no
+                // longer exists are dropped.
+                let known = |engine: &berth_core::EngineId| engines.iter().any(|e| e.id == *engine);
+                if state.containers.peek().iter().any(|c| !known(&c.engine)) {
+                    state.containers.write().retain(|c| known(&c.engine));
+                }
+                if state.projects.peek().iter().any(|p| !known(&p.engine)) {
+                    state.projects.write().retain(|p| known(&p.engine));
+                }
                 state.engines.set(engines);
                 state.engine_scope.set(scope);
             }
@@ -983,19 +1051,23 @@ pub fn start(
     let link_clients = Arc::clone(&clients);
     let link_cancel = cancel.clone();
     spawn_io(async move {
-        let (engines, pins) = if mock {
-            mock_world_parts(&run_clients)
-        } else {
-            let engines = discover_and_connect(&run_store, &run_clients).await;
-            let pins = store_pins(&run_store);
-            (engines, pins)
+        let discover = async {
+            let (engines, pins) = if mock {
+                mock_world_parts(&run_clients)
+            } else {
+                let engines = discover_and_connect(&run_store, &run_clients).await;
+                let pins = store_pins(&run_store);
+                (engines, pins)
+            };
+            Discovered {
+                engines,
+                clients: connected_clients(&run_clients),
+                pins,
+            }
         };
-        let connected = connected_clients(&run_clients);
-        run_with_clients(
-            engines,
-            connected,
-            run_store,
-            pins,
+        run_startup(
+            discover,
+            Arc::clone(&run_store),
             tx,
             run_cancel,
             RECONNECT_DELAY,
@@ -1433,15 +1505,15 @@ mod tests {
         ));
 
         let mut applier = Applier::new(world.pins.clone());
-        let discovered = recv(&mut rx).await;
-        assert!(matches!(discovered, EngineUpdate::EnginesDiscovered(_)));
-        apply(&dom, &mut applier, &mut state, discovered);
         let snapshots = recv(&mut rx).await;
         assert!(
             matches!(snapshots, EngineUpdate::Snapshots(_)),
             "{snapshots:?}"
         );
         apply(&dom, &mut applier, &mut state, snapshots);
+        let discovered = recv(&mut rx).await;
+        assert!(matches!(discovered, EngineUpdate::EnginesDiscovered(_)));
+        apply(&dom, &mut applier, &mut state, discovered);
 
         // The delayed engine has not answered yet, but the snapshot row
         // is already what the UI would render.
@@ -1465,6 +1537,144 @@ mod tests {
         assert!(!dom.in_runtime(|| *state.snapshot_stale.peek()));
         cancel.cancel();
         let _ = tokio::time::timeout(std::time::Duration::from_secs(2), task).await;
+    }
+
+    /// P6-T3: the Projects table has rows before discovery (which waits for `colima list`)
+    /// has answered at all.
+    #[tokio::test]
+    async fn services_snapshot_rows_go_out_before_discovery_finishes() {
+        let store = Arc::new(berth_store::Store::open_in_memory().expect("store"));
+        let world = berth_engine::MockWorld::bundled();
+        let mut marker = world
+            .containers_for(&default_engine_id())
+            .into_iter()
+            .next()
+            .expect("a mock container");
+        marker.name = "snapshot-marker".to_string();
+        store
+            .save_snapshot(&berth_store::EngineSnapshot {
+                engine: default_engine_id(),
+                taken: chrono::Utc::now(),
+                containers: vec![marker],
+                projects: Vec::new(),
+            })
+            .expect("seed snapshot");
+
+        // Discovery is a future that stays pending until the test lets it finish.
+        let (finish, finished) = tokio::sync::oneshot::channel::<()>();
+        let engines = world.engines.clone();
+        let discover = async move {
+            let _ = finished.await;
+            Discovered {
+                engines,
+                clients: Vec::new(),
+                pins: Vec::new(),
+            }
+        };
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(run_startup(
+            discover,
+            store,
+            tx,
+            cancel.clone(),
+            std::time::Duration::from_millis(10),
+        ));
+
+        let first = recv(&mut rx).await;
+        let EngineUpdate::Snapshots(rows) = first else {
+            panic!("the first update must be the snapshots: {first:?}");
+        };
+        assert_eq!(rows.len(), 1);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv())
+                .await
+                .is_err(),
+            "the engine list arrived before discovery finished"
+        );
+        let _ = finish.send(());
+        let second = recv(&mut rx).await;
+        assert!(
+            matches!(second, EngineUpdate::EnginesDiscovered(_)),
+            "{second:?}"
+        );
+        cancel.cancel();
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), task).await;
+    }
+
+    /// Health checks run `docker exec` every few seconds; each one is three container events
+    /// that change no row. They must not cost an inspect call and a UI update each.
+    #[tokio::test]
+    async fn services_exec_events_are_not_refetched_but_state_events_are() {
+        let engine = TestEngine::new(&default_engine_id());
+        let id = engine
+            .inner
+            .containers()
+            .await
+            .expect("containers")
+            .into_iter()
+            .next()
+            .expect("a mock container")
+            .id;
+        for action in [
+            "exec_create: sh -c true",
+            "exec_start: sh -c true",
+            "exec_die",
+        ] {
+            assert!(
+                container_update(&engine, &id, action).await.is_none(),
+                "{action} was refetched"
+            );
+        }
+        for action in ["die", "start", "health_status: healthy"] {
+            assert!(
+                container_update(&engine, &id, action).await.is_some(),
+                "{action} was skipped"
+            );
+        }
+    }
+
+    #[test]
+    fn services_snapshot_rows_of_an_engine_that_is_gone_are_dropped_at_discovery() {
+        let (dom, mut state) = harness();
+        let world = berth_engine::MockWorld::bundled();
+        let mut kept = world
+            .containers_for(&default_engine_id())
+            .into_iter()
+            .next()
+            .expect("a mock container");
+        kept.name = "kept".to_string();
+        let mut ghost = kept.clone();
+        ghost.name = "ghost".to_string();
+        ghost.engine = berth_core::EngineId("colima:removed".to_string());
+        let snapshot = |engine: &berth_core::EngineId, container: berth_core::Container| {
+            berth_store::EngineSnapshot {
+                engine: engine.clone(),
+                taken: chrono::Utc::now(),
+                containers: vec![container],
+                projects: Vec::new(),
+            }
+        };
+        let mut applier = Applier::new(Vec::new());
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::Snapshots(vec![
+                snapshot(&default_engine_id(), kept),
+                snapshot(&ghost.engine.clone(), ghost),
+            ]),
+        );
+        assert_eq!(read_containers(&dom, &state).len(), 2);
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::EnginesDiscovered(world.engines.clone()),
+        );
+        let shown = read_containers(&dom, &state);
+        assert_eq!(shown.len(), 1);
+        assert_eq!(shown[0].name, "kept");
     }
 
     #[tokio::test]

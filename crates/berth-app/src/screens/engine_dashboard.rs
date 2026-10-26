@@ -225,6 +225,14 @@ fn LoadWatch(key_for: StatsKey) -> Element {
     rsx! {}
 }
 
+/// Is the disk usage older than `USAGE_EVERY` (or never read)? Measured on the clock, so the
+/// first tick after a long hidden spell refreshes it.
+fn usage_due(last: Option<std::time::Instant>, now: std::time::Instant) -> bool {
+    last.is_none_or(|at| {
+        now.saturating_duration_since(at) >= crate::services::engine_dashboard::USAGE_EVERY
+    })
+}
+
 #[component]
 pub fn EngineDashboard(id: EngineId, #[props(default)] tick: u32) -> Element {
     let _ = tick;
@@ -241,12 +249,18 @@ pub fn EngineDashboard(id: EngineId, #[props(default)] tick: u32) -> Element {
     let watched = id.clone();
     let feed_store = store;
     let feed_services = services.clone();
+    let visibility = try_use_context::<crate::services::visibility::Visibility>();
     use_future(move || {
         let watched = watched.clone();
         let services = feed_services.clone();
         let stats = stats.clone();
+        // The clock parks while the window is hidden and ticks at once when it shows (AD32).
+        let mut pacer = crate::services::visibility::Pacer::of(
+            visibility.as_ref(),
+            crate::services::engine_dashboard::SERIES_EVERY,
+        );
         async move {
-            let mut since_usage = std::time::Duration::MAX;
+            let mut last_usage: Option<std::time::Instant> = None;
             loop {
                 let running = state
                     .engines
@@ -257,18 +271,18 @@ pub fn EngineDashboard(id: EngineId, #[props(default)] tick: u32) -> Element {
                     if let (Some(store), Some(services), false) =
                         (feed_store, services.as_ref(), is_scene())
                     {
-                        if since_usage >= crate::services::engine_dashboard::USAGE_EVERY {
+                        if usage_due(last_usage, std::time::Instant::now()) {
                             store.refresh_usage(services, &watched);
-                            since_usage = std::time::Duration::ZERO;
+                            last_usage = Some(std::time::Instant::now());
                         }
                     }
                     if let (Some(store), Some(stats)) = (feed_store, stats.as_ref()) {
                         push_load(&state, store, stats, &watched);
                     }
                 }
-                tokio::time::sleep(crate::services::engine_dashboard::SERIES_EVERY).await;
-                since_usage =
-                    since_usage.saturating_add(crate::services::engine_dashboard::SERIES_EVERY);
+                if !pacer.tick().await {
+                    break;
+                }
             }
         }
     });

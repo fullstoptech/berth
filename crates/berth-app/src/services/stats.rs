@@ -30,6 +30,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use super::engines::ClientMap;
+use super::visibility::{Pacer, Visibility};
 
 /// Most streams open at once. The Containers table renders at most about
 /// 60 rows (1100 px of rows plus 10 rows of overscan each way), so this
@@ -405,31 +406,15 @@ impl StatsService {
         Self::with_opener(client_opener(clients), cancel)
     }
 
-    /// The running service: ticks every [`TICK`] on the tokio runtime and
-    /// bumps its version signal on the UI side. Call from the App root.
-    pub fn start(clients: ClientMap, cancel: CancellationToken) -> Self {
+    /// The running service: ticks every [`TICK`] on the tokio runtime while the window is
+    /// visible (AD32) and bumps its version signal on the UI side. Call from the App root.
+    pub fn start(clients: ClientMap, cancel: CancellationToken, visibility: &Visibility) -> Self {
         let mut service = Self::new(clients, cancel.clone());
         let mut version = Signal::new(0_u64);
         service.version = Some(version);
         let inner = Arc::clone(&service.inner);
-        spawn_io(async move {
-            let mut interval = tokio::time::interval(TICK);
-            let mut count = 0_u32;
-            loop {
-                tokio::select! {
-                    () = cancel.cancelled() => break,
-                    _ = interval.tick() => {}
-                }
-                inner.reconcile();
-                count = count.wrapping_add(1);
-                if count.is_multiple_of(20) {
-                    inner.prune(Utc::now());
-                }
-                if inner.changed.swap(false, Ordering::AcqRel) {
-                    inner.wake_ui.notify_one();
-                }
-            }
-        });
+        let pacer = visibility.pacer(TICK);
+        spawn_io(run_ticker(inner, pacer, cancel));
         let wake = Arc::clone(&service.inner);
         spawn(async move {
             loop {
@@ -536,6 +521,27 @@ impl StatsService {
     }
 }
 
+/// The service's clock: reconcile, prune and tell the UI about news, once per tick. The
+/// pacer parks while the window is hidden (AD32), so a closed window costs no wake-ups; the
+/// hide itself is reconciled by [`StatsService::set_window_visible`].
+async fn run_ticker(inner: Arc<Inner>, mut pacer: Pacer, cancel: CancellationToken) {
+    let mut count = 0_u32;
+    loop {
+        tokio::select! {
+            () = cancel.cancelled() => break,
+            alive = pacer.tick() => if !alive { break },
+        }
+        inner.reconcile();
+        count = count.wrapping_add(1);
+        if count.is_multiple_of(20) {
+            inner.prune(Utc::now());
+        }
+        if inner.changed.swap(false, Ordering::AcqRel) {
+            inner.wake_ui.notify_one();
+        }
+    }
+}
+
 /// The opener over the live engine clients.
 fn client_opener(clients: ClientMap) -> Opener {
     Arc::new(move |key, cancel| {
@@ -589,14 +595,49 @@ pub fn streams_allowed(facts: WindowFacts) -> bool {
     facts.shown && !facts.minimized
 }
 
-/// How often the native window state is read; a hide or minimise closes
+/// How often the native window state is read while it is shown; a minimise or hide closes
 /// the streams within this time.
 const WINDOW_POLL: std::time::Duration = std::time::Duration::from_millis(500);
+/// How often it is read while hidden. An event that can mean the window was shown
+/// ([`event_may_show_window`]: Dock click, restore, focus) wakes the poll at once, so this
+/// only bounds a show that raised no such event.
+const WINDOW_POLL_HIDDEN: std::time::Duration = std::time::Duration::from_secs(2);
 
-/// The UI side of D26's "closed when the window is hidden": the native
-/// window's state (minimised, hidden) drives the service.
-pub fn use_window_visibility(service: StatsService) {
+/// Can this event mean the window was just shown? Only those wake the hidden poll. The loop's
+/// own lifecycle events (`NewEvents`, `MainEventsCleared`, …) must not: they arrive on every
+/// pass of the event loop, and each wake makes the poll run, which makes the loop pass again —
+/// a hidden app would spin a core instead of sleeping.
+fn event_may_show_window<T>(event: &dioxus::desktop::tao::event::Event<T>) -> bool {
+    use dioxus::desktop::tao::event::{Event, WindowEvent};
+    matches!(
+        event,
+        Event::Reopen { .. }
+            | Event::WindowEvent {
+                event: WindowEvent::Focused(true)
+                    | WindowEvent::Resized(_)
+                    | WindowEvent::Moved(_)
+                    | WindowEvent::ScaleFactorChanged { .. },
+                ..
+            }
+    )
+}
+
+/// The UI side of D26's "closed when the window is hidden": the native window's state
+/// (minimised, hidden) drives the stats service and the shared [`Visibility`] signal every
+/// other timer follows (AD32).
+pub fn use_window_visibility(service: StatsService, visibility: Visibility) {
     let window = dioxus::desktop::use_window();
+    let wake = use_hook(|| Arc::new(tokio::sync::Notify::new()));
+    {
+        let wake = Arc::clone(&wake);
+        let visibility = visibility.clone();
+        dioxus::desktop::use_wry_event_handler(move |event, _| {
+            // Only a hidden app is waiting for news; a shown one polls on its own clock.
+            if !visibility.is_visible() && event_may_show_window(event) {
+                wake.notify_one();
+            }
+        });
+    }
     use_hook(move || {
         spawn(async move {
             let mut last = None;
@@ -608,8 +649,17 @@ pub fn use_window_visibility(service: StatsService) {
                 if last != Some(allowed) {
                     last = Some(allowed);
                     service.set_window_visible(allowed);
+                    visibility.set(allowed);
                 }
-                tokio::time::sleep(WINDOW_POLL).await;
+                let wait = if allowed {
+                    WINDOW_POLL
+                } else {
+                    WINDOW_POLL_HIDDEN
+                };
+                tokio::select! {
+                    () = tokio::time::sleep(wait) => {}
+                    () = wake.notified() => {}
+                }
             }
         });
     });

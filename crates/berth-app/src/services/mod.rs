@@ -19,6 +19,7 @@ pub mod first_run;
 pub mod folders;
 pub mod group_ops;
 pub mod images;
+pub mod login_path;
 pub mod logs;
 pub mod menubar;
 pub mod networks;
@@ -31,7 +32,9 @@ pub mod search;
 pub mod settings_save;
 pub mod stats;
 pub mod templates;
+pub mod timing;
 pub mod updates;
+pub mod visibility;
 pub mod volume_backup;
 pub mod volumes;
 

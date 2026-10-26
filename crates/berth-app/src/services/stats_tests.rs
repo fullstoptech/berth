@@ -183,6 +183,41 @@ async fn stats_hiding_the_window_closes_every_stream_and_showing_it_reopens() {
 }
 
 #[tokio::test]
+async fn stats_the_clock_parks_while_the_window_is_hidden_and_resumes_when_shown() {
+    let probe = Arc::new(Probe::default());
+    let service = service(&probe);
+    let visibility = Visibility::new(false);
+    let cancel = CancellationToken::new();
+    tokio::spawn(run_ticker(
+        Arc::clone(&service.inner),
+        visibility.pacer(Duration::from_millis(20)),
+        cancel.clone(),
+    ));
+    // The registry still says "shown", so only the clock decides whether a row is opened.
+    let mut table = FakeTable::new(10);
+    table.scroll(&service, 0.0, 560.0);
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    assert_eq!(service.subscription_count(), 0, "a hidden clock reconciled");
+
+    visibility.set(true);
+    until(|| service.subscription_count() == 10).await;
+
+    // Hidden again: a new row waits for the window.
+    visibility.set(false);
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    let mut more = FakeTable::new(10);
+    more.mounted.insert(99, service.new_owner());
+    if let Some(owner) = more.mounted.get(&99) {
+        service.watch_row(*owner, Some(key(99)));
+    }
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    assert!(!service.subscriptions().contains(&key(99)));
+    visibility.set(true);
+    until(|| service.subscriptions().contains(&key(99))).await;
+    cancel.cancel();
+}
+
+#[tokio::test]
 async fn stats_scrolling_back_reopens_the_rows_that_scrolled_out() {
     let probe = Arc::new(Probe::default());
     let service = service(&probe);
@@ -442,4 +477,23 @@ fn stats_streams_run_for_an_inactive_or_covered_window_and_stop_for_hidden_or_mi
         minimized: true,
         shown: false
     }));
+}
+
+/// The hidden poll wakes early only for an event that can mean the window was shown. The
+/// event loop's own lifecycle events arrive on every pass; waking for one would make the
+/// poll run, which makes the loop pass again — a hidden app spinning a core (measured at
+/// 100 % before this filter).
+#[test]
+fn stats_hidden_poll_ignores_event_loop_lifecycle_events() {
+    use dioxus::desktop::tao::event::{Event, StartCause};
+    for event in [
+        Event::<()>::NewEvents(StartCause::Poll),
+        Event::MainEventsCleared,
+        Event::RedrawEventsCleared,
+        Event::Suspended,
+        Event::Resumed,
+        Event::LoopDestroyed,
+    ] {
+        assert!(!event_may_show_window(&event), "{event:?}");
+    }
 }

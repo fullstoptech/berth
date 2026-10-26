@@ -6,6 +6,7 @@ use crate::scenes;
 use crate::services::actions::ActionsService;
 use crate::services::problems::ProblemsService;
 use crate::services::stats::{use_window_visibility, StatsService};
+use crate::services::visibility::Visibility;
 use crate::services::{action_runners, activity, engines, Services};
 use crate::state::{theme_script, use_app_state, AppState};
 use crate::ui::dock::{InspectorSlot, InspectorSplitHandle, InspectorWidthHandle, RegionMode};
@@ -16,6 +17,8 @@ struct Boot {
     actions: ActionsService,
     problems: ProblemsService,
     stats: StatsService,
+    /// Whether the window is shown (AD32); every screen timer follows it.
+    visibility: Visibility,
     /// Brings engines online after Colima starts them; None in a scene.
     link: Option<engines::EngineLink>,
     // Dropped with the App root on quit (cancels tasks, saves snapshots).
@@ -96,7 +99,8 @@ fn boot_services(mut state: AppState) -> Boot {
         ProblemsService::start(state, services.clone(), actions.clone())
     };
     // Live stats (D26): streams open only for what is on screen.
-    let stats = StatsService::start(clients.clone(), cancel.clone());
+    let visibility = Visibility::default();
+    let stats = StatsService::start(clients.clone(), cancel.clone(), &visibility);
     let handle = if scene {
         None
     } else {
@@ -111,6 +115,7 @@ fn boot_services(mut state: AppState) -> Boot {
         actions,
         problems,
         stats,
+        visibility,
         link,
         _engines: handle,
     }
@@ -120,6 +125,7 @@ fn boot_services(mut state: AppState) -> Boot {
 /// the shared Shell stays renderable under dioxus-ssr (scenes).
 #[component]
 pub fn App() -> Element {
+    crate::services::timing::mark("app");
     assets::use_assets();
     crate::bridge::use_web_assets();
     platform::use_traffic_lights();
@@ -148,7 +154,9 @@ pub fn App() -> Element {
     let link = boot.link.clone();
     use_context_provider(|| link);
     let stats = boot.stats.clone();
-    use_window_visibility(stats.clone());
+    let visibility = boot.visibility.clone();
+    use_window_visibility(stats.clone(), visibility.clone());
+    use_context_provider(|| visibility);
     use_context_provider(|| stats);
     // Terminal sessions (P3-T6): the view signals first, then the core that
     // keeps the tab strip current.
@@ -218,6 +226,27 @@ pub fn App() -> Element {
     // is never written to the owner's settings.
     crate::services::settings_save::use_save_settings(state, boot.services.store.clone());
 
+    // Timing marks for the first populated Projects table (P6-T3): from the stored snapshot or
+    // from a live answer, then once it is on screen. `scripts/perf.sh --app` reads them.
+    let painting = use_hook(|| std::rc::Rc::new(std::cell::Cell::new(false)));
+    use_effect(move || {
+        if state.projects.read().is_empty() {
+            return;
+        }
+        let live = !*state.snapshot_stale.read();
+        crate::services::timing::mark(if live {
+            "projects_live"
+        } else {
+            "projects_snapshot"
+        });
+        if !painting.replace(true) {
+            spawn(async {
+                crate::services::timing::painted().await;
+                crate::services::timing::mark("projects_painted");
+            });
+        }
+    });
+
     // After the first paint: look for Colima, Docker and the assistants, and start the daily
     // update check. A scene runs neither; the mock reports the tools present and asks no one.
     let first_run = use_context::<crate::services::first_run::FirstRunStore>();
@@ -227,23 +256,29 @@ pub fn App() -> Element {
         if std::env::var_os("BERTH_SCENE").is_some() {
             return;
         }
-        let mock = *state.backing.peek() == crate::services::backing::Backing::Mock;
-        crate::services::first_run::refresh(
-            state,
-            first_run,
-            mock,
-            crate::services::first_run::Scan::Launch,
-        );
-        if !mock {
-            if let Some(feed) = crate::services::updates::GithubFeed::for_this_build() {
-                crate::services::updates::start(
-                    state,
-                    updates,
-                    std::sync::Arc::new(feed),
-                    cancel.clone(),
-                );
+        let cancel = cancel.clone();
+        spawn(async move {
+            crate::services::timing::after_first_paint().await;
+            // The menu bar waits for the paint too (AppKit takes ~0.4 s to set it up).
+            platform::install_menu();
+            let mock = *state.backing.peek() == crate::services::backing::Backing::Mock;
+            crate::services::first_run::refresh(
+                state,
+                first_run,
+                mock,
+                crate::services::first_run::Scan::Launch,
+            );
+            if !mock {
+                if let Some(feed) = crate::services::updates::GithubFeed::for_this_build() {
+                    crate::services::updates::start(
+                        state,
+                        updates,
+                        std::sync::Arc::new(feed),
+                        cancel,
+                    );
+                }
             }
-        }
+        });
     });
 
     // The terminal app chosen in Settings is the one Open in Terminal uses.
