@@ -12,8 +12,11 @@ Each open entry has a default already taken, so work never waits. The owner answ
 - **Q5 App icon.** The FigCraft file has no app icon frame (34 screen frames, checked 2026-10-24). Default: P10-T1 drafts three directions with the design skill and you pick one; until then the window uses the Dioxus default icon.
 - **Q6 Restarting Colima during development.** Edit resources and Start/Stop engine restart your `default` profile, which stops `server-db-1` and the Ferry fixtures for about 20 s. Default: P4-T6 tests the sheet without applying; the real restart happens once at the P4 acceptance check with you present. Alternative: a throwaway profile `berthfx` created for tests (`colima start -p berthfx`, about 2 GB of disk).
 - **Q7 SSH host for remote-engine tests (P8-T1).** Default: no host; the SSH integration test reports skipped and only the unreachable state is checked by hand. Give a `user@host` with Docker to run it.
-- **Q10 Harness TUI in a Berth terminal tab (P7-T6, AD38).** Default taken: "Open in Terminal" launches the harness TUI in Terminal.app (D42 `.command` file) with the bridge tools attached, because an interactive host process in Berth's own xterm tab needs a PTY and PLAN §5 has no PTY crate; muse's button is disabled ("cannot take Berth's tools into a terminal yet") because no verified way attaches the `berth` MCP server to interactive `muse` (its session config serves `muse serve`). Options: (a) keep Terminal.app; (b) add a PTY crate to §5 (architect picks + owner OK) and build `Kind::Host`; (c) find muse's interactive MCP config path and enable it. Architect to decide at Phase 7 close or P10 audit.
 - **Q8 Coolify instance (P9).** Default: wiremock only, built from the v4.5.0 spec. Give an instance URL and a read-only token to try the plugin against a real server.
+
+## Answered
+
+- **Q10 Harness TUI in a Berth terminal tab (P7-T6, AD38).** Answered by the owner 2026-10-26 at Phase 7 close: keep Terminal.app. "Open in Terminal" launches the harness TUI there with the bridge tools attached; no PTY crate is added for an in-app tab, and muse's launch stays disabled until a verified way attaches the `berth` MCP server to interactive `muse`. Revisit only if it feels wrong in use.
 
 ## Answered (decisions already made in the brief's conversation, 2026-10-24)
 

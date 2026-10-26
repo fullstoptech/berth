@@ -627,6 +627,20 @@ async fn supervise(
 /// Starts a Claude Code session per D43.
 ///
 /// # Errors
+/// The model a session runs: the user's pick from the config (AD39),
+/// else `BERTH_CLAUDE_MODEL` (the smoke tests), else Claude Code's own
+/// default. An empty pick is no pick.
+fn effective_model(cfg: &SessionConfig) -> Option<String> {
+    cfg.model
+        .clone()
+        .filter(|m| !m.trim().is_empty())
+        .or_else(|| {
+            std::env::var("BERTH_CLAUDE_MODEL")
+                .ok()
+                .filter(|m| !m.trim().is_empty())
+        })
+}
+
 /// The harness binary is missing, the mcp-config file cannot be written,
 /// or the process cannot be spawned.
 pub async fn start(
@@ -638,7 +652,7 @@ pub async fn start(
         .ok()
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| ALLOWED_TOOLS.to_string());
-    let model = std::env::var("BERTH_CLAUDE_MODEL").ok();
+    let model = effective_model(&cfg);
     let argv = args_with(&cfg, &mcp_config, &allowed, model.as_deref());
 
     let mut command = tokio::process::Command::new(&cfg.harness.binary);
@@ -715,6 +729,7 @@ mod tests {
             },
             path: std::env::var_os("PATH").unwrap_or_default(),
             system_prompt: String::new(),
+            model: None,
         }
     }
 
@@ -771,6 +786,17 @@ mod tests {
             "{got:?}"
         );
         assert!(!got.iter().any(|a| a == "--session-id"), "{got:?}");
+    }
+
+    #[test]
+    fn claude_effective_model_prefers_the_config_pick() {
+        let mut cfg = cfg_with("/bin/true".into(), None);
+        cfg.model = Some("opus".to_string());
+        assert_eq!(effective_model(&cfg).as_deref(), Some("opus"));
+        cfg.model = Some("  ".to_string());
+        if std::env::var_os("BERTH_CLAUDE_MODEL").is_none() {
+            assert_eq!(effective_model(&cfg), None);
+        }
     }
 
     #[test]

@@ -6,7 +6,7 @@ services:
   oom:
     image: alpine:3
     labels: [dev.berth.fixture=1]
-    mem_limit: 16m
+    mem_limit: 64m
     command: ["sh", "-c", "x=''; while :; do x=\"$$x$$(head -c 1048576 /dev/zero | tr '\\0' x)\"; done"]
   badimage:
     image: berthfx/does-not-exist:1
@@ -15,7 +15,7 @@ services:
     image: nginx:alpine
     labels: [dev.berth.fixture=1]
     ports:
-      - "127.0.0.1:56080:80"
+      - "127.0.0.1:56081:80"
   needsvar:
     image: alpine:3
     labels: [dev.berth.fixture=1]

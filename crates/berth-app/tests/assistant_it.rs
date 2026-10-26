@@ -476,6 +476,7 @@ async fn assistant_live_claude_on_berthfx_streams_saves_and_reloads() {
             project: project.clone(),
             project_name: "berthfx".to_string(),
             folder: canonical,
+            model: None,
         })
         .await
         .expect("open");

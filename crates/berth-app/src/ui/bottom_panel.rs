@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use super::dock::RegionMode;
-use super::harness_picker::HarnessPicker;
+use super::harness_picker::{HarnessPicker, ModelPicker};
 use super::icon_button::IconButton;
 use super::tabs::{TabItem, Tabs, TabsVariant};
 use crate::state::{AppState, BottomTab};
@@ -29,6 +29,50 @@ fn tab_id(tab: BottomTab) -> &'static str {
         BottomTab::Problems => "problems",
         BottomTab::Assistant => "assistant",
     }
+}
+
+/// Save the picked harness's model (AD39) and restart its live
+/// session so the pick takes effect at once, resuming the harness
+/// conversation. With no session open the save is enough: the next
+/// open reads it.
+fn save_model_and_restart(state: &mut AppState, model: Option<String>) {
+    let Some(harness) = crate::screens::assistant::picked_harness_for_state(state) else {
+        return;
+    };
+    {
+        let mut settings = state.settings.write();
+        match &model {
+            Some(model) => {
+                settings
+                    .harness_models
+                    .insert(harness.id.0.clone(), model.clone());
+            }
+            None => {
+                settings.harness_models.remove(&harness.id.0);
+            }
+        }
+    }
+    let Some(service) =
+        try_consume_context::<Option<crate::services::assistant::AssistantService>>().flatten()
+    else {
+        return;
+    };
+    let Some(project) = crate::screens::assistant::current_project(state) else {
+        return;
+    };
+    let session = {
+        let sessions = state.assistant.peek();
+        crate::services::assistant::session_for_project(&sessions, &project.id).map(|s| s.id)
+    };
+    let (Some(session), Some(request)) = (
+        session,
+        crate::screens::assistant::open_request(&project, &harness, &state.settings.peek()),
+    ) else {
+        return;
+    };
+    spawn(async move {
+        let _ = service.retry(session, request).await;
+    });
 }
 
 fn tab_from_id(id: &str) -> Option<BottomTab> {
@@ -176,12 +220,26 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
                                         };
                                         rsx! {
                                             HarnessPicker {
-                                                harnesses,
-                                                selected: picked,
+                                                harnesses: harnesses.clone(),
+                                                selected: picked.clone(),
                                                 onchange: move |id: String| {
                                                     state.settings.write().last_harness =
                                                         Some(berth_core::HarnessId(id));
                                                 },
+                                            }
+                                            if let Some(picked_harness) =
+                                                harnesses.iter().find(|h| h.id.0 == picked && h.available)
+                                            {
+                                                ModelPicker {
+                                                    harness: picked_harness.clone(),
+                                                    selected: crate::services::assistant_entry::saved_model(
+                                                        &state.settings.peek(),
+                                                        picked_harness,
+                                                    ),
+                                                    onchange: move |model: Option<String>| {
+                                                        save_model_and_restart(&mut state, model);
+                                                    },
+                                                }
                                             }
                                             IconButton {
                                                 icon: max_icon,

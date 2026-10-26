@@ -683,6 +683,7 @@ pub fn LogViewer(
                 .iter()
                 .map(|p| p.title.clone())
                 .collect();
+            let model = assistant_entry::saved_model(&state.settings.peek(), &harness);
             ask_refusal.set(None);
             spawn(async move {
                 let found = core
@@ -704,7 +705,7 @@ pub fn LogViewer(
                     ));
                     return;
                 };
-                let Some(entry) = assistant_entry::logs_entry(
+                let Some(mut entry) = assistant_entry::logs_entry(
                     &project,
                     &harness,
                     &lines,
@@ -714,6 +715,7 @@ pub fn LogViewer(
                     ask_refusal.set(Some("Select a line first".to_string()));
                     return;
                 };
+                entry.request.model = model;
                 match assistant_entry::run(&service, entry).await {
                     Ok(_) => assistant_entry::show(&mut state, &project.id),
                     Err(reason) => ask_refusal.set(Some(reason)),

@@ -53,21 +53,28 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const STDERR_TAIL_LINES: usize = 20;
 
 /// The flags every `muse serve` host runs with (D43): no shell, no writes.
-/// `BERTH_MUSE_MODEL` adds `--model <id>` (the smoke tests use it to pick
-/// the cheapest model the installed muse accepts). Every flag here is one
+/// The user's model pick adds `--model <id>` (AD39); without one,
+/// `BERTH_MUSE_MODEL` does (the smoke tests use it to pick the cheapest
+/// model the installed muse accepts). Every flag here is one
 /// `muse serve --help` lists.
 #[must_use]
-pub fn serve_args() -> Vec<String> {
+pub fn serve_args(model: Option<&str>) -> Vec<String> {
     let mut args = vec![
         "serve".to_string(),
         "--disable-shell".to_string(),
         "--disable-write".to_string(),
     ];
-    if let Ok(model) = std::env::var("BERTH_MUSE_MODEL") {
-        if !model.trim().is_empty() {
-            args.push("--model".to_string());
-            args.push(model);
-        }
+    let model = model
+        .map(str::to_string)
+        .filter(|m| !m.trim().is_empty())
+        .or_else(|| {
+            std::env::var("BERTH_MUSE_MODEL")
+                .ok()
+                .filter(|m| !m.trim().is_empty())
+        });
+    if let Some(model) = model {
+        args.push("--model".to_string());
+        args.push(model);
     }
     args
 }
@@ -97,9 +104,8 @@ fn mcp_config(cfg: &SessionConfig) -> Value {
 
 /// The `session/start` params for a fresh session (PLAN §6.9). The host
 /// mints the session id; `commandId` is the required UUIDv7 idempotency
-/// handle. No `modelId`: `SessionConfig` carries no model choice, so the
-/// host's configured default applies (a specific model can still be forced
-/// host-wide through `BERTH_MUSE_MODEL`, see [`serve_args`]).
+/// handle. No `modelId`: the model is chosen host-wide at `serve` time
+/// (AD39, see [`serve_args`]), so every session of the host runs it.
 #[must_use]
 pub fn session_start(cfg: &SessionConfig) -> Value {
     json!({
@@ -722,7 +728,7 @@ pub async fn start(
     let harness_name = cfg.harness.name.clone();
     let mut command = Command::new(&cfg.harness.binary);
     command
-        .args(serve_args())
+        .args(serve_args(cfg.model.as_deref()))
         .current_dir(&cfg.workspace)
         .env("PATH", &cfg.path)
         .stdin(Stdio::piped())
@@ -888,6 +894,7 @@ mod tests {
             },
             path: std::env::var_os("PATH").unwrap_or_default(),
             system_prompt: "You are Berth.".into(),
+            model: None,
         }
     }
 
@@ -911,8 +918,20 @@ mod tests {
     }
 
     #[test]
+    fn muse_serve_args_carry_the_picked_model() {
+        let args = serve_args(Some("muse-spark-1.2"));
+        let at = args.iter().position(|a| a == "--model").expect("--model");
+        assert_eq!(args[at + 1], "muse-spark-1.2");
+        assert!(
+            !serve_args(Some("  ")).iter().any(|a| a == "--model")
+                || std::env::var_os("BERTH_MUSE_MODEL").is_some(),
+            "a blank pick adds no model of its own"
+        );
+    }
+
+    #[test]
     fn muse_serve_args_disable_shell_and_write() {
-        let args = serve_args();
+        let args = serve_args(None);
         assert_eq!(args[0], "serve");
         assert!(args.contains(&"--disable-shell".to_string()), "{args:?}");
         assert!(args.contains(&"--disable-write".to_string()), "{args:?}");

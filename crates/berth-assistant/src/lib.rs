@@ -58,6 +58,10 @@ pub struct SessionConfig {
     pub mcp: McpLaunch,
     pub path: std::ffi::OsString,
     pub system_prompt: String,
+    /// The model the user picked for this harness (AD39); `None` lets
+    /// the harness decide. The `BERTH_*_MODEL` env vars remain as a
+    /// fallback for the smoke tests.
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +149,7 @@ mod tests {
             },
             path: std::ffi::OsString::new(),
             system_prompt: String::new(),
+            model: None,
         }
     }
 

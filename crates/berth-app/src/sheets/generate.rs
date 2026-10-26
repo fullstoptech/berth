@@ -314,7 +314,10 @@ pub fn GenerateBody(
                             }
                         }
                     }
-                    let entry = assistant_entry::generate_entry(&folder, &engine_id, &chosen, &d);
+                    let mut entry =
+                        assistant_entry::generate_entry(&folder, &engine_id, &chosen, &d);
+                    entry.request.model =
+                        assistant_entry::saved_model(&state.settings.peek(), &chosen);
                     let project_id = entry.request.project.clone();
                     building.set(false);
                     on_close.call(());

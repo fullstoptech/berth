@@ -246,6 +246,7 @@ async fn assistant_entry_run_attaches_context_and_sends_the_first_turn() {
             project: project.id.clone(),
             project_name: "shop-api".to_string(),
             folder: project.folder.clone().expect("folder"),
+            model: None,
         })
         .await
         .expect("open");
@@ -273,6 +274,7 @@ async fn assistant_entry_watch_proposes_only_and_never_writes() {
             project: ProjectId("shop-api".to_string()),
             project_name: "shop-api".to_string(),
             folder: folder.clone(),
+            model: None,
         })
         .await
         .expect("open");

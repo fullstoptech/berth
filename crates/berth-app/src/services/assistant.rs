@@ -584,6 +584,8 @@ pub struct OpenRequest {
     pub project: ProjectId,
     pub project_name: String,
     pub folder: PathBuf,
+    /// The model picked for this harness (AD39); `None` = its default.
+    pub model: Option<String>,
 }
 
 /// A harness to run in a terminal the user drives (P7-T6): the same
@@ -872,6 +874,7 @@ impl AssistantService {
             mcp,
             path: super::login_path::search_path().await.path_var(),
             system_prompt: system_prompt(&req.project_name),
+            model: req.model.clone(),
         };
         let config =
             berth_assistant::claude::write_terminal_mcp_config(&cfg).map_err(|e| e.to_string())?;
@@ -880,6 +883,10 @@ impl AssistantService {
             config.to_string_lossy().into_owned(),
             "--strict-mcp-config".to_string(),
         ];
+        if let Some(model) = req.model.clone().filter(|m| !m.trim().is_empty()) {
+            args.push("--model".to_string());
+            args.push(model);
+        }
         if let Some(resume) = resume {
             args.push("--resume".to_string());
             args.push(resume);
@@ -911,6 +918,7 @@ impl AssistantService {
             mcp,
             path: super::login_path::search_path().await.path_var(),
             system_prompt: system_prompt(&req.project_name),
+            model: req.model.clone(),
         };
         let (cmd_tx, cmd_rx) = tokio::sync::mpsc::channel(8);
         let child = self.inner.cancel.child_token();
@@ -1676,6 +1684,7 @@ mod tests {
                 project: ProjectId("shop-api".to_string()),
                 project_name: "shop-api".to_string(),
                 folder,
+                model: None,
             })
             .await
             .expect("open");
@@ -2009,6 +2018,7 @@ mod tests {
             project: project.clone(),
             project_name: "shop-api".to_string(),
             folder: folder.clone(),
+            model: None,
         };
 
         let cancel = CancellationToken::new();
@@ -2094,6 +2104,7 @@ mod tests {
             project: project.clone(),
             project_name: "shop-api".to_string(),
             folder: folder.clone(),
+            model: None,
         };
         let id = service.open(request.clone()).await.expect("open");
         let _ = service.send(id, "hello".to_string(), None);

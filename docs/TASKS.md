@@ -269,6 +269,9 @@ Done when: `cargo nextest run -p berth-app assistant` passes the scene and state
 - `Clicked::Assistant(SessionId)` is the result of clicking a harness fix; `Turn.origin` carries the entry point text ("From Logs · Ask about 2 lines").
 Done when: `cargo nextest run -p berth-app assistant_entry` passes (context chips built from a selection; watch mode never calls write); by hand with `--broken`: Fix with Claude Code on the portclash problem reads logs through Berth's tools, proposes a compose change that opens Review changes, and `compose.up` waits for Approve.
 
+**P7-T7 Model selection (owner request at the Phase 7 acceptance, AD39).** `SessionConfig.model` (§6.9), `Settings.harness_models` (§6.4), `muse::serve_args(model)`. Adapters take the config pick first, then `BERTH_*_MODEL`, then the harness default. `ui/harness_picker.rs` `ModelPicker` beside the harness picker in the panel head: Default, curated (Claude aliases opus/sonnet/haiku; muse `muse-spark-1.2`), the saved custom pick, Custom… as an uncontrolled text field (Enter applies). Changing the model saves it per harness and restarts the live session (`retry`, resuming the harness conversation); Open in Terminal passes `--model` too.
+Done when: `cargo nextest run -p berth-store settings_harness_models -p berth-assistant model -p berth-app harness_picker` passes (old settings load empty; the pick beats the env var; options keep a custom pick selectable); by hand: picking Haiku restarts the session and the next answer's model is haiku.
+
 ---
 
 ## Phase 8 — Remote engines and Portainer parity (branch `phase/8-parity`, tag `v0.8`)

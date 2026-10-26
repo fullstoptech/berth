@@ -52,7 +52,19 @@ fn request(project: &Project, harness: &Harness) -> Option<OpenRequest> {
         project: project.id.clone(),
         project_name: project.name.clone(),
         folder: project.folder.clone()?,
+        model: None,
     })
+}
+
+/// The model saved for a harness (AD39); entry-point callers stamp it
+/// on `entry.request.model` before [`run`].
+#[must_use]
+pub fn saved_model(settings: &berth_store::Settings, harness: &Harness) -> Option<String> {
+    settings
+        .harness_models
+        .get(&harness.id.0)
+        .filter(|m| !m.trim().is_empty())
+        .cloned()
 }
 
 /// The project a container belongs to: its own link, else the project
@@ -279,6 +291,7 @@ pub fn generate_entry(
             project: ProjectId::for_folder(folder, engine),
             project_name: name,
             folder: folder.to_path_buf(),
+            model: None,
         },
         context,
         prompt: format!(

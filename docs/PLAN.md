@@ -803,6 +803,7 @@ pub struct Settings {
     pub default_engine: Option<berth_core::EngineId>,
     pub last_harness: Option<berth_core::HarnessId>,
     pub harness_paths: std::collections::BTreeMap<String, std::path::PathBuf>,   // user-chosen binaries
+    pub harness_models: std::collections::BTreeMap<String, String>,   // AD39 (2026-10-26): model picked per harness id; absent = the harness decides
     pub terminal_app: Option<String>, pub editor: Option<String>,
     pub favourites: Vec<std::path::PathBuf>,
     pub show_dock_icon: bool, pub update_check: bool,
@@ -1233,6 +1234,7 @@ pub struct McpLaunch { pub berth_binary: std::path::PathBuf, pub bridge: std::pa
 pub struct SessionConfig {
     pub harness: berth_core::Harness, pub session: berth_core::SessionId, pub workspace: std::path::PathBuf,
     pub resume: Option<String>, pub mcp: McpLaunch, pub path: std::ffi::OsString, pub system_prompt: String,
+    pub model: Option<String>,   // AD39 (2026-10-26): the user's pick from Settings; adapters fall back to BERTH_*_MODEL, then the harness default
 }
 pub struct UserInput { pub text: String, pub context: Vec<berth_core::ContextItem> }
 #[derive(Debug, Clone, PartialEq)]
@@ -1253,7 +1255,7 @@ pub trait HarnessSession: Send {
 pub async fn start(cfg: SessionConfig, cancel: tokio_util::sync::CancellationToken)
     -> Result<(Box<dyn HarnessSession>, tokio::sync::mpsc::Receiver<AssistantEvent>), AssistantError>;
 pub mod claude { pub const FLAGS: &[&str]; pub fn args(cfg: &super::SessionConfig, mcp_config: &std::path::Path) -> Vec<String>; pub fn parse_line(line: &str) -> Vec<super::AssistantEvent>; pub fn write_terminal_mcp_config(cfg: &super::SessionConfig) -> Result<std::path::PathBuf, AssistantError>; }   // AD38 (2026-10-26): the terminal TUI's own 0600 config (`mcp-<session>-terminal.json`), removed by the .command script's EXIT trap
-pub mod muse   { pub fn serve_args() -> Vec<String>; pub fn session_start(cfg: &super::SessionConfig) -> serde_json::Value; pub fn parse_notification(v: &serde_json::Value) -> Vec<super::AssistantEvent>; pub fn approval_decision(params: &serde_json::Value) -> serde_json::Value; }   // AD37 (2026-10-26): approval_decision is the pure, testable answer to approval/requested (allow for berth tools, deny otherwise)
+pub mod muse   { pub fn serve_args(model: Option<&str>) -> Vec<String>;   // AD39: the pick, else BERTH_MUSE_MODEL pub fn session_start(cfg: &super::SessionConfig) -> serde_json::Value; pub fn parse_notification(v: &serde_json::Value) -> Vec<super::AssistantEvent>; pub fn approval_decision(params: &serde_json::Value) -> serde_json::Value; }   // AD37 (2026-10-26): approval_decision is the pure, testable answer to approval/requested (allow for berth tools, deny otherwise)
 pub mod context { pub fn render(items: &[berth_core::ContextItem], resolve: &dyn Fn(&berth_core::ContextItem) -> String) -> String; }
 ```
 

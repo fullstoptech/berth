@@ -58,12 +58,17 @@ pub fn picked_harness(
 /// The session request for a project and harness; a project with no
 /// folder on this Mac gives the assistant nowhere to work.
 #[must_use]
-pub fn open_request(project: &Project, harness: &Harness) -> Option<OpenRequest> {
+pub fn open_request(
+    project: &Project,
+    harness: &Harness,
+    settings: &berth_store::Settings,
+) -> Option<OpenRequest> {
     Some(OpenRequest {
         harness: harness.clone(),
         project: project.id.clone(),
         project_name: project.name.clone(),
         folder: project.folder.clone()?,
+        model: crate::services::assistant_entry::saved_model(settings, harness),
     })
 }
 
@@ -251,7 +256,9 @@ pub fn AssistantPanel() -> Element {
             _ => None,
         };
         let request = match (&view.project, &view.harness) {
-            (Some(project), Some(harness)) => open_request(project, harness),
+            (Some(project), Some(harness)) => {
+                open_request(project, harness, &state.settings.peek())
+            }
             _ => None,
         };
         use_effect(move || {
@@ -287,7 +294,7 @@ pub fn AssistantPanel() -> Element {
     let session = view.session.clone();
     let no_harness = !harnesses.iter().any(|h| h.available);
     let request = match (&project, &harness) {
-        (Some(project), Some(harness)) => open_request(project, harness),
+        (Some(project), Some(harness)) => open_request(project, harness, &state.settings.peek()),
         _ => None,
     };
     let proposals = session.as_ref().map(proposals_of).unwrap_or_default();

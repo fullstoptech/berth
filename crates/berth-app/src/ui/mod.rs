@@ -80,7 +80,7 @@ pub use engine_switcher::{engine_dot, scope_includes, EngineSwitcher};
 pub use file_browser::{FileBrowser, Listing};
 pub use files_panel::FilesPanel;
 pub use group_header_row::{count_label, GroupHeaderRow};
-pub use harness_picker::{harness_label, HarnessPicker};
+pub use harness_picker::{harness_label, HarnessPicker, ModelPicker};
 pub use icon::{Icon, IconSize};
 pub use icon_button::{IconButton, IconButtonTone};
 pub use inline_message::{InlineMessage, InlineTone};

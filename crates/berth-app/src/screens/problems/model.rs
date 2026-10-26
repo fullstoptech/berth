@@ -545,14 +545,16 @@ pub fn harness_entry(
                 .cloned()
         })
         .or_else(|| assistant_entry::first_available(&harnesses))?;
-    with_view(state, |view| {
+    let mut entry = with_view(state, |view| {
         let project = project_of(problem, view)?;
         let container = match &problem.subject {
             Subject::Container(id) => view.containers.iter().find(|c| c.id == *id),
             _ => None,
         };
         assistant_entry::problem_entry(project, &harness, problem, container)
-    })
+    })?;
+    entry.request.model = assistant_entry::saved_model(&state.settings.peek(), &harness);
+    Some(entry)
 }
 
 /// Run a harness fix button: open the project's assistant on the
