@@ -215,7 +215,7 @@ Done when: `cargo nextest run -p berth-app a11y` passes (SSR: no `button` withou
 
 ## Phase 7 — Assistant (branch `phase/7-assistant`, tag `v0.7`)
 
-Learned: —
+Learned: Phase 6 closed 2026-10-26 with the perf gate green but noisy (cold start is WKWebView-bound; measure on a quiet machine and report the range). Timers follow the one `Visibility` signal (`services/visibility.rs` Pacer); a hidden-window wake must filter event-loop lifecycle events or the app spins a core (`event_may_show_window`). Every new screen is automatically covered by the scene-wide SSR a11y audit, and bare-key shortcuts go through `focus::bare_keys_allowed`. The login-shell PATH is resolved once (`services/login_path`); snapshots paint before discovery. AD37 settled the Phase 7 contracts before any coding: wire tool names, the redact module as the only path for anything a harness sees, one short `bridge.sock`, live harness tests in `berth-app/tests/assistant_it.rs`, and only four live harness runs in total (recorded transcripts and a fake harness cover the rest). The tray menu is AX-scriptable end to end (osascript menu bar 2), including Stop/Start project with the window closed. Owner decision 2026-10-26: no voice in the app.
 
 **Architect notes (gap review 2026-10-26, AD37):** all Phase 7 tasks.
 - The installed harnesses are now `claude` 2.1.310 and `muse` 1.4.13; the done-whens that say "or newer" hold.
