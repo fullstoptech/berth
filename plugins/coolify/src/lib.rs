@@ -6,7 +6,11 @@
 //! library is the crate-only slice: response types, the HTTP client and the
 //! pure mappings from API types to `berth-plugin-protocol` views.
 
+pub mod actions;
+pub mod badges;
 pub mod client;
+pub mod logs;
+pub mod mcp;
 pub mod types;
 pub mod views;
 

@@ -144,10 +144,75 @@ pub struct Deployment {
     pub server_id: Option<i64>,
     #[serde(default)]
     pub deployment_url: Option<String>,
+    /// The deployment log so far: a JSON array of entries with an
+    /// `output` field, carried as a string.
+    #[serde(default)]
+    pub logs: Option<String>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
     pub updated_at: Option<String>,
+}
+
+/// `POST /deploy` body: one entry per resource accepted for deployment.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct DeployResponse {
+    #[serde(default)]
+    pub deployments: Vec<DeployEntry>,
+}
+
+/// One accepted deployment inside [`DeployResponse`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct DeployEntry {
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub resource_uuid: Option<String>,
+    #[serde(default)]
+    pub deployment_uuid: Option<String>,
+}
+
+/// The small acknowledgement body the start/stop/restart/cancel endpoints
+/// return (`{"message": "…"}`); an empty body decodes as all-`None`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct ActionAck {
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+/// Which resource family a start/stop/restart acts on; each maps to its
+/// own URL family in the spec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResourceKind {
+    Application,
+    Service,
+    Database,
+}
+
+impl ResourceKind {
+    /// The URL segment: `applications`, `services` or `databases`.
+    #[must_use]
+    pub fn path_segment(self) -> &'static str {
+        match self {
+            ResourceKind::Application => "applications",
+            ResourceKind::Service => "services",
+            ResourceKind::Database => "databases",
+        }
+    }
+
+    /// Parses the `kind` an action's params carry ("application",
+    /// "service", "database"; Coolify's `standalone-*` resource types
+    /// count as databases).
+    #[must_use]
+    pub fn parse(kind: &str) -> Option<Self> {
+        match kind {
+            "application" => Some(ResourceKind::Application),
+            "service" => Some(ResourceKind::Service),
+            "database" => Some(ResourceKind::Database),
+            other if other.starts_with("standalone-") => Some(ResourceKind::Database),
+            _ => None,
+        }
+    }
 }
 
 /// `GET /applications/{uuid}/logs` body: `{"logs": "..."}`.
