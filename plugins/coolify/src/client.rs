@@ -1,6 +1,6 @@
 //! Hand-written `reqwest` client for the Coolify read endpoints (D46).
 //!
-//! The bearer [REDACTED] is supplied by the caller as a [`SecretString`] — in
+//! The API credential is supplied by the caller as a [`SecretString`] — in
 //! the running plugin it comes from `host/secret.get` (wired with the
 //! plugin binary in P9-T2/T5). It is only ever exposed into the
 //! `Authorization` header of a single request; `Debug` and every error
@@ -14,8 +14,8 @@ use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 
 use crate::types::{
-    AppLogs, Application, Deployment, EnvVar, EnvVarWithValue, Resource, RevealedEnvVar, Server,
-    VersionInfo,
+    ActionAck, AppLogs, Application, DeployResponse, Deployment, EnvVar, EnvVarWithValue, Resource,
+    ResourceKind, RevealedEnvVar, Server, VersionInfo,
 };
 
 /// The Coolify major this client is built against (spec tag v4.5.0).
@@ -66,7 +66,7 @@ impl fmt::Debug for CoolifyClient {
 impl CoolifyClient {
     /// `base_url` is the instance address (`https://coolify.example.test`,
     /// with or without the `/api/v1` suffix); `token` is the API bearer
-    /// [REDACTED] from `host/secret.get`.
+    /// credential from `host/secret.get`.
     pub fn new(base_url: &str, token: SecretString) -> Result<Self, ClientError> {
         // reqwest is built with `rustls-no-provider` (D48); the plugin
         // binary installs ring at startup, tests do it here on first use.
@@ -81,6 +81,13 @@ impl CoolifyClient {
             .build()
             .map_err(|e| ClientError::BadBase(e.to_string()))?;
         Ok(Self { http, base, token })
+    }
+
+    /// The normalized API root (`…/api/v1`); the MCP payload builder
+    /// derives the instance root from it.
+    #[must_use]
+    pub fn api_base(&self) -> &str {
+        &self.base
     }
 
     /// `GET /health` — plain-text `OK`.
@@ -193,13 +200,110 @@ impl CoolifyClient {
             .collect())
     }
 
+    /// `GET /deployments/{uuid}` — one deployment, for log polling.
+    pub async fn deployment(
+        &self,
+        uuid: &str,
+        cancel: &CancellationToken,
+    ) -> Result<Deployment, ClientError> {
+        self.get_json(&format!("deployments/{uuid}"), &[], cancel)
+            .await
+    }
+
+    /// `POST /deploy?uuid=…` — queue a deployment; `force=true` rebuilds
+    /// without the build cache (skipped from the query when false).
+    pub async fn deploy(
+        &self,
+        uuid: &str,
+        force: bool,
+        cancel: &CancellationToken,
+    ) -> Result<DeployResponse, ClientError> {
+        let mut query = vec![("uuid", uuid.to_owned())];
+        if force {
+            query.push(("force", "true".to_owned()));
+        }
+        self.post_json("deploy", &query, cancel).await
+    }
+
+    /// `POST /{applications|services|databases}/{uuid}/start`.
+    pub async fn start(
+        &self,
+        kind: ResourceKind,
+        uuid: &str,
+        cancel: &CancellationToken,
+    ) -> Result<ActionAck, ClientError> {
+        self.lifecycle(kind, uuid, "start", cancel).await
+    }
+
+    /// `POST /{applications|services|databases}/{uuid}/stop`.
+    pub async fn stop(
+        &self,
+        kind: ResourceKind,
+        uuid: &str,
+        cancel: &CancellationToken,
+    ) -> Result<ActionAck, ClientError> {
+        self.lifecycle(kind, uuid, "stop", cancel).await
+    }
+
+    /// `POST /{applications|services|databases}/{uuid}/restart`.
+    pub async fn restart(
+        &self,
+        kind: ResourceKind,
+        uuid: &str,
+        cancel: &CancellationToken,
+    ) -> Result<ActionAck, ClientError> {
+        self.lifecycle(kind, uuid, "restart", cancel).await
+    }
+
+    /// `POST /deployments/{uuid}/cancel`.
+    pub async fn cancel_deployment(
+        &self,
+        uuid: &str,
+        cancel: &CancellationToken,
+    ) -> Result<ActionAck, ClientError> {
+        self.post_json(&format!("deployments/{uuid}/cancel"), &[], cancel)
+            .await
+    }
+
+    async fn lifecycle(
+        &self,
+        kind: ResourceKind,
+        uuid: &str,
+        verb: &str,
+        cancel: &CancellationToken,
+    ) -> Result<ActionAck, ClientError> {
+        self.post_json(
+            &format!("{}/{uuid}/{verb}", kind.path_segment()),
+            &[],
+            cancel,
+        )
+        .await
+    }
+
+    async fn post_json<T: DeserializeOwned + Default>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        cancel: &CancellationToken,
+    ) -> Result<T, ClientError> {
+        let bytes = self
+            .request_bytes(reqwest::Method::POST, path, query, cancel)
+            .await?;
+        if bytes.iter().all(u8::is_ascii_whitespace) {
+            return Ok(T::default());
+        }
+        serde_json::from_slice(&bytes).map_err(|e| ClientError::Decode(e.to_string()))
+    }
+
     async fn get_json<T: DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, String)],
         cancel: &CancellationToken,
     ) -> Result<T, ClientError> {
-        let bytes = self.get_bytes(path, query, cancel).await?;
+        let bytes = self
+            .request_bytes(reqwest::Method::GET, path, query, cancel)
+            .await?;
         serde_json::from_slice(&bytes).map_err(|e| ClientError::Decode(e.to_string()))
     }
 
@@ -209,12 +313,15 @@ impl CoolifyClient {
         query: &[(&str, String)],
         cancel: &CancellationToken,
     ) -> Result<String, ClientError> {
-        let bytes = self.get_bytes(path, query, cancel).await?;
+        let bytes = self
+            .request_bytes(reqwest::Method::GET, path, query, cancel)
+            .await?;
         String::from_utf8(bytes).map_err(|e| ClientError::Decode(e.to_string()))
     }
 
-    async fn get_bytes(
+    async fn request_bytes(
         &self,
+        method: reqwest::Method,
         path: &str,
         query: &[(&str, String)],
         cancel: &CancellationToken,
@@ -222,7 +329,7 @@ impl CoolifyClient {
         let url = format!("{}/{path}", self.base);
         let send = self
             .http
-            .get(&url)
+            .request(method, &url)
             .query(query)
             .header(
                 reqwest::header::AUTHORIZATION,
