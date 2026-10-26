@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Manifest",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "executable": {
+      "description": "Path of the plugin executable, relative to the manifest file.",
+      "type": "string"
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Permission"
+      },
+      "default": []
+    },
+    "contributes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Contribution"
+      },
+      "default": []
+    },
+    "config": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ConfigField"
+      },
+      "default": []
+    },
+    "secrets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SecretDecl"
+      },
+      "default": []
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "version",
+    "protocol",
+    "executable"
+  ],
+  "$defs": {
+    "Permission": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "network"
+            },
+            "hosts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "hosts"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "read_engines"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "run_engine_actions"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "secrets"
+            },
+            "keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "keys"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "mcp"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        }
+      ]
+    },
+    "Contribution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "sidebar_section"
+            },
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SidebarEntry"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "title",
+            "items"
+          ]
+        },
+        {
+          "description": "\"Deployed on Coolify: running\" on a local project row.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "project_badge"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "palette_commands"
+            },
+            "commands": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/PaletteCommand"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "commands"
+          ]
+        }
+      ]
+    },
+    "SidebarEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "view"
+      ]
+    },
+    "PaletteCommand": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "action"
+      ]
+    },
+    "ConfigField": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/FieldKind"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "kind",
+        "required"
+      ]
+    },
+    "FieldKind": {
+      "type": "string",
+      "enum": [
+        "text",
+        "url",
+        "secret",
+        "bool"
+      ]
+    },
+    "SecretDecl": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "label"
+      ]
+    }
+  }
+}

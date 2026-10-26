@@ -336,6 +336,11 @@ dependencies = [
 [[package]]
 name = "berth-plugin-protocol"
 version = "0.6.0"
+dependencies = [
+ "schemars",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "berth-registry"
