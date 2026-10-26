@@ -6,12 +6,28 @@ publish.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+name = "berth_coolify"
+path = "src/lib.rs"
+
 [[bin]]
 name = "berth-coolify"
 path = "src/main.rs"
 
 [dependencies]
 berth-plugin-protocol.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+secrecy.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
 
 [lints]
 workspace = true

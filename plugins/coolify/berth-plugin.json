@@ -1,0 +1,31 @@
+{
+  "id": "coolify",
+  "name": "Coolify",
+  "version": "0.6.0",
+  "protocol": 1,
+  "executable": "berth-coolify",
+  "permissions": [
+    { "kind": "network", "hosts": ["*"] },
+    { "kind": "secrets", "keys": ["coolify/token"] },
+    { "kind": "mcp" }
+  ],
+  "contributes": [
+    {
+      "kind": "sidebar_section",
+      "id": "coolify",
+      "title": "Coolify",
+      "items": [
+        { "id": "resources", "title": "Resources", "view": "resources" },
+        { "id": "deployments", "title": "Deployments", "view": "deployments" },
+        { "id": "servers", "title": "Servers", "view": "servers" }
+      ]
+    },
+    { "kind": "project_badge", "id": "coolify-deployed" }
+  ],
+  "config": [
+    { "key": "base_url", "label": "Coolify address", "kind": "url", "required": true }
+  ],
+  "secrets": [
+    { "key": "coolify/token", "label": "API [REDACTED]" }
+  ]
+}

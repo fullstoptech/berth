@@ -265,6 +265,16 @@ name = "berth-coolify"
 version = "0.8.0"
 dependencies = [
  "berth-plugin-protocol",
+ "reqwest",
+ "rustls",
+ "secrecy",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "wiremock",
 ]
 
 [[package]]
