@@ -47,6 +47,9 @@ uuid.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 wiremock.workspace = true
+# The mcp_it client (P7-T2, AD37): rmcp is a PLAN §5 crate; only the test
+# needs the client half.
+rmcp = { workspace = true, features = ["client", "transport-child-process"] }
 
 [lints]
 workspace = true

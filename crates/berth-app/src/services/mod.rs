@@ -33,6 +33,7 @@ pub mod settings_save;
 pub mod stats;
 pub mod templates;
 pub mod timing;
+pub mod tools;
 pub mod updates;
 pub mod visibility;
 pub mod volume_backup;
