@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::generation::GenerationPlan;
 use crate::ids::{ContainerId, HarnessId, ProblemId, ProjectId, SessionId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +35,8 @@ pub enum ContextItem {
     Dockerfile(std::path::PathBuf),
     Inspect(ContainerId),
     FolderTree(std::path::PathBuf),
+    /// A plain project file (AD37): `package.json` for Generate with a harness.
+    File(std::path::PathBuf),
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolCall {
@@ -52,6 +53,15 @@ pub enum ToolStatus {
     WaitingForApproval,
     Denied,
 }
+/// Where a proposed change stands (AD37). The plan itself lives in the
+/// app's `PlanStore`; `Gone` when it no longer exists (e.g. after a restart).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProposalState {
+    Pending,
+    Written,
+    Discarded,
+    Gone,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TurnPart {
     Text(String),
@@ -59,9 +69,14 @@ pub enum TurnPart {
         call: ToolCall,
         status: ToolStatus,
     },
+    /// AD37: `save_session` writes JSON to berth.db and a `GenerationPlan`
+    /// carries `.env` text, so a turn stores only a summary of the plan
+    /// (per file: path, lines added, lines removed), never the plan.
     ProposedChange {
         change_id: uuid::Uuid,
-        plan: GenerationPlan,
+        title: String,
+        files: Vec<(std::path::PathBuf, u32, u32)>,
+        state: ProposalState,
     },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,6 +89,10 @@ pub struct Turn {
     pub role: TurnRole,
     pub parts: Vec<TurnPart>,
     pub at: DateTime<Utc>,
+    /// AD37: the entry point shown above the turn, e.g.
+    /// "From Logs · Ask about 2 lines".
+    #[serde(default)]
+    pub origin: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SessionState {
@@ -111,6 +130,7 @@ mod tests {
                 role: TurnRole::User,
                 parts: vec![TurnPart::Text("hi".to_string())],
                 at: DateTime::from_timestamp(40, 0).expect("ts"),
+                origin: Some("From Logs · Ask about 2 lines".to_string()),
             }],
             state: SessionState::Idle,
             watch: false,

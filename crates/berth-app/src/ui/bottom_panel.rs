@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 use super::dock::RegionMode;
+use super::harness_picker::HarnessPicker;
 use super::icon_button::IconButton;
 use super::tabs::{TabItem, Tabs, TabsVariant};
 use crate::state::{AppState, BottomTab};
@@ -104,6 +105,14 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
         return rsx! {};
     };
     let problem_count = state.problems.read().len();
+    // The harness picker in the head follows detection and the session.
+    if panel.tab == BottomTab::Assistant {
+        let _ = state.harnesses.read();
+        let _ = state.assistant.read();
+        let _ = state.selection.read();
+        let _ = state.projects.read();
+        let _ = state.settings.read();
+    }
     let dragging = drag().is_some();
     let data_mode = match mode {
         RegionMode::InspectorOnly => "inspector",
@@ -111,11 +120,18 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
         RegionMode::Split => "split",
     };
     let shows_panel = mode != RegionMode::InspectorOnly;
+    // The assistant's "full section" is this panel maximized (AD37).
+    let maximized = panel.maximized && panel.tab == BottomTab::Assistant;
+    let panel_class = if maximized {
+        "bottom-panel maximized"
+    } else {
+        "bottom-panel"
+    };
     rsx! {
         section {
-            class: "bottom-panel",
+            class: panel_class,
             "data-mode": data_mode,
-            style: "height: {panel.height_px}px;",
+            style: if maximized { String::new() } else { format!("height: {}px;", panel.height_px) },
             "aria-label": "Bottom panel",
             div {
                 class: "bottom-resize",
@@ -147,6 +163,39 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
                                 },
                             }
                             div { class: "bottom-close",
+                                if panel.tab == BottomTab::Assistant {
+                                    {
+                                        let harnesses = state.harnesses.peek().clone();
+                                        let picked = crate::screens::assistant::picked_harness_for_state(&state)
+                                            .map(|h| h.id.0)
+                                            .unwrap_or_default();
+                                        let (max_icon, max_label, max_tooltip) = if maximized {
+                                            ("chevron-down", "Restore the panel size", "Restore")
+                                        } else {
+                                            ("chevron-up", "Maximize the assistant", "Maximize")
+                                        };
+                                        rsx! {
+                                            HarnessPicker {
+                                                harnesses,
+                                                selected: picked,
+                                                onchange: move |id: String| {
+                                                    state.settings.write().last_harness =
+                                                        Some(berth_core::HarnessId(id));
+                                                },
+                                            }
+                                            IconButton {
+                                                icon: max_icon,
+                                                label: max_label.to_string(),
+                                                tooltip: max_tooltip.to_string(),
+                                                pressed: maximized,
+                                                onclick: move |_| {
+                                                    let mut bottom = state.bottom.write();
+                                                    bottom.maximized = !bottom.maximized;
+                                                },
+                                            }
+                                        }
+                                    }
+                                }
                                 IconButton {
                                     icon: "x",
                                     label: "Close panel".to_string(),
@@ -164,6 +213,9 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
                             }
                             if panel.tab == BottomTab::Problems {
                                 crate::screens::problems::ProblemsPanel {}
+                            }
+                            if panel.tab == BottomTab::Assistant {
+                                crate::screens::assistant::AssistantPanel {}
                             }
                         }
                     }

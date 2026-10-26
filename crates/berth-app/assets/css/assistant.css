@@ -1,0 +1,331 @@
+/* Assistant tab of the bottom panel (P7-T5, frame "Project / assistant / 1440"). Tokens only. */
+.assistant {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  padding: var(--space-8) var(--space-12) var(--space-8);
+  background: var(--color-surface);
+}
+.assistant-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-16);
+  height: 100%;
+  min-height: 0;
+}
+.assistant-cols.has-cards {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 38%);
+}
+.assistant-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: var(--space-6);
+}
+.assistant-turns {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding-right: var(--space-4);
+}
+.assistant-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+}
+
+/* Turns */
+.chat-turn { display: flex; flex-direction: column; gap: var(--space-4); }
+.chat-origin {
+  margin: 0;
+  text-align: right;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.chat-user-row { display: flex; justify-content: flex-end; }
+.chat-bubble {
+  max-width: 72%;
+  padding: var(--space-6) var(--space-12);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-assistant { display: flex; flex-direction: column; gap: var(--space-6); }
+.chat-prose {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Tool rows */
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  box-sizing: border-box;
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.tool-row-icon { display: inline-flex; color: var(--color-ink-muted); flex: none; }
+.tool-row-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.tool-row-ms {
+  flex: none;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.tool-row-chevron { display: inline-flex; color: var(--color-ink-muted); flex: none; }
+.tool-denied .tool-row-summary, .tool-failed .tool-row-summary { color: var(--color-ink-muted); }
+.assistant-spin { display: inline-flex; animation: berth-spin 1s linear infinite; }
+
+/* Risk badge (tool rows and the approval card) */
+.assistant-risk {
+  flex: none;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: var(--text-label-weight);
+}
+.risk-read { background: var(--color-surface-sunken); color: var(--color-ink-muted); }
+.risk-change { background: var(--color-warning-subtle); color: var(--color-warning); }
+.risk-destructive { background: var(--color-danger-subtle); color: var(--color-danger); }
+
+/* Proposed-change and approval cards */
+.proposal-card, .approval-card {
+  box-sizing: border-box;
+  padding: var(--space-12);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.proposal-step {
+  margin: 0 0 var(--space-4);
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.proposal-title {
+  margin: 0;
+  font-size: var(--text-h3-size);
+  line-height: var(--text-h3-line);
+  font-weight: var(--text-h3-weight);
+}
+.proposal-totals {
+  margin: var(--space-4) 0 var(--space-8);
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.proposal-files { display: flex; flex-direction: column; gap: var(--space-4); margin-bottom: var(--space-12); }
+.proposal-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+}
+.proposal-file-icon { display: inline-flex; color: var(--color-ink-muted); }
+.proposal-file-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proposal-file-added { color: var(--color-success); }
+.proposal-file-removed { color: var(--color-danger); }
+.proposal-actions, .approval-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.proposal-state {
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.approval-head { display: flex; align-items: center; gap: var(--space-8); }
+.approval-title {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  font-weight: var(--text-body-weight);
+}
+.approval-command {
+  margin: var(--space-8) 0;
+  padding: var(--space-8);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.approval-line {
+  margin: 0 0 var(--space-8);
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.approval-card .text-field { margin-bottom: var(--space-8); }
+
+/* Context chips, input, footnote */
+.assistant-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+.context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-8);
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.context-chip-icon { display: inline-flex; color: var(--color-ink-muted); }
+.assistant .context-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+.assistant .context-chip-x:hover { color: var(--color-ink); background: var(--color-surface-hover); }
+.assistant-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+.assistant-input { flex: 1; min-width: 0; }
+.assistant-footnote {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+}
+.assistant-thinking {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+
+/* Empty, no-harness and error states */
+.assistant-empty, .assistant-no-harness {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-12) 0;
+}
+.assistant-empty-title {
+  margin: 0;
+  font-size: var(--text-h3-size);
+  line-height: var(--text-h3-line);
+  font-weight: var(--text-h3-weight);
+}
+.assistant-empty-text {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.assistant-install-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+}
+.assistant-install-name {
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  font-weight: var(--text-label-weight);
+}
+.assistant-install-hint {
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.assistant-install-cmd {
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+}
+.assistant-error { display: flex; flex-direction: column; gap: var(--space-6); }
+.assistant-stderr {
+  margin: 0;
+  max-height: 120px;
+  overflow: auto;
+  padding: var(--space-8);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Harness picker in the panel head */
+.harness-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding-right: var(--space-6);
+}
+.harness-picker-icon { display: inline-flex; color: var(--color-ink-muted); }
+.harness-picker-empty {
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.bottom-head-actions { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* `.bottom-panel button` (shell.css) resets every button inside the panel:
+   restate the shared Button's looks one level up, as terminal.css does. */
+.assistant .btn, .bottom-head .harness-picker .btn { padding: 0 var(--space-12); border-radius: var(--radius-md); }
+.assistant .btn-primary { background: var(--color-accent-fill); color: var(--color-on-accent-fill); }
+.assistant .btn-primary:hover:not(:disabled) { background: var(--color-accent-fill-hover); }
+.assistant .btn-primary:active:not(:disabled) { background: var(--color-accent-fill-pressed); }
+.assistant .btn-secondary { background: var(--color-surface); border-color: var(--color-line-strong); }
+.assistant .btn-secondary:hover:not(:disabled) { background: var(--color-surface-hover); }
+.assistant .btn-secondary:active:not(:disabled) { background: var(--color-surface-pressed); }
+.assistant .btn-ghost:hover:not(:disabled), .assistant .btn-ghost:active:not(:disabled) { background: var(--color-surface-hover); }
+.assistant .btn:disabled { color: var(--color-ink-disabled); cursor: default; }
+.assistant .btn-primary:disabled { background: var(--color-surface-hover); }

@@ -19,6 +19,7 @@ fn header(item: &ContextItem) -> String {
         ContextItem::Dockerfile(path) => format!("## Dockerfile: {}", path.display()),
         ContextItem::Inspect(id) => format!("## Inspect: container {}", id.short()),
         ContextItem::FolderTree(path) => format!("## Folder: {}", path.display()),
+        ContextItem::File(path) => format!("## File: {}", path.display()),
     }
 }
 

@@ -327,7 +327,7 @@ fn resolve_context(item: &berth_core::ContextItem) -> String {
     match item {
         ContextItem::Logs { lines, .. } => lines.join("\n"),
         ContextItem::ComposeFile(path) => crate::redact::compose_text(&read_capped(path)),
-        ContextItem::Dockerfile(path) => read_capped(path),
+        ContextItem::Dockerfile(path) | ContextItem::File(path) => read_capped(path),
         ContextItem::FolderTree(path) => {
             let mut names: Vec<String> = Vec::new();
             if let Ok(entries) = std::fs::read_dir(path) {

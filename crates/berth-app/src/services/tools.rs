@@ -171,9 +171,27 @@ impl ToolOutput {
 
 type ToolResult = Result<ToolOutput, String>;
 
+/// One parked proposed change, for whoever shows the session (P7-T5):
+/// enough to draw the card, never the plan itself (AD37).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProposalNotice {
+    pub session: SessionId,
+    pub plan_id: uuid::Uuid,
+    /// The harness's one-line summary, or "Edit <path>".
+    pub title: String,
+    /// Per file: path, lines added, lines removed.
+    pub files: Vec<(PathBuf, u32, u32)>,
+}
+
 pub struct ToolCore {
     deps: ToolDeps,
     approvals: ApprovalHub,
+    /// Where `files.propose_edit` announces its parked plan.
+    proposal_tx: tokio::sync::mpsc::UnboundedSender<ProposalNotice>,
+    proposal_rx: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<ProposalNotice>>>,
+    /// The folder each live session's files tools act in, registered by
+    /// the assistant service when it opens the session.
+    session_folders: std::sync::Mutex<std::collections::BTreeMap<SessionId, PathBuf>>,
 }
 
 type Client = Arc<dyn EngineClient>;
@@ -181,7 +199,42 @@ type Client = Arc<dyn EngineClient>;
 impl ToolCore {
     #[must_use]
     pub fn new(deps: ToolDeps, approvals: ApprovalHub) -> Self {
-        Self { deps, approvals }
+        let (proposal_tx, proposal_rx) = tokio::sync::mpsc::unbounded_channel();
+        Self {
+            deps,
+            approvals,
+            proposal_tx,
+            proposal_rx: std::sync::Mutex::new(Some(proposal_rx)),
+            session_folders: std::sync::Mutex::new(std::collections::BTreeMap::new()),
+        }
+    }
+
+    /// The receiver of [`ProposalNotice`]s. Only the first caller gets it.
+    pub fn take_proposals(&self) -> Option<tokio::sync::mpsc::UnboundedReceiver<ProposalNotice>> {
+        self.proposal_rx
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+
+    /// Where a session's files tools act when a call names no project.
+    pub fn register_session_folder(&self, session: SessionId, folder: PathBuf) {
+        self.session_folders
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(session, folder);
+    }
+
+    fn session_folder(&self, session: Option<&SessionId>) -> Option<PathBuf> {
+        session
+            .and_then(|id| {
+                self.session_folders
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .get(id)
+                    .cloned()
+            })
+            .or_else(|| self.deps.session_folder.clone())
     }
 
     /// The pending proposed changes (`files.propose_edit` parks plans here).
@@ -216,7 +269,7 @@ impl ToolCore {
             }
         }
 
-        match self.execute(def, &req.args).await {
+        match self.execute(def, &req.args, &req.session).await {
             Ok(mut out) => {
                 let text = berth_assistant::redact::scrub(&out.text, &out.secrets);
                 let data = out
@@ -438,10 +491,12 @@ impl ToolCore {
     }
 
     /// The folder a files tool acts in: the named project, else the
-    /// session folder. Returns the folder and the project, when known.
+    /// folder registered for `session` (or the deps' session folder).
+    /// Returns the folder and the project, when known.
     async fn resolve_folder(
         &self,
         project_arg: Option<&str>,
+        session: Option<&SessionId>,
     ) -> Result<(PathBuf, Option<Project>), String> {
         if let Some(name) = project_arg {
             if let Ok(project) = self.find_project(name).await {
@@ -451,17 +506,15 @@ impl ToolCore {
                     .ok_or_else(|| format!("project {name} has no folder on this Mac"))?;
                 return Ok((folder, Some(project)));
             }
-            if let Some(folder) = &self.deps.session_folder {
+            if let Some(folder) = self.session_folder(session) {
                 let base = folder.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 if base == name {
-                    return Ok((folder.clone(), None));
+                    return Ok((folder, None));
                 }
             }
             return Err(format!("no project named {name}"));
         }
-        self.deps
-            .session_folder
-            .clone()
+        self.session_folder(session)
             .map(|folder| (folder, None))
             .ok_or_else(|| "name the project this file belongs to".to_string())
     }
@@ -497,7 +550,12 @@ impl ToolCore {
 
     // -- dispatch ----------------------------------------------------------
 
-    async fn execute(&self, def: &berth_assistant::ToolDef, args: &Value) -> ToolResult {
+    async fn execute(
+        &self,
+        def: &berth_assistant::ToolDef,
+        args: &Value,
+        session: &SessionId,
+    ) -> ToolResult {
         match def.name {
             "engines.list" => self.engines_list().await,
             "projects.list" => self.projects_list().await,
@@ -508,11 +566,11 @@ impl ToolCore {
             "images.list" => self.images_list(args).await,
             "volumes.list" => self.volumes_list(args).await,
             "networks.list" => self.networks_list(args).await,
-            "compose.config" => self.compose_config(args).await,
+            "compose.config" => self.compose_config(args, session).await,
             "problems.list" => self.problems_list(args).await,
-            "files.read" => self.files_read(args).await,
+            "files.read" => self.files_read(args, session).await,
             "activity.list" => self.activity_list(args).await,
-            "files.propose_edit" => self.files_propose_edit(args).await,
+            "files.propose_edit" => self.files_propose_edit(args, session).await,
             "compose.up" => self.compose_run(args, true).await,
             "compose.restart" => self.compose_run(args, false).await,
             "containers.restart" => {
@@ -895,7 +953,7 @@ impl ToolCore {
         Ok(out)
     }
 
-    async fn compose_config(&self, args: &Value) -> ToolResult {
+    async fn compose_config(&self, args: &Value, session: &SessionId) -> ToolResult {
         let wanted = req_str(args, "project")?;
         let (target, project) = match self.find_project(&wanted).await {
             Ok(project) => {
@@ -904,7 +962,7 @@ impl ToolCore {
                 (target, Some(project))
             }
             Err(_) => {
-                let (folder, _) = self.resolve_folder(Some(&wanted)).await?;
+                let (folder, _) = self.resolve_folder(Some(&wanted), Some(session)).await?;
                 let (engine, client) = self.pick_engine(None)?;
                 let files = compose_files_in(&folder);
                 if files.is_empty() {
@@ -1066,10 +1124,10 @@ impl ToolCore {
         Ok(out)
     }
 
-    async fn files_read(&self, args: &Value) -> ToolResult {
+    async fn files_read(&self, args: &Value, session: &SessionId) -> ToolResult {
         let rel = req_str(args, "path")?;
         let (folder, project) = self
-            .resolve_folder(get_str(args, "project").as_deref())
+            .resolve_folder(get_str(args, "project").as_deref(), Some(session))
             .await?;
         let path = safe_join(&folder, &rel)?;
         let bytes = tokio::fs::read(&path)
@@ -1310,14 +1368,14 @@ impl ToolCore {
     /// Parks a pending plan and writes nothing (ADR 0006, ADR 0012). The
     /// proposed text is never logged; a `KEY=••••` line in a proposed
     /// `.env` keeps the value on disk (`redact::unmask_env`).
-    async fn files_propose_edit(&self, args: &Value) -> ToolResult {
+    async fn files_propose_edit(&self, args: &Value, session: &SessionId) -> ToolResult {
         if let Some(reason) = self.deps.backing.unsupported(Capability::WriteFiles) {
             return Err(reason);
         }
         let rel = req_str(args, "path")?;
         let content = req_str(args, "content")?;
         let (folder, project) = self
-            .resolve_folder(get_str(args, "project").as_deref())
+            .resolve_folder(get_str(args, "project").as_deref(), Some(session))
             .await?;
         // The file may not exist yet, so containment is checked on the
         // relative shape and the canonical parent, not the file itself.
@@ -1339,6 +1397,7 @@ impl ToolCore {
             content
         };
         let diff = berth_rules::diff::file_diff(&rel_path, old.as_deref(), Some(&new_text));
+        let notice_file = (diff.path.clone(), diff.added, diff.removed);
         let summary = get_str(args, "summary");
         let plan = berth_core::GenerationPlan {
             root: folder.clone(),
@@ -1361,6 +1420,14 @@ impl ToolCore {
             }),
         };
         let plan_id = self.deps.plans.insert(pending);
+        // Tell whoever shows the session (P7-T5) so the turn gains its
+        // proposed-change card; the notice carries no plan body (AD37).
+        let _ = self.proposal_tx.send(ProposalNotice {
+            session: *session,
+            plan_id,
+            title: summary.clone().unwrap_or_else(|| format!("Edit {rel}")),
+            files: vec![notice_file],
+        });
         let mut out = ToolOutput::plain(format!(
             "Proposed change {plan_id} for {rel} is waiting for the user's review in Berth \
              (Review changes). Nothing was written."
@@ -1677,6 +1744,8 @@ pub struct ToolsHandle {
     pub socket: PathBuf,
     pub token: String,
     pub core: Arc<ToolCore>,
+    /// The approval requests, until the assistant service takes them.
+    approvals: Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<ApprovalRequest>>>>,
 }
 
 impl ToolsHandle {
@@ -1689,31 +1758,35 @@ impl ToolsHandle {
             token: self.token.clone(),
         }
     }
+
+    /// The receiver of gated calls waiting for the user. Only the first
+    /// caller (the assistant service, P7-T5) gets it; until then requests
+    /// wait in the channel rather than being answered for the user.
+    pub fn take_approvals(&self) -> Option<tokio::sync::mpsc::Receiver<ApprovalRequest>> {
+        self.approvals
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
 }
 
 /// Binds the one `bridge.sock` in the runtime dir with a fresh token per
-/// launch and serves it until `cancel`. Until the assistant UI lands
-/// (P7-T5) no one can click Approve, so gated calls are denied with that
-/// reason instead of waiting forever; P7-T5 replaces the deny loop with
-/// the `state.approvals` plumbing on the same channel.
+/// launch and serves it until `cancel`. Gated calls wait on the approval
+/// channel; the assistant service (P7-T5) takes it through
+/// [`ToolsHandle::take_approvals`] and drives `state.approvals` from it —
+/// nothing is approved or denied on the user's behalf here.
 #[must_use]
 pub fn start_in_app(deps: ToolDeps, cancel: CancellationToken) -> ToolsHandle {
     let socket = berth_sys::paths::runtime_dir().join(berth_assistant::bridge::SOCKET_NAME);
     let token = uuid::Uuid::now_v7().to_string();
-    let (hub, mut approvals) = ApprovalHub::channel();
+    let (hub, approvals) = ApprovalHub::channel();
     let core = Arc::new(ToolCore::new(deps, hub));
     let handle = ToolsHandle {
         socket: socket.clone(),
         token: token.clone(),
         core: Arc::clone(&core),
+        approvals: Arc::new(std::sync::Mutex::new(Some(approvals))),
     };
-    crate::services::actions::spawn_io(async move {
-        while let Some(request) = approvals.recv().await {
-            request.answer(Decision::Denied {
-                reason: "approving from Berth's Assistant is not available yet".to_string(),
-            });
-        }
-    });
     crate::services::actions::spawn_io(async move {
         match berth_assistant::bridge::BridgeServer::bind_at(socket, token, cancel.clone()).await {
             Ok((_server, incoming)) => serve(core, incoming, cancel).await,

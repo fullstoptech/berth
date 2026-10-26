@@ -22,6 +22,8 @@ use serde_json::json;
 use tokio::sync::mpsc::Receiver;
 use tokio_util::sync::CancellationToken;
 
+mod common;
+
 const SECRET: &str = "s3cr3t-mcp-it-value";
 const TOKEN: &str = "mcp-it-token";
 
@@ -377,4 +379,157 @@ async fn mcp_it_wrong_token_is_refused_and_no_bridge_exits_nonzero_fast() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("not running"), "{stderr}");
+}
+
+/// The one live P7-T5 run (owner budget, AD37): the real `claude` binary
+/// drives `services::assistant` against the real bridge and the berthfx
+/// engine, answers a read-only question with tool rows, and the saved
+/// session reloads. Any Change it asks for is denied. Exactly one run:
+/// a harness error fails here with its stderr, never a retry.
+#[tokio::test]
+#[ignore = "live harness run; needs BERTH_HARNESS_SMOKE=1 and the berthfx engine"]
+async fn assistant_live_claude_on_berthfx_streams_saves_and_reloads() {
+    use berth_app::services::assistant::{Answer, AssistantDeps, AssistantService, OpenRequest};
+    use berth_core::{SessionState, TurnPart, TurnRole};
+
+    if std::env::var("BERTH_HARNESS_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("skipped: BERTH_HARNESS_SMOKE is not 1");
+        return;
+    }
+    std::env::set_var("BERTH_CLAUDE_MODEL", "haiku");
+    common::settle_fixture().await;
+    common::assert_broken_down();
+
+    let dir = tempfile::tempdir().expect("dir");
+    std::env::set_var("BERTH_DATA_DIR", dir.path().join("data"));
+    let folder =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/compose/berthfx");
+    assert!(folder.join("compose.yaml").is_file(), "fixture folder");
+
+    let search = berth_sys::SearchPath::from_process()
+        .with_login_shell()
+        .await;
+    let colima_cli = berth_engine::ColimaCli::new(search.clone());
+    let engines = berth_engine::discovery::discover(&colima_cli, &[]).await;
+    let engine = engines
+        .iter()
+        .find(|e| e.id.0 == "colima:default" && e.state == berth_core::EngineState::Running)
+        .expect("colima:default running")
+        .clone();
+    let client: Arc<dyn EngineClient> =
+        Arc::new(berth_engine::BollardEngine::connect(&engine).expect("connect"));
+    let clients = engines::client_map();
+    clients
+        .lock()
+        .expect("clients")
+        .insert(engine.id.clone(), client);
+
+    let db = dir.path().join("berth.db");
+    let store = Arc::new(berth_store::Store::open(&db).expect("store"));
+    let plans = PlanStore::default();
+    let (hub, approvals) = ApprovalHub::channel();
+    let core = Arc::new(ToolCore::new(
+        ToolDeps {
+            clients,
+            store: Arc::clone(&store),
+            compose: berth_app::services::compose::runner(false).await,
+            plans,
+            backing: Backing::Live,
+            session_folder: Some(folder.clone()),
+        },
+        hub,
+    ));
+    let socket = dir.path().join("bridge.sock");
+    let token = "live-token".to_string();
+    let cancel = CancellationToken::new();
+    let (_server, incoming) = BridgeServer::bind_at(socket.clone(), token.clone(), cancel.clone())
+        .await
+        .expect("bind bridge");
+    tokio::spawn(berth_app::services::tools::serve(
+        Arc::clone(&core),
+        incoming,
+        cancel.clone(),
+    ));
+
+    let harnesses = berth_assistant::detect(&search, &std::collections::BTreeMap::new()).await;
+    let claude = harnesses
+        .into_iter()
+        .find(|h| h.id.0 == "claude-code" && h.available)
+        .expect("claude detected");
+    let (service, _ui) = AssistantService::new(AssistantDeps {
+        store: Some(store),
+        core: Some(core),
+        mcp: Some(berth_assistant::McpLaunch {
+            berth_binary: std::path::PathBuf::from(env!("CARGO_BIN_EXE_berth")),
+            bridge: socket,
+            token,
+        }),
+        approvals: Some(approvals),
+        proposals: None,
+        cancel: cancel.clone(),
+    });
+    let canonical = std::fs::canonicalize(&folder).expect("canonical folder");
+    let project = berth_core::ProjectId::for_folder(&canonical, &engine.id);
+    let id = service
+        .open(OpenRequest {
+            harness: claude,
+            project: project.clone(),
+            project_name: "berthfx".to_string(),
+            folder: canonical,
+        })
+        .await
+        .expect("open");
+    service
+        .send(id, "What is using the most memory?".to_string(), None)
+        .expect("send");
+
+    // One bounded wait: deny anything gated, watch for the answer.
+    let done = tokio::time::timeout(Duration::from_secs(180), async {
+        loop {
+            for approval in service.approvals_snapshot() {
+                let _ = service.answer(approval.id, Answer::Deny);
+            }
+            if let Some(session) = service.session_snapshot(&id) {
+                if let SessionState::Error { stderr } = &session.state {
+                    panic!("the live harness errored; stderr tail verbatim:\n{stderr}");
+                }
+                let text: String = session
+                    .turns
+                    .iter()
+                    .filter(|t| t.role == TurnRole::Assistant)
+                    .flat_map(|t| &t.parts)
+                    .filter_map(|p| match p {
+                        TurnPart::Text(text) => Some(text.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                if session.state == SessionState::Idle && !text.trim().is_empty() {
+                    return session;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+    })
+    .await
+    .expect("the live turn finishes within 180 s");
+    let tool_rows = done
+        .turns
+        .iter()
+        .flat_map(|t| &t.parts)
+        .filter(|p| matches!(p, TurnPart::Tool { .. }))
+        .count();
+    assert!(tool_rows >= 1, "no tool row in the live answer: {done:?}");
+    eprintln!(
+        "live answer tool rows: {tool_rows}; harness session: {:?}",
+        done.harness_session
+    );
+    drop(service);
+    cancel.cancel();
+
+    let reopened = berth_store::Store::open(&db).expect("reopen store");
+    let records = reopened.sessions(Some(&project)).expect("sessions");
+    assert_eq!(records.len(), 1, "the live session was not saved");
+    assert_eq!(records[0].session.id, id);
+    assert_eq!(records[0].session.turns, done.turns);
+    assert!(records[0].session.harness_session.is_some());
 }

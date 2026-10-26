@@ -19,6 +19,8 @@ struct Boot {
     stats: StatsService,
     /// The MCP bridge + tool executor (P7-T2); None in a scene.
     tools: Option<crate::services::tools::ToolsHandle>,
+    /// Live assistant sessions + approvals (P7-T5); None in a scene.
+    assistant: Option<crate::services::assistant::AssistantService>,
     /// Whether the window is shown (AD32); every screen timer follows it.
     visibility: Visibility,
     /// Brings engines online after Colima starts them; None in a scene.
@@ -31,7 +33,7 @@ struct Boot {
 /// `BERTH_DATA_DIR` wins through `berth_sys::paths::data_dir`;
 /// `BERTH_MOCK=1` selects the mock world; a `BERTH_SCENE` frame is
 /// authoritative, so no live service runs under it (shots stay exact).
-fn boot_services(mut state: AppState) -> Boot {
+fn boot_services(mut state: AppState, plans: crate::services::plans::PlanStore) -> Boot {
     let data_dir = berth_sys::paths::data_dir();
     if let Err(err) = std::fs::create_dir_all(&data_dir) {
         tracing::warn!(%err, dir = %data_dir.display(), "data dir create failed");
@@ -95,8 +97,9 @@ fn boot_services(mut state: AppState) -> Boot {
     );
     // The MCP bridge (P7-T2, ADR 0006): one bridge.sock in the runtime dir
     // with a fresh token per launch, executing the assistant tools against
-    // the same clients. A scene runs no live service. Its PlanStore is its
-    // own for now; the assistant UI (P7-T5) unifies it with the screens'.
+    // the same clients. A scene runs no live service. The executor parks
+    // its proposed plans in the screens' own PlanStore (P7-T5), so Review
+    // changes opens them.
     let tools = if scene {
         None
     } else {
@@ -105,13 +108,30 @@ fn boot_services(mut state: AppState) -> Boot {
                 clients: clients.clone(),
                 store: std::sync::Arc::clone(&store),
                 compose,
-                plans: crate::services::plans::PlanStore::default(),
+                plans: plans.clone(),
                 backing: crate::services::backing::Backing::at_boot(mock, scene),
                 session_folder: None,
             },
             cancel.clone(),
         ))
     };
+    // The assistant (P7-T5): live sessions over the same bridge, the
+    // executor's approvals and proposal notices driving state.approvals
+    // and the turns. `state.harnesses` is filled by the first-run scan
+    // (berth_assistant::detect on the shared login PATH).
+    let assistant = tools.as_ref().map(|handle| {
+        crate::services::assistant::AssistantService::start(
+            state,
+            crate::services::assistant::AssistantDeps {
+                store: Some(std::sync::Arc::clone(&store)),
+                core: Some(std::sync::Arc::clone(&handle.core)),
+                mcp: Some(handle.mcp_launch()),
+                approvals: handle.take_approvals(),
+                proposals: handle.core.take_proposals(),
+                cancel: cancel.clone(),
+            },
+        )
+    });
     // The Problems list (P5-T8): rules re-run when the engines, projects or a Compose
     // failure change. A scene shows the frame's problems and runs no pass.
     let problems = if scene {
@@ -137,6 +157,7 @@ fn boot_services(mut state: AppState) -> Boot {
         problems,
         stats,
         tools,
+        assistant,
         visibility,
         link,
         _engines: handle,
@@ -158,13 +179,16 @@ pub fn App() -> Element {
     platform::use_menu_events(state);
 
     // Services spawn once, before scene/theme forcing below (D23).
-    let boot = use_hook(|| std::rc::Rc::new(boot_services(state)));
+    let boot_plans = views.plans.clone();
+    let boot = use_hook(move || std::rc::Rc::new(boot_services(state, boot_plans)));
     let services = boot.services.clone();
     use_context_provider(|| services);
     let actions = boot.actions.clone();
     use_context_provider(|| actions);
     let tools = boot.tools.clone();
     use_context_provider(|| tools);
+    let assistant = boot.assistant.clone();
+    use_context_provider(|| assistant);
     let problems = boot.problems.clone();
     use_context_provider(|| problems.clone());
     use_effect(move || {

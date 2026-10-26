@@ -3,6 +3,7 @@
 
 pub mod activity;
 pub mod activity_scene;
+pub mod assistant;
 pub mod container_detail;
 pub mod container_limits;
 pub mod containers;

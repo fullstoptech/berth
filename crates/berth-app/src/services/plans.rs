@@ -133,6 +133,17 @@ impl PlanStore {
         id
     }
 
+    /// Park a plan under a known id (a scene seeding the plan its
+    /// proposed-change card already names).
+    pub fn insert_at(&self, id: Uuid, plan: PendingPlan) {
+        self.lock().insert(id, plan);
+    }
+
+    #[must_use]
+    pub fn contains(&self, id: &Uuid) -> bool {
+        self.lock().contains_key(id)
+    }
+
     #[must_use]
     pub fn get(&self, id: &Uuid) -> Option<PendingPlan> {
         self.lock().get(id).cloned()

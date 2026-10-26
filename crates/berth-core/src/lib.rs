@@ -24,8 +24,8 @@ mod run_settings_tests;
 
 pub use activity::{ActivityEntry, ActivityOrigin, Outcome};
 pub use assistant::{
-    AssistantSession, ContextItem, Harness, HarnessTransport, Risk, SessionState, ToolCall,
-    ToolStatus, Turn, TurnPart, TurnRole,
+    AssistantSession, ContextItem, Harness, HarnessTransport, ProposalState, Risk, SessionState,
+    ToolCall, ToolStatus, Turn, TurnPart, TurnRole,
 };
 pub use compose::{ComposeCommand, ComposeEvent, ComposeTarget};
 pub use container::{

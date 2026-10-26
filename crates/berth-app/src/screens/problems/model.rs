@@ -341,6 +341,9 @@ pub enum Clicked {
     CleanUp,
     /// The container the problem points at is selected.
     Selected,
+    /// AD37: a harness fix opened this assistant session (P7-T6 builds the
+    /// button that returns it).
+    Assistant(berth_core::SessionId),
     /// Nothing happened, and why.
     Nothing(String),
 }

@@ -22,6 +22,9 @@ pub fn TextField(
     #[props(default)] aria_label: Option<String>,
     #[props(default)] oninput: Option<EventHandler<FormEvent>>,
     #[props(default)] onchange: Option<EventHandler<FormEvent>>,
+    /// Enter inside the field (the chat input sends on Enter, P7-T5).
+    #[props(default)]
+    on_enter: Option<EventHandler<()>>,
 ) -> Element {
     let has_error = error.is_some();
     let group_class = if has_error {
@@ -55,6 +58,12 @@ pub fn TextField(
                     // so a sheet closes from inside its fields.
                     onkeydown: move |e| {
                         use dioxus::html::ModifiersInteraction;
+                        if e.data.key() == Key::Enter {
+                            if let Some(handler) = &on_enter {
+                                e.prevent_default();
+                                handler.call(());
+                            }
+                        }
                         let mods = e.data.modifiers();
                         if !mods.contains(dioxus::html::Modifiers::META)
                             && !mods.contains(dioxus::html::Modifiers::CONTROL)
