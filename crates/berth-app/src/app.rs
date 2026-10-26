@@ -311,6 +311,7 @@ fn OverlayStack() -> Element {
 #[component]
 pub fn Shell() -> Element {
     let state = use_context::<AppState>();
+    crate::focus::use_focus_tracking();
     let dock = crate::ui::dock::use_dock_view(state);
     let layout = *dock.layout.read();
     // One body, drawn in the right column, as an overlay or at the bottom.

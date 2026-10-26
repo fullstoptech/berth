@@ -51,6 +51,8 @@ pub fn bottom_spacer_px(total: usize, range_end: usize, row_h: u32) -> u64 {
 /// prop so tests and SSR scenes render deterministically without measuring.
 /// `viewport_height_px` is the scroll container's height in px; callers size
 /// it to their layout. `initial_scroll_top_px` exists for scenes/tests.
+/// With a `label` the body is the table itself; without one it sits inside a
+/// labelled table (a header above it) and is that table's row group.
 #[component]
 pub fn VirtualTable(
     total: usize,
@@ -59,6 +61,7 @@ pub fn VirtualTable(
     #[props(default = DEFAULT_VIEWPORT_HEIGHT_PX)] viewport_height_px: u32,
     #[props(default = DEFAULT_OVERSCAN)] overscan: usize,
     #[props(default = 0)] initial_scroll_top_px: u32,
+    #[props(default)] label: Option<String>,
 ) -> Element {
     let mut scroll_top = use_signal(|| f64::from(initial_scroll_top_px));
     let range = visible_range(
@@ -73,7 +76,8 @@ pub fn VirtualTable(
     rsx! {
         div {
             class: "virtual-table",
-            role: "table",
+            role: if label.is_some() { "table" } else { "rowgroup" },
+            "aria-label": label,
             "aria-rowcount": "{total}",
             style: "max-height: {viewport_height_px}px;",
             onscroll: move |e| {

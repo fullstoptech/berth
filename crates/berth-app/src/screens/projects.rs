@@ -689,7 +689,7 @@ pub fn ProjectsScreen() -> Element {
                             }
                         }
                     }
-                    div { class: "projects-table", role: "table", "aria-rowcount": "{row_count}",
+                    div { class: "projects-table", role: "table", "aria-label": "Projects", "aria-rowcount": "{row_count}",
                         div { class: "projects-head", role: "row",
                             div { class: "projects-head-name table-header-cell", role: "columnheader",
                                 span { class: "table-header-label", "Project" }

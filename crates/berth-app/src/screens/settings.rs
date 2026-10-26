@@ -442,7 +442,7 @@ fn EnginesGroup() -> Element {
                 div { class: "st-empty", "No engine found yet." }
             }
             for engine in engines {
-                div { key: "{engine.id.0}", class: "st-row", role: "row", "aria-label": "{engine.name}",
+                div { key: "{engine.id.0}", class: "st-row", role: "group", "aria-label": "{engine.name}",
                     div { class: "st-row-text",
                         span { class: "st-row-label", "{engine.name}" }
                         span { class: "st-row-hint", "{engine_kind_text(&engine.kind)}" }
@@ -499,7 +499,7 @@ fn HarnessRow(harness: berth_core::Harness, overridden: bool) -> Element {
         ("not found".to_string(), "tone-stopped")
     };
     rsx! {
-        div { class: "st-row", role: "row", "aria-label": "{harness.name}",
+        div { class: "st-row", role: "group", "aria-label": "{harness.name}",
             div { class: "st-row-text",
                 span { class: "st-row-label", "{harness.name}" }
                 span { class: "st-row-hint st-mono", title: "{harness.binary.display()}",
@@ -650,7 +650,7 @@ fn Favourites() -> Element {
                     let name = shown.clone();
                     let target = folder.clone();
                     rsx! {
-                        div { key: "{shown}", class: "st-row", role: "row", "aria-label": "{shown}",
+                        div { key: "{shown}", class: "st-row", role: "group", "aria-label": "{shown}",
                             div { class: "st-row-text",
                                 span { class: "st-row-label st-mono", "{shown}" }
                             }
@@ -710,7 +710,7 @@ fn Privacy() -> Element {
             div { class: "st-subhead", "External calls" }
             p { class: "st-note", "Berth has no telemetry. These are the only things it can contact, and only when you use them." }
             for (name, what) in EXTERNAL_CALLS {
-                div { key: "{name}", class: "st-row st-row-call", role: "row", "aria-label": "{name}",
+                div { key: "{name}", class: "st-row st-row-call", role: "group", "aria-label": "{name}",
                     div { class: "st-row-text",
                         span { class: "st-row-label", "{name}" }
                         span { class: "st-row-hint", "{what}" }
@@ -726,9 +726,9 @@ fn Shortcuts() -> Element {
     let rows = shortcut_rows();
     rsx! {
         Group { title: "Shortcuts".to_string(),
-            div { class: "st-shortcuts",
+            div { class: "st-shortcuts", role: "list", "aria-label": "Shortcuts",
                 for (label, keys) in rows {
-                    div { key: "{label}", class: "st-shortcut", role: "row",
+                    div { key: "{label}", class: "st-shortcut", role: "listitem",
                         span { class: "st-shortcut-label", "{label}" }
                         span { class: "st-shortcut-keys", "{keys}" }
                     }

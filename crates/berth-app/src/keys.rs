@@ -6,11 +6,11 @@
 //! "Backspace", "F8", "ArrowDown", "Enter", …) — the `Display` of
 //! `dioxus::html::Key`.
 //!
-//! Limitation: Dioxus `KeyboardData` carries no target element, so the
-//! root handler cannot know focus sits in a text input. It passes
-//! `in_text_input: false`; text inputs must stop keydown propagation
-//! themselves (P2-T2 `TextField`) so J/K/Space/⌫ typing never reaches here.
-//! The pure mapping still honours the flag for callers that can know.
+//! Dioxus `KeyboardData` carries no target element, so the page reports
+//! focus itself: [`use_focus_tracking`] installs a `focusin`/`focusout`
+//! listener that sends what holds focus, and [`bare_keys_allowed`] is the one
+//! rule that turns it into "may a bare key (Space, J, K, ⌫…) be a shortcut
+//! now". The root handler reads the answer; nothing else decides it.
 
 use dioxus::html::ModifiersInteraction;
 use dioxus::prelude::*;
@@ -67,7 +67,9 @@ pub enum SelectionKind {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct KeyContext {
-    pub in_text_input: bool,
+    /// Focus sits on a control that owns bare keys ([`bare_keys_allowed`]
+    /// said no): bare-key chords do not fire, ⌘ chords still do.
+    pub bare_keys_blocked: bool,
     pub in_assistant: bool,
     pub palette_open: bool,
     pub overlay_open: bool,
@@ -104,7 +106,7 @@ pub struct Chord {
     pub keys: &'static [&'static str],
     pub id: ActionId,
     mods: ModMatch,
-    /// Fires while a text input has focus (⌘ chords do; bare keys never do).
+    /// Fires while a control owns the bare keys (⌘ chords do; bare keys never do).
     typing: bool,
     when: fn(&KeyContext) -> bool,
 }
@@ -205,7 +207,7 @@ impl Chord {
     fn matches(&self, key: &str, mods: Modifiers, ctx: &KeyContext) -> bool {
         self.keys.contains(&key)
             && self.mods.matches(mods)
-            && (self.typing || !ctx.in_text_input)
+            && (self.typing || !ctx.bare_keys_blocked)
             && (self.when)(ctx)
     }
 }
@@ -214,7 +216,7 @@ impl Chord {
 /// (the caller must not `preventDefault` then).
 pub fn map_key(key: &str, mods: Modifiers, ctx: KeyContext) -> Option<ActionId> {
     // The palette owns navigation keys while it is open (its input is a
-    // text field, so this precedes the text-input guard).
+    // text field, so this precedes the focus guard).
     if ctx.palette_open {
         match key {
             "ArrowDown" => return Some("palette.next"),
@@ -238,8 +240,8 @@ pub fn map_key(key: &str, mods: Modifiers, ctx: KeyContext) -> Option<ActionId> 
         .map(|chord| chord.id)
 }
 
-/// The context the root handler derives from state. `in_text_input` stays
-/// false (see the module note).
+/// The context the root handler derives from state and from what holds
+/// focus.
 pub fn context_from_state(state: &AppState) -> KeyContext {
     let overlays = state.overlays.peek();
     let palette_open = overlays.iter().any(|o| matches!(o, Overlay::Palette));
@@ -262,7 +264,7 @@ pub fn context_from_state(state: &AppState) -> KeyContext {
         Selection::Engine(_) => SelectionKind::Engine,
     };
     KeyContext {
-        in_text_input: false,
+        bare_keys_blocked: crate::focus::bare_keys_blocked(),
         in_assistant,
         palette_open,
         overlay_open,
@@ -302,6 +304,7 @@ pub fn handle_root_keydown(state: &mut AppState, event: &Event<KeyboardData>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::focus::{bare_keys_allowed, FocusInfo};
 
     fn ctx() -> KeyContext {
         KeyContext::default()
@@ -371,7 +374,7 @@ mod tests {
     #[test]
     fn services_keys_bare_keys_never_fire_while_typing() {
         let typing = KeyContext {
-            in_text_input: true,
+            bare_keys_blocked: true,
             selection: SelectionKind::Container,
             ..ctx()
         };
@@ -432,7 +435,7 @@ mod tests {
         let palette = KeyContext {
             palette_open: true,
             overlay_open: true,
-            in_text_input: true,
+            bare_keys_blocked: true,
             ..ctx()
         };
         assert_eq!(
@@ -548,12 +551,53 @@ mod tests {
         );
         // They work from a text input too.
         let typing = KeyContext {
-            in_text_input: true,
+            bare_keys_blocked: true,
             ..ctx()
         };
         assert_eq!(
             map_key("=", Modifiers::META, typing),
             Some("view.text_bigger")
+        );
+    }
+
+    #[test]
+    fn space_j_k_and_backspace_wait_while_a_control_holds_focus() {
+        let blocked = KeyContext {
+            bare_keys_blocked: !bare_keys_allowed(&FocusInfo {
+                tag: "button".to_string(),
+                ..FocusInfo::default()
+            }),
+            selection: SelectionKind::Container,
+            ..ctx()
+        };
+        for key in [" ", "j", "k", "J", "Backspace"] {
+            assert_eq!(map_key(key, Modifiers::NONE, blocked), None, "{key:?}");
+        }
+        let free = KeyContext {
+            bare_keys_blocked: !bare_keys_allowed(&FocusInfo::body()),
+            selection: SelectionKind::Container,
+            ..ctx()
+        };
+        assert_eq!(
+            map_key(" ", Modifiers::NONE, free),
+            Some("global.toggle_inspector")
+        );
+        assert_eq!(
+            map_key("j", Modifiers::NONE, free),
+            Some("global.select_next")
+        );
+        // Escape and ⌘ chords are not bare keys: they work from a button too.
+        assert_eq!(
+            map_key("r", Modifiers::META, blocked),
+            Some("container.restart")
+        );
+        let overlay = KeyContext {
+            overlay_open: true,
+            ..blocked
+        };
+        assert_eq!(
+            map_key("Escape", Modifiers::NONE, overlay),
+            Some("overlay.close")
         );
     }
 

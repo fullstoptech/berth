@@ -1,7 +1,10 @@
+#[cfg(test)]
+mod a11y_tests;
 pub mod actions;
 pub mod app;
 pub mod assets;
 pub mod bridge;
+pub mod focus;
 pub mod keys;
 pub mod platform;
 pub mod providers;

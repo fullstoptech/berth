@@ -203,7 +203,7 @@ pub fn ServicesTab(
                     InlineMessage { message: note, tone: InlineTone::Warning }
                 }
             }
-            div { class: "ct-table ct-grid ct-has-uptime", role: "table",
+            div { class: "ct-table ct-grid ct-has-uptime", role: "table", "aria-label": "Services",
                 div { class: "ct-head", role: "row",
                     span {}
                     span {}

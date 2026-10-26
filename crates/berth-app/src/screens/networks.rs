@@ -565,7 +565,7 @@ pub fn NetworksScreen() -> Element {
                     }
                 }
             } else {
-                div { class: "nw-table", role: "table",
+                div { class: "nw-table", role: "table", "aria-label": "Networks",
                     div { class: "nw-head", role: "row",
                         {header_cell(SortColumn::Name, "Name", CellAlign::Left)}
                         span { class: "nw-driver-head", {header_cell(SortColumn::Driver, "Driver", CellAlign::Left)} }

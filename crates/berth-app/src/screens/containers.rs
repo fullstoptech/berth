@@ -1766,7 +1766,7 @@ pub fn ContainersScreen() -> Element {
             }
             match status {
                 ListStatus::Loading => rsx! {
-                    div { class: "ct-table {grid}", role: "table",
+                    div { class: "ct-table {grid}", role: "table", "aria-label": "Containers",
                         {head.clone()}
                         div { class: "ct-skeleton", SkeletonRows { count: 8_usize } }
                     }
@@ -1839,7 +1839,7 @@ pub fn ContainersScreen() -> Element {
                     }
                 }
                 ListStatus::Ready => rsx! {
-                    div { class: "ct-table {grid}", role: "table",
+                    div { class: "ct-table {grid}", role: "table", "aria-label": "Containers",
                         {head.clone()}
                         VirtualTable {
                             total: row_count,

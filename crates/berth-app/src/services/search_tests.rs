@@ -562,6 +562,191 @@ fn search_every_palette_target_names_a_real_action_def() {
 }
 
 #[test]
+fn a11y_keyboard_only_verbs_find_their_subjects() {
+    let world = mock();
+    let idx = index(&world, &Selection::None, &scope_default());
+    for (query, action, subject_is) in [
+        ("terminal api", "container.terminal", "container"),
+        ("edit and recreate api", "container.edit", "container"),
+        ("open folder of shop", "project.open_folder", "project"),
+        ("open in editor shop", "project.open_in_editor", "project"),
+        ("delete project shop", "project.delete", "project"),
+        (
+            "edit resources of default",
+            "engine.edit_resources",
+            "engine",
+        ),
+        ("clean up default", "engine.clean_up", "engine"),
+    ] {
+        let results = idx.search(query, &[]);
+        let found = results.flat().into_iter().find(|item| {
+            matches!(
+                &item.target,
+                Target::Run { action: a, subject: Some(s) }
+                    if *a == action
+                        && matches!(
+                            (subject_is, s),
+                            ("container", Subject::Container(_))
+                                | ("project", Subject::Project(_))
+                                | ("engine", Subject::Engine(_))
+                        )
+            )
+        });
+        assert!(found.is_some(), "{query:?} finds no {action} item");
+    }
+}
+
+/// Every `ActionDef` the palette does not list, with the other way in. A new
+/// action must either join `GLOBALS` or a verb table, or be named here: the
+/// test below fails on both a missing entry and a stale one (P6-T4).
+const NOT_IN_PALETTE: &[(&str, &str)] = &[
+    ("global.palette", "the palette itself, ⌘K"),
+    ("global.logs_section", "⌘⇧L; Go to Logs is listed"),
+    (
+        "global.focus_filter",
+        "⌘F has no handler yet; Tab reaches each list's filter",
+    ),
+    (
+        "global.select_next",
+        "J moves the list selection; keyboard only",
+    ),
+    (
+        "global.select_prev",
+        "K moves the list selection; keyboard only",
+    ),
+    ("overlay.close", "Esc"),
+    ("palette.next", "the palette's own arrow keys"),
+    ("palette.prev", "the palette's own arrow keys"),
+    ("palette.run", "the palette's own Return"),
+    ("folders.toggle_hidden", "⌘⇧. inside the Open folder sheet"),
+    (
+        "container.start_stop",
+        "⌘.; the palette lists Start and Stop by state",
+    ),
+    (
+        "project.start_stop",
+        "⌘.; the palette lists Start and Stop by state",
+    ),
+    (
+        "engine.start_stop",
+        "the palette lists Start and Stop by state",
+    ),
+    (
+        "container.duplicate",
+        "container ⋯ menu; no palette route yet (open question)",
+    ),
+    (
+        "container.recreate_latest",
+        "container ⋯ menu; no palette route yet (open question)",
+    ),
+    (
+        "container.rename",
+        "container ⋯ menu; no palette route yet (open question)",
+    ),
+    (
+        "container.save_as_image",
+        "container ⋯ menu; no palette route yet (open question)",
+    ),
+    ("bulk.start", "the bulk bar over a multi-selection"),
+    ("bulk.stop", "the bulk bar over a multi-selection"),
+    ("bulk.restart", "the bulk bar over a multi-selection"),
+    ("bulk.pause", "the bulk bar over a multi-selection"),
+    ("bulk.delete", "the bulk bar over a multi-selection"),
+    (
+        "project.logs",
+        "the Logs button of a project row; no handler yet (open question)",
+    ),
+    (
+        "image.run",
+        "image row buttons; no palette route yet (open question)",
+    ),
+    ("image.pull", "the Pull image form on Images"),
+    (
+        "image.pull_latest",
+        "image row buttons; no palette route yet (open question)",
+    ),
+    (
+        "image.tag",
+        "image detail; no palette route yet (open question)",
+    ),
+    (
+        "image.push",
+        "image detail; no palette route yet (open question)",
+    ),
+    (
+        "image.delete",
+        "image row buttons and ⌫; no palette route yet (open question)",
+    ),
+    (
+        "volume.browse",
+        "volume row buttons; no palette route yet (open question)",
+    ),
+    (
+        "volume.backup",
+        "volume detail; no palette route yet (open question)",
+    ),
+    (
+        "volume.delete",
+        "volume row buttons and ⌫; no palette route yet (open question)",
+    ),
+    (
+        "network.connect_container",
+        "network detail; no palette route yet (open question)",
+    ),
+    (
+        "network.disconnect",
+        "network detail; no palette route yet (open question)",
+    ),
+    (
+        "network.delete",
+        "network row buttons and ⌫; no palette route yet (open question)",
+    ),
+    ("logs.next_error", "F8 inside the log view"),
+    ("logs.prev_error", "⇧F8 inside the log view"),
+    ("logs.follow", "the log toolbar"),
+    ("logs.explain", "the log toolbar"),
+    ("logs.ask", "the log toolbar"),
+    ("logs.copy", "the log toolbar"),
+    ("logs.save", "the log toolbar"),
+    ("assistant.stop_turn", "⌘. inside the Assistant tab (D77)"),
+    (
+        "assistant.approve_tool",
+        "the approval card in the Assistant tab",
+    ),
+    (
+        "assistant.deny_tool",
+        "the approval card in the Assistant tab",
+    ),
+];
+
+#[test]
+fn a11y_every_action_is_in_the_palette_or_named_with_its_other_way_in() {
+    let listed: Vec<ActionId> = GLOBALS
+        .iter()
+        .map(|(id, _, _)| *id)
+        .chain(CONTAINER_VERBS.iter().map(|v| v.id))
+        .chain(PROJECT_VERBS.iter().map(|v| v.id))
+        .chain(ENGINE_VERBS.iter().map(|v| v.id))
+        .collect();
+    let mut missing = Vec::new();
+    for action in crate::actions::actions() {
+        let exempt = NOT_IN_PALETTE.iter().any(|(id, _)| *id == action.id);
+        if !listed.contains(&action.id) && !exempt {
+            missing.push(action.id);
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "not in the palette and not named in NOT_IN_PALETTE: {missing:?}"
+    );
+    for (id, way) in NOT_IN_PALETTE {
+        assert!(action_by_id(id).is_some(), "{id} is not an ActionDef");
+        assert!(!listed.contains(id), "{id} is in the palette now: drop it");
+        assert!(!way.is_empty(), "{id} needs its other way in");
+    }
+}
+
+#[test]
 fn search_group_cap_keeps_the_list_short() {
     let world = mock();
     let results = index(&world, &Selection::None, &EngineScope::All).search("a", &[]);

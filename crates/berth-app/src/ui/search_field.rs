@@ -41,13 +41,16 @@ pub fn SearchField(
                 placeholder: "{placeholder}",
                 disabled,
                 "aria-label": "{aria_label}",
-                // Plain typing must not reach the root shortcut handler
-                // (keys.rs cannot see focus); shortcuts with Cmd/Ctrl pass.
+                // Plain typing must not reach the root shortcut handler (the
+                // focus rule in keys.rs also holds the bare keys back; this is the
+                // second guard). Shortcuts with Cmd/Ctrl pass, and so does Escape,
+                // so a sheet closes from inside its fields.
                 onkeydown: move |e| {
                     use dioxus::html::ModifiersInteraction;
                     let mods = e.data.modifiers();
                     if !mods.contains(dioxus::html::Modifiers::META)
                         && !mods.contains(dioxus::html::Modifiers::CONTROL)
+                        && e.data.key() != Key::Escape
                     {
                         e.stop_propagation();
                     }

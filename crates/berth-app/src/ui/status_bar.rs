@@ -191,7 +191,7 @@ pub fn StatusBar() -> Element {
     let summary = engine_summary(&state.engines.read(), &state.engine_scope.read());
     rsx! {
         footer { class: "statusbar",
-            span { class: "statusbar-summary", "{summary}" }
+            span { class: "statusbar-summary", role: "status", "{summary}" }
             ProblemsChip { in_status_bar: true }
         }
     }
