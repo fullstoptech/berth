@@ -1,0 +1,16 @@
+{
+  "id": 11,
+  "uuid": "app-uuid-0001",
+  "name": "landing",
+  "description": "Marketing site",
+  "fqdn": "https://landing.example.test",
+  "git_repository": "example/landing",
+  "git_branch": "main",
+  "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+  "git_full_url": "https://github.com/example/landing",
+  "build_pack": "nixpacks",
+  "status": "running:healthy",
+  "ports_exposes": "3000",
+  "created_at": "2026-10-20T08:00:00.000000Z",
+  "updated_at": "2026-10-24T09:30:00.000000Z"
+}

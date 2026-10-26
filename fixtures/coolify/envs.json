@@ -1,0 +1,26 @@
+[
+  {
+    "id": 51,
+    "uuid": "env-uuid-0001",
+    "key": "DATABASE_URL",
+    "value": "fake-value-not-a-secret",
+    "is_buildtime": false,
+    "is_runtime": true,
+    "is_preview": false,
+    "is_shared": false,
+    "created_at": "2026-10-20T08:01:00.000000Z",
+    "updated_at": "2026-10-20T08:01:00.000000Z"
+  },
+  {
+    "id": 52,
+    "uuid": "env-uuid-0002",
+    "key": "NODE_ENV",
+    "value": "production",
+    "is_buildtime": true,
+    "is_runtime": true,
+    "is_preview": false,
+    "is_shared": false,
+    "created_at": "2026-10-20T08:01:00.000000Z",
+    "updated_at": "2026-10-20T08:01:00.000000Z"
+  }
+]
