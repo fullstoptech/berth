@@ -5,7 +5,7 @@
 
 use dioxus::prelude::*;
 
-use berth_core::{Harness, HarnessTransport};
+use berth_core::Harness;
 
 use super::icon::{Icon, IconSize};
 use super::select::{Select, SelectOption};
@@ -64,33 +64,24 @@ pub fn HarnessPicker(
 /// The select value that opens the custom-model field.
 pub const CUSTOM_MODEL: &str = "__custom";
 
-/// The models a harness is known to accept, as the picker lists them
-/// (value passed to the harness, label shown). Claude Code's aliases
-/// are stable; muse ids churn, so only the one Berth has verified is
-/// listed and the custom field covers the rest.
+/// The model picker's options, built from the catalog the harness
+/// itself reported (AD40 — nothing hardcoded, so updates show up on
+/// their own): the harness default, every reported id (the original
+/// id is the label), the saved pick when the catalog no longer lists
+/// it, and Custom….
 #[must_use]
-pub fn curated_models(harness: &Harness) -> &'static [(&'static str, &'static str)] {
-    match harness.transport {
-        HarnessTransport::ClaudeStreamJson => {
-            &[("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku")]
-        }
-        HarnessTransport::MuseMsp => &[("muse-spark-1.2", "muse-spark-1.2")],
-    }
-}
-
-/// The model picker's options: the harness default, the curated list,
-/// the saved pick when it is a custom one, and Custom….
-#[must_use]
-pub fn model_options(harness: &Harness, saved: Option<&str>) -> Vec<SelectOption> {
+pub fn model_options(
+    choices: &[berth_assistant::ModelChoice],
+    saved: Option<&str>,
+) -> Vec<SelectOption> {
     let mut options = vec![SelectOption::new("", "Default model")];
-    let curated = curated_models(harness);
     options.extend(
-        curated
+        choices
             .iter()
-            .map(|(value, label)| SelectOption::new(*value, *label)),
+            .map(|choice| SelectOption::new(choice.id.clone(), choice.id.clone())),
     );
     if let Some(saved) = saved.filter(|s| !s.is_empty()) {
-        if !curated.iter().any(|(value, _)| *value == saved) {
+        if !choices.iter().any(|choice| choice.id == saved) {
             options.push(SelectOption::new(saved, saved));
         }
     }
@@ -106,6 +97,9 @@ pub fn ModelPicker(
     harness: Harness,
     /// The saved model for this harness, `None` for its default.
     selected: Option<String>,
+    /// The catalog the harness reported; empty until it answers.
+    #[props(default)]
+    choices: Vec<berth_assistant::ModelChoice>,
     #[props(default)] onchange: Option<EventHandler<Option<String>>>,
 ) -> Element {
     let mut editing = use_signal(|| false);
@@ -136,7 +130,7 @@ pub fn ModelPicker(
     rsx! {
         span { class: "harness-picker model-picker",
             Select {
-                options: model_options(&harness, selected.as_deref()),
+                options: model_options(&choices, selected.as_deref()),
                 value: selected.clone().unwrap_or_default(),
                 aria_label: format!("Model for {}", harness.name),
                 onchange: move |e: FormEvent| {

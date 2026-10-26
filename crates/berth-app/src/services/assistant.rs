@@ -631,6 +631,8 @@ struct Inner {
     by_folder: Mutex<BTreeMap<PathBuf, SessionId>>,
     live: Mutex<BTreeMap<SessionId, LiveHandle>>,
     pending: Mutex<Vec<Pending>>,
+    /// Model catalogs by harness id, fetched once per app run (AD40).
+    models: Mutex<BTreeMap<String, Vec<berth_assistant::ModelChoice>>>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -725,6 +727,7 @@ impl AssistantService {
                 by_folder: Mutex::new(BTreeMap::new()),
                 live: Mutex::new(BTreeMap::new()),
                 pending: Mutex::new(Vec::new()),
+                models: Mutex::new(BTreeMap::new()),
             }),
         };
         if let Some(approvals) = deps.approvals {
@@ -797,6 +800,27 @@ impl AssistantService {
             .iter()
             .map(|p| p.approval.clone())
             .collect()
+    }
+
+    /// The models a harness offers, asked of the harness itself and
+    /// cached for the app run (AD40). An error leaves the picker with
+    /// Default + Custom.
+    ///
+    /// # Errors
+    /// A sentence when the harness cannot be asked.
+    pub async fn list_models(
+        &self,
+        harness: &Harness,
+    ) -> Result<Vec<berth_assistant::ModelChoice>, String> {
+        if let Some(cached) = lock(&self.inner.models).get(&harness.id.0).cloned() {
+            return Ok(cached);
+        }
+        let path = super::login_path::search_path().await.path_var();
+        let models = berth_assistant::list_models(harness, path, self.inner.cancel.child_token())
+            .await
+            .map_err(|e| e.to_string())?;
+        lock(&self.inner.models).insert(harness.id.0.clone(), models.clone());
+        Ok(models)
     }
 
     /// Open (or reopen) the session for a project folder: the stored

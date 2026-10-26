@@ -1,14 +1,10 @@
 use super::*;
-use berth_core::HarnessId;
 
-fn claude() -> Harness {
-    Harness {
-        id: HarnessId("claude-code".to_string()),
-        name: "Claude Code".to_string(),
-        binary: "/bin/true".into(),
-        version: None,
-        transport: HarnessTransport::ClaudeStreamJson,
-        available: true,
+fn choice(id: &str) -> berth_assistant::ModelChoice {
+    berth_assistant::ModelChoice {
+        id: id.to_string(),
+        label: id.to_string(),
+        is_default: false,
     }
 }
 
@@ -17,50 +13,36 @@ fn values(options: &[SelectOption]) -> Vec<&str> {
 }
 
 #[test]
-fn harness_picker_model_options_offer_default_curated_and_custom() {
-    let options = model_options(&claude(), None);
+fn harness_picker_model_options_offer_default_catalog_and_custom() {
+    let catalog = [choice("claude-opus-5-5"), choice("claude-sonnet-5-5")];
+    let options = model_options(&catalog, None);
     assert_eq!(
         values(&options),
-        ["", "opus", "sonnet", "haiku", CUSTOM_MODEL]
+        ["", "claude-opus-5-5", "claude-sonnet-5-5", CUSTOM_MODEL]
     );
     assert_eq!(options[0].label, "Default model");
-    assert_eq!(options[1].label, "Opus");
+    // The original id is the label (AD40).
+    assert_eq!(options[1].label, "claude-opus-5-5");
 }
 
 #[test]
-fn harness_picker_model_options_keep_a_custom_saved_pick_selectable() {
-    let options = model_options(&claude(), Some("claude-custom-1"));
+fn harness_picker_model_options_keep_a_saved_pick_the_catalog_dropped() {
+    let catalog = [choice("claude-opus-5-5")];
+    let options = model_options(&catalog, Some("claude-older-1"));
     assert_eq!(
         values(&options),
-        [
-            "",
-            "opus",
-            "sonnet",
-            "haiku",
-            "claude-custom-1",
-            CUSTOM_MODEL
-        ]
+        ["", "claude-opus-5-5", "claude-older-1", CUSTOM_MODEL]
     );
-    // A curated pick is not duplicated.
-    let options = model_options(&claude(), Some("opus"));
-    assert_eq!(
-        values(&options),
-        ["", "opus", "sonnet", "haiku", CUSTOM_MODEL]
-    );
+    // A catalog pick is not duplicated.
+    let options = model_options(&catalog, Some("claude-opus-5-5"));
+    assert_eq!(values(&options), ["", "claude-opus-5-5", CUSTOM_MODEL]);
 }
 
 #[test]
-fn harness_picker_model_options_for_muse_list_only_the_verified_id() {
-    let muse = Harness {
-        id: HarnessId("muse".to_string()),
-        name: "muse".to_string(),
-        binary: "/bin/true".into(),
-        version: None,
-        transport: HarnessTransport::MuseMsp,
-        available: true,
-    };
+fn harness_picker_model_options_without_a_catalog_still_work() {
+    assert_eq!(values(&model_options(&[], None)), ["", CUSTOM_MODEL]);
     assert_eq!(
-        values(&model_options(&muse, None)),
-        ["", "muse-spark-1.2", CUSTOM_MODEL]
+        values(&model_options(&[], Some("typed-model"))),
+        ["", "typed-model", CUSTOM_MODEL]
     );
 }

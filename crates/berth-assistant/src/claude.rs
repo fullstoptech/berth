@@ -627,6 +627,143 @@ async fn supervise(
 /// Starts a Claude Code session per D43.
 ///
 /// # Errors
+/// The `models` array of a `list_models` control response as choices:
+/// the id handed back to `--model` is `resolvedModel` (the original
+/// id; the row's `value` may be an alias), the `default` row only
+/// marks which resolved id is the default, and duplicates collapse.
+#[must_use]
+pub fn parse_models(frame: &serde_json::Value) -> Vec<crate::ModelChoice> {
+    let Some(models) = frame
+        .pointer("/response/response/models")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Vec::new();
+    };
+    let default_id = models.iter().find_map(|m| {
+        (m.get("value").and_then(serde_json::Value::as_str) == Some("default"))
+            .then(|| m.get("resolvedModel").and_then(serde_json::Value::as_str))
+            .flatten()
+    });
+    let mut out: Vec<crate::ModelChoice> = Vec::new();
+    for model in models {
+        let value = model.get("value").and_then(serde_json::Value::as_str);
+        if value == Some("default") {
+            continue;
+        }
+        let Some(id) = model
+            .get("resolvedModel")
+            .and_then(serde_json::Value::as_str)
+            .or(value)
+            .filter(|id| !id.is_empty())
+        else {
+            continue;
+        };
+        if out.iter().any(|c: &crate::ModelChoice| c.id == id) {
+            continue;
+        }
+        out.push(crate::ModelChoice {
+            id: id.to_string(),
+            label: model
+                .get("displayName")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(id)
+                .to_string(),
+            is_default: default_id == Some(id),
+        });
+    }
+    out
+}
+
+/// Asks Claude Code for its model catalog with one `list_models`
+/// control request (AD40; verified against 2.1.310 — `supported_models`
+/// is refused). No user turn is sent, so no model call runs. The
+/// throwaway process runs in the temp dir with no MCP servers.
+///
+/// # Errors
+/// The binary is missing, or no answer arrives before the timeout or
+/// `cancel`.
+pub async fn list_models(
+    harness: &berth_core::Harness,
+    path: std::ffi::OsString,
+    cancel: CancellationToken,
+) -> Result<Vec<crate::ModelChoice>, AssistantError> {
+    let mut command = tokio::process::Command::new(&harness.binary);
+    command
+        .args(FLAGS)
+        .args(["--mcp-config", "{\"mcpServers\":{}}"])
+        .current_dir(std::env::temp_dir())
+        .env("PATH", &path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let mut child = command.spawn().map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            AssistantError::NotInstalled(format!("claude ({})", harness.binary.display()))
+        } else {
+            AssistantError::Protocol(format!("claude spawn: {err}"))
+        }
+    })?;
+    let (Some(mut stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+        return Err(AssistantError::Protocol(
+            "claude: the harness process has no stdio pipes".into(),
+        ));
+    };
+    let request_id = uuid::Uuid::now_v7().to_string();
+    let frame = serde_json::json!({
+        "type": "control_request",
+        "request_id": request_id,
+        "request": { "subtype": "list_models" },
+    });
+    let query = async {
+        stdin
+            .write_all(format!("{frame}\n").as_bytes())
+            .await
+            .map_err(|e| AssistantError::Protocol(format!("claude: writing list_models: {e}")))?;
+        stdin
+            .flush()
+            .await
+            .map_err(|e| AssistantError::Protocol(format!("claude: writing list_models: {e}")))?;
+        let mut lines = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let Ok(frame) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            let response = frame.get("response");
+            if response
+                .and_then(|r| r.get("request_id"))
+                .and_then(serde_json::Value::as_str)
+                != Some(request_id.as_str())
+            {
+                continue;
+            }
+            if let Some(error) = response
+                .and_then(|r| r.get("error"))
+                .and_then(serde_json::Value::as_str)
+            {
+                return Err(AssistantError::Protocol(format!(
+                    "claude: list_models: {error}"
+                )));
+            }
+            return Ok(parse_models(&frame));
+        }
+        Err(AssistantError::Protocol(
+            "claude: closed before answering list_models".into(),
+        ))
+    };
+    let result = tokio::select! {
+        biased;
+        () = cancel.cancelled() => Err(AssistantError::Cancelled),
+        result = tokio::time::timeout(Duration::from_secs(15), query) => {
+            result.unwrap_or_else(|_| Err(AssistantError::Protocol(
+                "claude: no answer to list_models within 15 s".into(),
+            )))
+        }
+    };
+    let _killed = child.kill().await;
+    result
+}
+
 /// The model a session runs: the user's pick from the config (AD39),
 /// else `BERTH_CLAUDE_MODEL` (the smoke tests), else Claude Code's own
 /// default. An empty pick is no pick.
@@ -786,6 +923,33 @@ mod tests {
             "{got:?}"
         );
         assert!(!got.iter().any(|a| a == "--session-id"), "{got:?}");
+    }
+
+    #[test]
+    fn claude_parse_models_uses_resolved_ids_and_marks_the_default() {
+        // The shape `list_models` answered with on 2.1.310 (AD40 probe).
+        let frame = serde_json::json!({
+            "type": "control_response",
+            "response": { "subtype": "success", "response": { "models": [
+                {"value": "default", "resolvedModel": "claude-sonnet-5-5", "displayName": "Default (recommended)"},
+                {"value": "opus", "resolvedModel": "claude-opus-5-5", "displayName": "Opus 5.5"},
+                {"value": "sonnet", "resolvedModel": "claude-sonnet-5-5", "displayName": "Sonnet 5.5"},
+                {"value": "claude-haiku-4-5-20251001", "resolvedModel": "claude-haiku-4-5-20251001", "displayName": "Haiku 4.5"},
+            ] } },
+        });
+        let choices = parse_models(&frame);
+        let ids: Vec<&str> = choices.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "claude-opus-5-5",
+                "claude-sonnet-5-5",
+                "claude-haiku-4-5-20251001"
+            ]
+        );
+        assert!(choices[1].is_default);
+        assert!(!choices[0].is_default);
+        assert!(parse_models(&serde_json::json!({})).is_empty());
     }
 
     #[test]

@@ -1252,6 +1252,8 @@ pub trait HarnessSession: Send {
     async fn interrupt(&mut self) -> Result<(), AssistantError>;     // ⌘. (D77)
     async fn close(self: Box<Self>);
 }
+pub struct ModelChoice { pub id: String, pub label: String, pub is_default: bool }
+pub async fn list_models(harness: &berth_core::Harness, path: std::ffi::OsString, cancel: tokio_util::sync::CancellationToken) -> Result<Vec<ModelChoice>, AssistantError>;   // AD40 (2026-10-26): queried from the harness itself — Claude's `list_models` control request (`resolvedModel` is the id), muse's MSP `model/list`; nothing hardcoded
 pub async fn start(cfg: SessionConfig, cancel: tokio_util::sync::CancellationToken)
     -> Result<(Box<dyn HarnessSession>, tokio::sync::mpsc::Receiver<AssistantEvent>), AssistantError>;
 pub mod claude { pub const FLAGS: &[&str]; pub fn args(cfg: &super::SessionConfig, mcp_config: &std::path::Path) -> Vec<String>; pub fn parse_line(line: &str) -> Vec<super::AssistantEvent>; pub fn write_terminal_mcp_config(cfg: &super::SessionConfig) -> Result<std::path::PathBuf, AssistantError>; }   // AD38 (2026-10-26): the terminal TUI's own 0600 config (`mcp-<session>-terminal.json`), removed by the .command script's EXIT trap

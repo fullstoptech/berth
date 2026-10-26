@@ -710,6 +710,133 @@ impl HarnessSession for MuseSession {
     }
 }
 
+/// The `models` of a `model/list` result as choices, in the host's
+/// order (newest first).
+#[must_use]
+pub fn parse_model_list(result: &Value) -> Vec<crate::ModelChoice> {
+    let Some(models) = result.get("models").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    models
+        .iter()
+        .filter_map(|model| {
+            let id = model.get("modelId").and_then(Value::as_str)?;
+            if id.is_empty() {
+                return None;
+            }
+            Some(crate::ModelChoice {
+                id: id.to_string(),
+                label: model
+                    .get("displayLabel")
+                    .and_then(Value::as_str)
+                    .unwrap_or(id)
+                    .to_string(),
+                is_default: model
+                    .get("isDefault")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            })
+        })
+        .collect()
+}
+
+/// Asks muse for its model catalog: spawns `muse serve`, performs the
+/// initialize handshake and sends one `model/list` query (AD40,
+/// schema SS3.10; it may be sent before any session exists). No
+/// session starts and no model turn runs.
+///
+/// # Errors
+/// The binary cannot be spawned, the handshake fails, or `cancel`
+/// fires first.
+pub async fn list_models(
+    harness: &berth_core::Harness,
+    path: std::ffi::OsString,
+    cancel: CancellationToken,
+) -> Result<Vec<crate::ModelChoice>, AssistantError> {
+    let mut command = Command::new(&harness.binary);
+    command
+        .args(serve_args(None))
+        .current_dir(std::env::temp_dir())
+        .env("PATH", &path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    let mut child = command.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            AssistantError::NotInstalled(format!("muse ({})", harness.binary.display()))
+        } else {
+            AssistantError::Protocol(format!(
+                "muse: could not start `{}`: {e}",
+                harness.binary.display()
+            ))
+        }
+    })?;
+    let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+        let _killed = child.kill().await;
+        return Err(AssistantError::Protocol(
+            "muse: the harness process has no stdio pipes".into(),
+        ));
+    };
+    let link = Arc::new(Link {
+        stdin: AsyncMutex::new(stdin),
+        pending: Pending::default(),
+        next_id: AtomicI64::new(1),
+        recorder: Recorder::from_env(""),
+    });
+    {
+        let link = Arc::clone(&link);
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let Ok(frame) = serde_json::from_str::<Value>(&line) else {
+                    continue;
+                };
+                let method = frame.get("method").and_then(Value::as_str);
+                if let (None, Some(id)) = (method, frame.get("id").and_then(Value::as_i64)) {
+                    let result = if let Some(error) = frame.get("error") {
+                        let message = error
+                            .get("message")
+                            .and_then(Value::as_str)
+                            .unwrap_or("the harness reported an error");
+                        Err(AssistantError::Protocol(format!("muse: {message}")))
+                    } else {
+                        Ok(frame.get("result").cloned().unwrap_or(Value::Null))
+                    };
+                    if let Some(waiter) = link.pending.lock().await.remove(&id) {
+                        let _sent = waiter.send(result);
+                    }
+                } else if frame.get("id").is_some() {
+                    link.answer_server_request(&frame).await;
+                }
+            }
+        });
+    }
+    let query = async {
+        link.request(
+            "initialize",
+            json!({
+                "clientInfo": { "name": "berth", "version": env!("CARGO_PKG_VERSION") },
+                "capabilities": {
+                    "requestedCapabilities": ["sessionMcp"],
+                    "userInputDialogs": false,
+                },
+            }),
+        )
+        .await?;
+        link.notify("initialized", json!({})).await?;
+        let result = link.request("model/list", json!({})).await?;
+        Ok::<_, AssistantError>(parse_model_list(&result))
+    };
+    let result = tokio::select! {
+        biased;
+        () = cancel.cancelled() => Err(AssistantError::Cancelled),
+        result = query => result,
+    };
+    let _killed = child.kill().await;
+    result
+}
+
 /// Spawns `muse serve`, performs the MSP handshake, and starts (or
 /// resumes) the session. A host that cannot be spawned, exits during the
 /// handshake, or refuses the session surfaces as
@@ -915,6 +1042,25 @@ mod tests {
 
     fn choice_of(decision: &Value) -> &str {
         decision["choiceId"].as_str().expect("choiceId")
+    }
+
+    #[test]
+    fn muse_parse_model_list_reads_ids_labels_and_the_default() {
+        // The shape `model/list` answered with on 1.4.13 (AD40 probe).
+        let result = json!({
+            "models": [
+                {"modelId": "muse-wonder-1.0", "displayLabel": "muse-wonder-1.0", "isDefault": true},
+                {"modelId": "muse-spark-1.3", "displayLabel": "muse-spark-1.3", "isDefault": false},
+                {"modelId": "", "displayLabel": "broken", "isDefault": false},
+            ],
+            "providerId": "meta",
+        });
+        let choices = parse_model_list(&result);
+        assert_eq!(choices.len(), 2);
+        assert_eq!(choices[0].id, "muse-wonder-1.0");
+        assert!(choices[0].is_default);
+        assert_eq!(choices[1].id, "muse-spark-1.3");
+        assert!(parse_model_list(&json!({})).is_empty());
     }
 
     #[test]

@@ -144,6 +144,39 @@ fn region_of(open: bool) -> Option<RegionMode> {
 pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
     let mut state = use_context::<AppState>();
     let mut drag = use_signal(|| None::<Drag>);
+    // The model catalog of the picked harness, asked of the harness
+    // itself once per pick (AD40); the service caches it per run.
+    let assistant_service =
+        try_consume_context::<Option<crate::services::assistant::AssistantService>>().flatten();
+    let mut catalog = use_signal(|| None::<(String, Vec<berth_assistant::ModelChoice>)>);
+    {
+        let service = assistant_service.clone();
+        use_effect(move || {
+            // Re-run when the pick can change.
+            let _ = state.harnesses.read();
+            let _ = state.selection.read();
+            let _ = state.settings.read();
+            let Some(service) = service.clone() else {
+                return;
+            };
+            let Some(harness) = crate::screens::assistant::picked_harness_for_state(&state) else {
+                return;
+            };
+            if catalog
+                .peek()
+                .as_ref()
+                .is_some_and(|(id, _)| *id == harness.id.0)
+            {
+                return;
+            }
+            let key = harness.id.0.clone();
+            spawn(async move {
+                if let Ok(models) = service.list_models(&harness).await {
+                    catalog.set(Some((key, models)));
+                }
+            });
+        });
+    }
     let panel = state.bottom.read().clone();
     let Some(mode) = region_of(panel.open) else {
         return rsx! {};
@@ -236,6 +269,11 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
                                                         &state.settings.peek(),
                                                         picked_harness,
                                                     ),
+                                                    choices: catalog
+                                                        .read()
+                                                        .as_ref()
+                                                        .filter(|(id, _)| *id == picked)
+                                                        .map_or_else(Vec::new, |(_, models)| models.clone()),
                                                     onchange: move |model: Option<String>| {
                                                         save_model_and_restart(&mut state, model);
                                                     },
