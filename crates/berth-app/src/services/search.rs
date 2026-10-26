@@ -278,6 +278,7 @@ const GLOBALS: &[(ActionId, &str, &str)] = &[
         "Toggle bottom panel",
         "terminal",
     ),
+    ("assistant.open", "Open assistant", "sparkles"),
     ("volume.create", "Create volume", "plus"),
     ("network.create", "Create network", "plus"),
     ("engine.add", "Add engine", "plus"),

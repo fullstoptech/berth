@@ -262,6 +262,7 @@ impl Rig {
                 },
                 chrono::Utc::now(),
                 true,
+                &[],
             )
         })
     }
@@ -396,11 +397,11 @@ fn problems_every_kind_of_fix_has_a_button_or_a_note_and_the_first_rule_fix_is_p
     assert!(harness.split && harness.icon == Some("sparkles"));
     assert_eq!(
         harness.disabled_reason.as_deref(),
-        Some("Needs a harness (P7-T6)")
+        Some("Needs a harness: install Claude Code or muse")
     );
-    // Ids are `<problem id>#<index of the fix>`: the note keeps its index, so the harness is #7.
+    // Rule ids are `<problem id>#<index of the fix>`; the harness button is `assistant:<id>`.
     assert_eq!(item.fixes[0].id, format!("{}#0", p.id.0));
-    assert_eq!(harness.id, format!("{}#7", p.id.0));
+    assert_eq!(harness.id, format!("assistant:{}", p.id.0));
     assert_eq!(item.subject.as_deref(), Some("shop-api-db-1"));
     assert_eq!(item.age, "2 min");
     // Nothing is left from the placeholder the inspector card used before the rules existed.
@@ -527,6 +528,7 @@ fn problems_the_inspector_card_leaves_the_subject_out_and_only_lists_its_contain
                 backing: Backing::Live,
             },
             chrono::Utc::now(),
+            &[],
         )
     });
     assert_eq!(cards.len(), 1);
@@ -587,6 +589,7 @@ fn problems_groups_follow_the_lists_order_and_name_the_project_or_the_engine() {
                 backing: Backing::Live,
             },
             chrono::Utc::now(),
+            &[],
         )
     });
     let shape: Vec<(String, Vec<String>)> = groups
@@ -1161,7 +1164,7 @@ fn problems_scene_lists_the_seven_problems_grouped_with_their_fixes_and_the_coun
     assert_eq!(panel.matches("aria-expanded=\"true\"").count(), 1);
     assert!(html.contains("Map db to port 5433"));
     assert!(html.contains("Fix with Claude Code"));
-    assert!(html.contains("Needs a harness (P7-T6)"));
+    assert!(html.contains("Needs a harness: install Claude Code or muse"));
 }
 
 #[test]

@@ -58,6 +58,10 @@ pub struct SessionConfig {
     pub mcp: McpLaunch,
     pub path: std::ffi::OsString,
     pub system_prompt: String,
+    /// The model the user picked for this harness (AD39); `None` lets
+    /// the harness decide. The `BERTH_*_MODEL` env vars remain as a
+    /// fallback for the smoke tests.
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +104,35 @@ pub trait HarnessSession: Send {
     /// Stops the running turn (⌘., D77).
     async fn interrupt(&mut self) -> Result<(), AssistantError>;
     async fn close(self: Box<Self>);
+}
+
+/// One model a harness offers, as the harness itself reported it
+/// (AD39/AD40): `id` is the original model id to pass back, `label`
+/// its display name when the catalog carries one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelChoice {
+    pub id: String,
+    pub label: String,
+    pub is_default: bool,
+}
+
+/// Asks a harness which models it offers right now — Claude Code's
+/// `list_models` control request, muse's MSP `model/list` query
+/// (AD40). Nothing is hardcoded: a harness update changes the answer.
+/// A query only; no model turn runs.
+///
+/// # Errors
+/// The binary cannot be spawned, the harness does not answer in time,
+/// or it reports an error.
+pub async fn list_models(
+    harness: &Harness,
+    path: std::ffi::OsString,
+    cancel: CancellationToken,
+) -> Result<Vec<ModelChoice>, AssistantError> {
+    match harness.transport {
+        HarnessTransport::ClaudeStreamJson => claude::list_models(harness, path, cancel).await,
+        HarnessTransport::MuseMsp => muse::list_models(harness, path, cancel).await,
+    }
 }
 
 /// A started session and the stream of events it produces.
@@ -145,6 +178,7 @@ mod tests {
             },
             path: std::ffi::OsString::new(),
             system_prompt: String::new(),
+            model: None,
         }
     }
 

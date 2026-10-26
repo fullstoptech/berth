@@ -108,6 +108,9 @@ pub struct BottomPanel {
     pub height_px: u32,
     pub tab: BottomTab,
     pub terminals: Vec<TerminalTab>,
+    /// AD37: the "full section" of the assistant is a maximized bottom
+    /// panel; there is no `Section::Assistant`.
+    pub maximized: bool,
 }
 impl Default for BottomPanel {
     fn default() -> Self {
@@ -116,8 +119,23 @@ impl Default for BottomPanel {
             height_px: 320,
             tab: BottomTab::Logs,
             terminals: Vec::new(),
+            maximized: false,
         }
     }
+}
+/// One gated tool call waiting for the user (AD37). The frame's
+/// "Then: recreate…" card is an approval whose `after_plan` names a
+/// proposed plan: Approve waits until that plan is applied in
+/// Review changes. `typed_name` is set for Destructive tools: the exact
+/// name the user must type back.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Approval {
+    pub id: uuid::Uuid,
+    pub session: berth_core::SessionId,
+    pub call: berth_core::ToolCall,
+    pub effect: berth_core::EffectSummary,
+    pub typed_name: Option<String>,
+    pub after_plan: Option<uuid::Uuid>,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct TerminalTab {
@@ -181,6 +199,12 @@ pub struct AppState {
     pub overlays: Signal<Vec<Overlay>>,
     pub bottom: Signal<BottomPanel>,
     pub harnesses: Signal<Vec<berth_core::Harness>>,
+    /// AD37: live assistant sessions, one per project; saved through
+    /// `Store::save_session`.
+    pub assistant:
+        Signal<std::collections::BTreeMap<berth_core::SessionId, berth_core::AssistantSession>>,
+    /// AD37: pending tool approvals, oldest first.
+    pub approvals: Signal<Vec<Approval>>,
     pub toasts: Signal<Vec<Toast>>,
     pub snapshot_stale: Signal<bool>,
     /// What backs the engines (mock data or real Docker); set once at boot.
@@ -209,6 +233,8 @@ pub fn use_app_state() -> AppState {
         overlays: use_signal(Vec::new),
         bottom: use_signal(BottomPanel::default),
         harnesses: use_signal(Vec::new),
+        assistant: use_signal(std::collections::BTreeMap::new),
+        approvals: use_signal(Vec::new),
         toasts: use_signal(Vec::new),
         snapshot_stale: use_signal(|| false),
         backing: use_signal(crate::services::backing::Backing::default),

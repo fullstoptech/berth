@@ -8,12 +8,14 @@ use crate::state::AppState;
 use crate::ui::dock::DockView;
 
 /// The handles a caller keeps after [`provide_screen_views`]: the dock (a
-/// scene sets its window width) and the stores a scene seeds.
-#[derive(Clone, Copy)]
+/// scene sets its window width) and the stores a scene seeds. `plans` is
+/// the one PlanStore the screens and the tool executor share (P7-T5).
+#[derive(Clone)]
 pub struct ScreenViews {
     pub dock: DockView,
     pub details: DetailStore,
     pub images: ImageStore,
+    pub plans: crate::services::plans::PlanStore,
 }
 
 /// Provide every screen's context, in the order the screens need it (the
@@ -29,11 +31,12 @@ pub fn provide_screen_views(state: AppState) -> ScreenViews {
     updates();
     engine_dashboard();
     folder_view();
-    plans();
+    let plans = plans();
     ScreenViews {
         dock,
         details,
         images,
+        plans,
     }
 }
 
@@ -77,6 +80,6 @@ fn folder_view() {
     crate::sheets::open_folder::provide_folder_view();
 }
 
-fn plans() {
-    crate::services::plans::provide_plan_store();
+fn plans() -> crate::services::plans::PlanStore {
+    crate::services::plans::provide_plan_store()
 }

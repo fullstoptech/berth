@@ -330,7 +330,7 @@ fn inspector_a_harness_fix_is_disabled_until_a_harness_exists() {
     let html = render(panel);
     assert!(html.contains("Fix with Claude Code"), "{html}");
     assert!(
-        html.contains("data-tooltip=\"Needs a harness (P7-T6)\""),
+        html.contains("data-tooltip=\"Needs a harness: install Claude Code or muse\""),
         "{html}"
     );
 }
@@ -1082,6 +1082,7 @@ async fn inspector_stop_the_restart_loop_stops_that_container() {
             &mut state,
             Some(&rig.service),
             None,
+            None,
             &format!("stop-loop:{}", worker.id.0),
         );
     });
@@ -1097,7 +1098,7 @@ async fn inspector_a_problems_run_action_fix_shows_its_effect_then_runs_through_
     rig.dom.in_runtime(|| {
         let mut state = rig.state;
         state.problems.set(vec![problem]);
-        fix_click(&mut state, Some(&rig.service), None, &fix_id);
+        fix_click(&mut state, Some(&rig.service), None, None, &fix_id);
     });
     // The click asks first, with the fix's own effect; nothing has run.
     assert!(rig.pending_actions().is_empty());
@@ -1122,6 +1123,7 @@ async fn inspector_go_to_selects_the_dependency() {
         fix_click(
             &mut state,
             Some(&rig.service),
+            None,
             None,
             &format!("goto:{}", db.id.0),
         );

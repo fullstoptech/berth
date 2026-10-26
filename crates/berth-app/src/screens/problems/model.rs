@@ -12,13 +12,15 @@
 //!   line for what takes a while), and its button runs the action through `confirm::run`. Prune
 //!   opens Clean up instead, which lets the person choose what goes.
 //! - `Explain` is advice and shows as a note, not a button.
-//! - A harness fix is disabled until a harness exists (P7-T6).
+//! - "Fix with <harness>" (built here from the installed harnesses,
+//!   AD37: rules never emit one) opens the assistant on the problem
+//!   through `services::assistant_entry` ([`run_harness_fix`]).
 
 use berth_core::{
     ColimaOp, Container, ContainerId, EffectKind, EffectLine, EffectSummary, EngineAction,
-    FixEffect, FixSource, GenerationPlan, Problem, ProblemKind, Project, Subject,
+    FixEffect, FixSource, GenerationPlan, Harness, Problem, ProblemKind, Project, Subject,
 };
-use dioxus::prelude::WritableExt;
+use dioxus::prelude::{ReadableExt as _, WritableExt as _};
 use uuid::Uuid;
 
 use crate::screens::containers::select_only;
@@ -207,30 +209,49 @@ fn dependency_of<'a>(
     })
 }
 
+/// The button id of a problem's harness fix.
+pub const ASSISTANT_FIX_PREFIX: &str = "assistant:";
+
+/// The id of `problem`'s "Fix with <harness>" button.
+#[must_use]
+pub fn assistant_fix_id(problem: &Problem) -> String {
+    format!("{ASSISTANT_FIX_PREFIX}{}", problem.id.0)
+}
+
 /// One problem as an item. `with_subject` adds what it is about (the Problems tab), which the
 /// inspector's card leaves out because the inspector is already about one container.
+/// `harnesses` are the installed ones: the view builds the harness
+/// button from them (AD37), offered when the problem's project has a
+/// folder for the assistant to work in.
 #[must_use]
 pub fn problem_view(
     problem: &Problem,
     view: &StateView<'_>,
     now: chrono::DateTime<chrono::Utc>,
     with_subject: bool,
+    harnesses: &[Harness],
 ) -> ProblemView {
     let mut buttons: Vec<FixButton> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
+    let mut has_harness_fix = false;
     for (index, fix) in problem.fixes.iter().enumerate() {
         let id = fix_id(problem, index);
         match (&fix.source, &fix.effect) {
-            (FixSource::Harness(_), _) => buttons.push(FixButton {
-                id,
-                label: fix.label.clone(),
-                primary: false,
-                icon: Some("sparkles"),
-                split: true,
-                disabled_reason: Some("Needs a harness (P7-T6)".to_string()),
-                loading: false,
-                failed: None,
-            }),
+            (FixSource::Harness(wanted), _) => {
+                has_harness_fix = true;
+                let installed = harnesses.iter().any(|h| h.id == *wanted && h.available);
+                buttons.push(FixButton {
+                    id: assistant_fix_id(problem),
+                    label: fix.label.clone(),
+                    primary: false,
+                    icon: Some("sparkles"),
+                    split: true,
+                    disabled_reason: (!installed)
+                        .then(|| "Needs a harness: install Claude Code or muse".to_string()),
+                    loading: false,
+                    failed: None,
+                });
+            }
             (FixSource::Rule, FixEffect::Explain) => notes.push(fix.label.clone()),
             (FixSource::Rule, effect) => {
                 let (loading, failed) = run_state(effect, view);
@@ -244,6 +265,22 @@ pub fn problem_view(
                     disabled_reason: disabled_for(effect, view),
                     loading,
                     failed,
+                });
+            }
+        }
+    }
+    if !has_harness_fix {
+        if let Some(harness) = harnesses.iter().find(|h| h.available) {
+            if project_of(problem, view).is_some_and(|p| p.folder.is_some()) {
+                buttons.push(FixButton {
+                    id: assistant_fix_id(problem),
+                    label: format!("Fix with {}", harness.name),
+                    primary: false,
+                    icon: Some("sparkles"),
+                    split: true,
+                    disabled_reason: None,
+                    loading: false,
+                    failed: None,
                 });
             }
         }
@@ -287,11 +324,12 @@ pub fn card_views(
     problems: &[Problem],
     view: &StateView<'_>,
     now: chrono::DateTime<chrono::Utc>,
+    harnesses: &[Harness],
 ) -> Vec<ProblemView> {
     problems
         .iter()
         .filter(|p| p.subject == Subject::Container(container.id.clone()))
-        .map(|p| problem_view(p, view, now, false))
+        .map(|p| problem_view(p, view, now, false, harnesses))
         .collect()
 }
 
@@ -310,11 +348,12 @@ pub fn groups(
     problems: &[Problem],
     view: &StateView<'_>,
     now: chrono::DateTime<chrono::Utc>,
+    harnesses: &[Harness],
 ) -> Vec<Group> {
     let mut out: Vec<Group> = Vec::new();
     for problem in problems {
         let label = group_label(problem, view);
-        let item = problem_view(problem, view, now, true);
+        let item = problem_view(problem, view, now, true, harnesses);
         match out.iter_mut().find(|g| g.label == label) {
             Some(group) => group.items.push(item),
             None => out.push(Group {
@@ -341,6 +380,9 @@ pub enum Clicked {
     CleanUp,
     /// The container the problem points at is selected.
     Selected,
+    /// AD37: a harness fix opened this assistant session (P7-T6 builds the
+    /// button that returns it).
+    Assistant(berth_core::SessionId),
     /// Nothing happened, and why.
     Nothing(String),
 }
@@ -478,6 +520,69 @@ pub fn fix_click(
     }
 }
 
+/// The assistant entry a harness fix button asks for, or `None` when
+/// the id is not one, the problem is gone, no harness is installed,
+/// or its project has no folder.
+#[must_use]
+pub fn harness_entry(
+    state: &AppState,
+    problems: &[Problem],
+    fix_id: &str,
+) -> Option<crate::services::assistant_entry::Entry> {
+    use crate::services::assistant_entry;
+    let pid = fix_id.strip_prefix(ASSISTANT_FIX_PREFIX)?;
+    let problem = problems.iter().find(|p| p.id.0 == pid)?;
+    let harnesses = state.harnesses.peek().clone();
+    let wanted = problem.fixes.iter().find_map(|f| match &f.source {
+        FixSource::Harness(id) => Some(id.clone()),
+        FixSource::Rule => None,
+    });
+    let harness = wanted
+        .and_then(|id| {
+            harnesses
+                .iter()
+                .find(|h| h.id == id && h.available)
+                .cloned()
+        })
+        .or_else(|| assistant_entry::first_available(&harnesses))?;
+    let mut entry = with_view(state, |view| {
+        let project = project_of(problem, view)?;
+        let container = match &problem.subject {
+            Subject::Container(id) => view.containers.iter().find(|c| c.id == *id),
+            _ => None,
+        };
+        assistant_entry::problem_entry(project, &harness, problem, container)
+    })?;
+    entry.request.model = assistant_entry::saved_model(&state.settings.peek(), &harness);
+    Some(entry)
+}
+
+/// Run a harness fix button: open the project's assistant on the
+/// problem and show it. Returns whether `fix_id` was a harness fix
+/// (handled here, even when nothing could open).
+pub fn run_harness_fix(
+    state: &mut AppState,
+    service: Option<crate::services::assistant::AssistantService>,
+    problems: &[Problem],
+    fix_id: &str,
+) -> bool {
+    use crate::services::assistant_entry;
+    if !fix_id.starts_with(ASSISTANT_FIX_PREFIX) {
+        return false;
+    }
+    let (Some(service), Some(entry)) = (service, harness_entry(state, problems, fix_id)) else {
+        return true;
+    };
+    let project = entry.request.project.clone();
+    let mut shown = *state;
+    dioxus::prelude::spawn(async move {
+        if assistant_entry::run(&service, entry).await.is_ok() {
+            assistant_entry::show(&mut shown, &project);
+        }
+    });
+    true
+}
+
 /// Click the button with id `fix_id` among the buttons of `problems`.
 pub fn click(
     state: &mut AppState,
@@ -485,6 +590,9 @@ pub fn click(
     problems: &[Problem],
     fix_id: &str,
 ) -> Clicked {
+    if fix_id.starts_with(ASSISTANT_FIX_PREFIX) {
+        return Clicked::Nothing("The assistant is not connected".to_string());
+    }
     if let Some(id) = fix_id.strip_prefix("goto:") {
         select_only(state, &ContainerId(id.to_string()));
         return Clicked::Selected;

@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 use super::dock::RegionMode;
+use super::harness_picker::{HarnessPicker, ModelPicker};
 use super::icon_button::IconButton;
 use super::tabs::{TabItem, Tabs, TabsVariant};
 use crate::state::{AppState, BottomTab};
@@ -28,6 +29,50 @@ fn tab_id(tab: BottomTab) -> &'static str {
         BottomTab::Problems => "problems",
         BottomTab::Assistant => "assistant",
     }
+}
+
+/// Save the picked harness's model (AD39) and restart its live
+/// session so the pick takes effect at once, resuming the harness
+/// conversation. With no session open the save is enough: the next
+/// open reads it.
+fn save_model_and_restart(state: &mut AppState, model: Option<String>) {
+    let Some(harness) = crate::screens::assistant::picked_harness_for_state(state) else {
+        return;
+    };
+    {
+        let mut settings = state.settings.write();
+        match &model {
+            Some(model) => {
+                settings
+                    .harness_models
+                    .insert(harness.id.0.clone(), model.clone());
+            }
+            None => {
+                settings.harness_models.remove(&harness.id.0);
+            }
+        }
+    }
+    let Some(service) =
+        try_consume_context::<Option<crate::services::assistant::AssistantService>>().flatten()
+    else {
+        return;
+    };
+    let Some(project) = crate::screens::assistant::current_project(state) else {
+        return;
+    };
+    let session = {
+        let sessions = state.assistant.peek();
+        crate::services::assistant::session_for_project(&sessions, &project.id).map(|s| s.id)
+    };
+    let (Some(session), Some(request)) = (
+        session,
+        crate::screens::assistant::open_request(&project, &harness, &state.settings.peek()),
+    ) else {
+        return;
+    };
+    spawn(async move {
+        let _ = service.retry(session, request).await;
+    });
 }
 
 fn tab_from_id(id: &str) -> Option<BottomTab> {
@@ -99,11 +144,52 @@ fn region_of(open: bool) -> Option<RegionMode> {
 pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
     let mut state = use_context::<AppState>();
     let mut drag = use_signal(|| None::<Drag>);
+    // The model catalog of the picked harness, asked of the harness
+    // itself once per pick (AD40); the service caches it per run.
+    let assistant_service =
+        try_consume_context::<Option<crate::services::assistant::AssistantService>>().flatten();
+    let mut catalog = use_signal(|| None::<(String, Vec<berth_assistant::ModelChoice>)>);
+    {
+        let service = assistant_service.clone();
+        use_effect(move || {
+            // Re-run when the pick can change.
+            let _ = state.harnesses.read();
+            let _ = state.selection.read();
+            let _ = state.settings.read();
+            let Some(service) = service.clone() else {
+                return;
+            };
+            let Some(harness) = crate::screens::assistant::picked_harness_for_state(&state) else {
+                return;
+            };
+            if catalog
+                .peek()
+                .as_ref()
+                .is_some_and(|(id, _)| *id == harness.id.0)
+            {
+                return;
+            }
+            let key = harness.id.0.clone();
+            spawn(async move {
+                if let Ok(models) = service.list_models(&harness).await {
+                    catalog.set(Some((key, models)));
+                }
+            });
+        });
+    }
     let panel = state.bottom.read().clone();
     let Some(mode) = region_of(panel.open) else {
         return rsx! {};
     };
     let problem_count = state.problems.read().len();
+    // The harness picker in the head follows detection and the session.
+    if panel.tab == BottomTab::Assistant {
+        let _ = state.harnesses.read();
+        let _ = state.assistant.read();
+        let _ = state.selection.read();
+        let _ = state.projects.read();
+        let _ = state.settings.read();
+    }
     let dragging = drag().is_some();
     let data_mode = match mode {
         RegionMode::InspectorOnly => "inspector",
@@ -111,11 +197,18 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
         RegionMode::Split => "split",
     };
     let shows_panel = mode != RegionMode::InspectorOnly;
+    // The assistant's "full section" is this panel maximized (AD37).
+    let maximized = panel.maximized && panel.tab == BottomTab::Assistant;
+    let panel_class = if maximized {
+        "bottom-panel maximized"
+    } else {
+        "bottom-panel"
+    };
     rsx! {
         section {
-            class: "bottom-panel",
+            class: panel_class,
             "data-mode": data_mode,
-            style: "height: {panel.height_px}px;",
+            style: if maximized { String::new() } else { format!("height: {}px;", panel.height_px) },
             "aria-label": "Bottom panel",
             div {
                 class: "bottom-resize",
@@ -147,6 +240,58 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
                                 },
                             }
                             div { class: "bottom-close",
+                                if panel.tab == BottomTab::Assistant {
+                                    {
+                                        let harnesses = state.harnesses.peek().clone();
+                                        let picked = crate::screens::assistant::picked_harness_for_state(&state)
+                                            .map(|h| h.id.0)
+                                            .unwrap_or_default();
+                                        let (max_icon, max_label, max_tooltip) = if maximized {
+                                            ("chevron-down", "Restore the panel size", "Restore")
+                                        } else {
+                                            ("chevron-up", "Maximize the assistant", "Maximize")
+                                        };
+                                        rsx! {
+                                            HarnessPicker {
+                                                harnesses: harnesses.clone(),
+                                                selected: picked.clone(),
+                                                onchange: move |id: String| {
+                                                    state.settings.write().last_harness =
+                                                        Some(berth_core::HarnessId(id));
+                                                },
+                                            }
+                                            if let Some(picked_harness) =
+                                                harnesses.iter().find(|h| h.id.0 == picked && h.available)
+                                            {
+                                                ModelPicker {
+                                                    harness: picked_harness.clone(),
+                                                    selected: crate::services::assistant_entry::saved_model(
+                                                        &state.settings.peek(),
+                                                        picked_harness,
+                                                    ),
+                                                    choices: catalog
+                                                        .read()
+                                                        .as_ref()
+                                                        .filter(|(id, _)| *id == picked)
+                                                        .map_or_else(Vec::new, |(_, models)| models.clone()),
+                                                    onchange: move |model: Option<String>| {
+                                                        save_model_and_restart(&mut state, model);
+                                                    },
+                                                }
+                                            }
+                                            IconButton {
+                                                icon: max_icon,
+                                                label: max_label.to_string(),
+                                                tooltip: max_tooltip.to_string(),
+                                                pressed: maximized,
+                                                onclick: move |_| {
+                                                    let mut bottom = state.bottom.write();
+                                                    bottom.maximized = !bottom.maximized;
+                                                },
+                                            }
+                                        }
+                                    }
+                                }
                                 IconButton {
                                     icon: "x",
                                     label: "Close panel".to_string(),
@@ -164,6 +309,9 @@ pub fn BottomPanel(#[props(default = rsx! {})] inspector: Element) -> Element {
                             }
                             if panel.tab == BottomTab::Problems {
                                 crate::screens::problems::ProblemsPanel {}
+                            }
+                            if panel.tab == BottomTab::Assistant {
+                                crate::screens::assistant::AssistantPanel {}
                             }
                         }
                     }

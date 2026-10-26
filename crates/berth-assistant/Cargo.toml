@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 berth-core.workspace = true
 berth-sys.workspace = true
+rmcp.workspace = true
 async-trait.workspace = true
 schemars.workspace = true
 serde.workspace = true

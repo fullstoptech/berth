@@ -56,6 +56,7 @@ macro_rules! scene_modules {
 scene_modules! {
     activity,
     add_service,
+    assistant,
     clean_up,
     containers,
     detected,
@@ -176,6 +177,7 @@ fn mock_problems(containers: &[berth_core::Container]) -> Vec<berth_core::Proble
 pub(crate) fn seed_stores(state: &AppState, views: &crate::providers::ScreenViews) {
     containers::seed_details(state, views.details);
     images::seed_images(state, views.images);
+    assistant::seed_plans(state, views.plans.clone());
 }
 
 pub fn scenes() -> &'static [Scene] {

@@ -381,6 +381,10 @@ impl ComposeRunner for CliCompose {
             Some(&target.project_name),
         );
         args.push("config".to_string());
+        // AD37/D79: interpolated output would carry `.env` values into
+        // whatever shows or forwards the config (the assistant's
+        // compose.config tool is the first production caller).
+        args.push("--no-interpolate".to_string());
         args.push("--format".to_string());
         args.push("json".to_string());
         let output = self

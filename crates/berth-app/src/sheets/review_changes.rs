@@ -120,6 +120,8 @@ fn toast(state: &mut AppState, text: String) {
 pub fn ReviewChangesSheet(id: Uuid) -> Element {
     let mut state = use_context::<AppState>();
     let store = try_consume_context::<PlanStore>();
+    let assistant =
+        try_consume_context::<Option<crate::services::assistant::AssistantService>>().flatten();
     let services = try_consume_context::<Services>();
     let link = try_consume_context::<Option<crate::services::engines::EngineLink>>().flatten();
     let actions = try_consume_context::<ActionsService>();
@@ -328,6 +330,7 @@ pub fn ReviewChangesSheet(id: Uuid) -> Element {
     let mut write = {
         let store = store.clone();
         let services = services.clone();
+        let assistant = assistant.clone();
         let link = link.clone();
         let actions = actions.clone();
         let pending = pending.clone();
@@ -339,6 +342,7 @@ pub fn ReviewChangesSheet(id: Uuid) -> Element {
             let pending = pending.clone();
             let store = store.clone();
             let services = services.clone();
+            let assistant = assistant.clone();
             let link = link.clone();
             let actions = actions.clone();
             spawn(async move {
@@ -346,6 +350,11 @@ pub fn ReviewChangesSheet(id: Uuid) -> Element {
                 let outcome = off_ui(commit(pending.clone(), db)).await;
                 match outcome {
                     Some(Committed::Written { count }) => {
+                        // An assistant's proposed change rests as Written,
+                        // which unblocks its "Then:" approval (P7-T5).
+                        if let Some(assistant) = &assistant {
+                            assistant.plan_written(id);
+                        }
                         // A folder pinned by this write shows up as a project now.
                         if let (Some(link), Some(_)) = (&link, &pending.pin) {
                             link.pins_changed();

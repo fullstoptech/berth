@@ -48,6 +48,11 @@ pub struct Settings {
     pub default_engine: Option<berth_core::EngineId>,
     pub last_harness: Option<berth_core::HarnessId>,
     pub harness_paths: std::collections::BTreeMap<String, std::path::PathBuf>,
+    /// The model picked per harness id (AD39, owner request 2026-10-26);
+    /// absent means the harness decides. Settings saved before this
+    /// field existed load empty.
+    #[serde(default)]
+    pub harness_models: std::collections::BTreeMap<String, String>,
     pub terminal_app: Option<String>,
     pub editor: Option<String>,
     pub favourites: Vec<std::path::PathBuf>,
@@ -91,6 +96,7 @@ impl Default for Settings {
             default_engine: None,
             last_harness: None,
             harness_paths: std::collections::BTreeMap::new(),
+            harness_models: std::collections::BTreeMap::new(),
             terminal_app: None,
             editor: None,
             favourites,
@@ -129,6 +135,22 @@ mod tests {
             serde_json::from_str::<Settings>(&json).expect("deserialize"),
             s
         );
+    }
+
+    #[test]
+    fn settings_harness_models_round_trip_and_old_settings_load_empty() {
+        let mut s = Settings::default();
+        s.harness_models
+            .insert("claude-code".to_string(), "opus".to_string());
+        let json = serde_json::to_string(&s).expect("serialize");
+        let back: Settings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(
+            back.harness_models.get("claude-code").map(String::as_str),
+            Some("opus")
+        );
+        let old = json.replace(",\"harness_models\":{\"claude-code\":\"opus\"}", "");
+        let back: Settings = serde_json::from_str(&old).expect("old settings load");
+        assert!(back.harness_models.is_empty());
     }
 
     #[test]

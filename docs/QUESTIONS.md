@@ -14,6 +14,10 @@ Each open entry has a default already taken, so work never waits. The owner answ
 - **Q7 SSH host for remote-engine tests (P8-T1).** Default: no host; the SSH integration test reports skipped and only the unreachable state is checked by hand. Give a `user@host` with Docker to run it.
 - **Q8 Coolify instance (P9).** Default: wiremock only, built from the v4.5.0 spec. Give an instance URL and a read-only token to try the plugin against a real server.
 
+## Answered
+
+- **Q10 Harness TUI in a Berth terminal tab (P7-T6, AD38).** Answered by the owner 2026-10-26 at Phase 7 close: keep Terminal.app. "Open in Terminal" launches the harness TUI there with the bridge tools attached; no PTY crate is added for an in-app tab, and muse's launch stays disabled until a verified way attaches the `berth` MCP server to interactive `muse`. Revisit only if it feels wrong in use.
+
 ## Answered (decisions already made in the brief's conversation, 2026-10-24)
 
 - "Container" meant Portainer: developer-relevant Portainer features are in (brief §1.1); RBAC, edge, Swarm, Kubernetes are out.

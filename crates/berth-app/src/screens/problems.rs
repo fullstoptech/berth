@@ -13,10 +13,11 @@ use berth_core::Problem;
 use dioxus::prelude::*;
 
 use crate::services::actions::StateView;
+use crate::services::assistant::AssistantService;
 use crate::services::plans::PlanStore;
 use crate::state::AppState;
 use crate::ui::{connection, Connection, ProblemItem, PROBLEM_ITEM_CSS};
-use model::{click, groups, problem_view};
+use model::{click, groups, problem_view, run_harness_fix};
 
 /// The tab's CSS, rendered with it (tokens only).
 pub const PROBLEMS_CSS: &str = include_str!("../../assets/css/problems.css");
@@ -63,9 +64,11 @@ fn empty_text(connection: Connection) -> (&'static str, &'static str) {
 pub fn ProblemsPanel() -> Element {
     let state = use_context::<AppState>();
     let plans = try_consume_context::<PlanStore>();
+    let assistant = try_consume_context::<Option<AssistantService>>().flatten();
     let now = chrono::Utc::now();
     let problems = state.problems.read().clone();
-    let shown = read_view(&state, |view| groups(&problems, view, now));
+    let harnesses = state.harnesses.read().clone();
+    let shown = read_view(&state, |view| groups(&problems, view, now, &harnesses));
     let connection = connection(&state.engines.read(), &state.engine_scope.read());
     let open_all = problems.len() <= OPEN_ALL_UP_TO;
     let first = problems.first().map(|p| p.id.0.clone());
@@ -73,7 +76,9 @@ pub fn ProblemsPanel() -> Element {
         let mut state = state;
         move |fix: String| {
             let problems = state.problems.peek().clone();
-            click(&mut state, plans.as_ref(), &problems, &fix);
+            if !run_harness_fix(&mut state, assistant.clone(), &problems, &fix) {
+                click(&mut state, plans.as_ref(), &problems, &fix);
+            }
         }
     };
     rsx! {
@@ -116,18 +121,22 @@ pub fn ProblemsPanel() -> Element {
 pub fn ExplainPanel(problems: Option<Vec<Problem>>, onclose: EventHandler<()>) -> Element {
     let state = use_context::<AppState>();
     let plans = try_consume_context::<PlanStore>();
+    let assistant = try_consume_context::<Option<AssistantService>>().flatten();
     let now = chrono::Utc::now();
     let list = problems.clone().unwrap_or_default();
+    let harnesses = state.harnesses.read().clone();
     let views = read_view(&state, |view| {
         list.iter()
-            .map(|p| problem_view(p, view, now, true))
+            .map(|p| problem_view(p, view, now, true, &harnesses))
             .collect::<Vec<_>>()
     });
     let on_fix = {
         let mut state = state;
         let list = list.clone();
         move |fix: String| {
-            click(&mut state, plans.as_ref(), &list, &fix);
+            if !run_harness_fix(&mut state, assistant.clone(), &list, &fix) {
+                click(&mut state, plans.as_ref(), &list, &fix);
+            }
         }
     };
     rsx! {

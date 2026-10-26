@@ -328,7 +328,12 @@ html, body {
   background: transparent;
   border-top: none;
 }
-.bottom-close { display: inline-flex; align-items: center; padding-right: var(--space-4); }
+.bottom-close { display: inline-flex; align-items: center; gap: var(--space-2); padding-right: var(--space-4); }
+/* The assistant maximized (AD37): the panel takes the centre column and
+   the work area above it steps aside. */
+.bottom-panel.maximized { flex: 1; min-height: 0; }
+.bottom-panel.maximized .bottom-resize { display: none; }
+.shell-center:has(> .bottom-panel.maximized) > .shell-work { display: none; }
 .bottom-body { flex: 1; min-height: 0; overflow: auto; }
 /* The region: the panel on the left, the inspector on the right (AD22). */
 .bottom-split { display: flex; flex: 1; min-height: 0; }
