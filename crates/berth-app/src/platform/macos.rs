@@ -252,6 +252,43 @@ pub fn terminal_apps_in(roots: &[&std::path::Path]) -> Vec<TerminalApp> {
     found
 }
 
+static PREFERRED_TERMINAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// The terminal app the owner chose in Settings (empty or `None`: the first one found).
+pub fn set_preferred_terminal(name: Option<String>) {
+    let mut slot = match PREFERRED_TERMINAL.lock() {
+        Ok(slot) => slot,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    *slot = name.filter(|n| !n.trim().is_empty());
+}
+
+fn preferred_terminal() -> Option<String> {
+    match PREFERRED_TERMINAL.lock() {
+        Ok(slot) => slot.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+/// The app to use: the one whose name the owner typed (case ignored, "iTerm2" finds iTerm), else
+/// the first found.
+pub fn pick_terminal<'a>(
+    apps: &'a [TerminalApp],
+    preferred: Option<&str>,
+) -> Option<&'a TerminalApp> {
+    let wanted = preferred
+        .map(|p| p.trim().to_lowercase())
+        .filter(|p| !p.is_empty());
+    wanted
+        .and_then(|wanted| {
+            apps.iter().find(|app| {
+                let name = app.name.to_lowercase();
+                name == wanted || wanted.starts_with(&name)
+            })
+        })
+        .or_else(|| apps.first())
+}
+
 pub fn terminal_apps() -> Vec<TerminalApp> {
     terminal_apps_in(&[
         std::path::Path::new("/Applications"),
@@ -301,8 +338,7 @@ pub async fn open_in_terminal_app(target: ExecTarget) -> Result<&'static str, St
     use std::io::Write;
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let apps = terminal_apps();
-    let app = apps
-        .first()
+    let app = pick_terminal(&apps, preferred_terminal().as_deref())
         .ok_or_else(|| "No terminal app was found in /Applications".to_string())?;
     let search = berth_sys::SearchPath::from_process()
         .with_login_shell()
@@ -653,6 +689,25 @@ mod tests {
             script.contains("exec '/d' exec -it 'abc123' 'bash'\n"),
             "{script}"
         );
+    }
+
+    #[test]
+    fn terminal_app_choice_follows_settings_and_falls_back_to_the_first_found() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        for bundle in ["Terminal.app", "iTerm.app", "Ghostty.app"] {
+            std::fs::create_dir(dir.path().join(bundle)).expect("app");
+        }
+        let apps = terminal_apps_in(&[dir.path()]);
+        let pick = |preferred: Option<&str>| pick_terminal(&apps, preferred).map(|a| a.name);
+        assert_eq!(pick(None), Some("Terminal"));
+        assert_eq!(pick(Some("Ghostty")), Some("Ghostty"));
+        assert_eq!(pick(Some("  ghostty ")), Some("Ghostty"));
+        // The app is called iTerm2 in Finder; the setting may say either.
+        assert_eq!(pick(Some("iTerm2")), Some("iTerm"));
+        // An app that is not installed does not stop the session from opening.
+        assert_eq!(pick(Some("Kitty")), Some("Terminal"));
+        assert_eq!(pick(Some("")), Some("Terminal"));
+        assert_eq!(pick_terminal(&[], Some("iTerm")), None);
     }
 
     #[test]

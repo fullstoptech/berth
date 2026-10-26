@@ -42,7 +42,7 @@ fn stats_panel(state: &mut AppState) {
     use crate::services::stats::{StatsKey, StatsService};
     load_mock_world(state);
     state.settings.write().theme = berth_store::Theme::Light;
-    state.section.set(Section::Settings);
+    state.section.set(Section::Plugins);
     let Some(container) = state
         .containers
         .peek()
@@ -90,7 +90,7 @@ fn files_panel(state: &mut AppState) {
     use crate::services::files::{FilesBackend, MemoryFiles};
     load_mock_world(state);
     state.settings.write().theme = berth_store::Theme::Light;
-    state.section.set(Section::Settings);
+    state.section.set(Section::Plugins);
     let mut containers = state.containers.peek().clone();
     let Some(container) = containers.iter_mut().find(|c| c.name == "shop-api-api-1") else {
         return;

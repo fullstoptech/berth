@@ -667,7 +667,9 @@ pub fn ProjectsScreen() -> Element {
             }
             match screen {
                 ScreenState::Loading => rsx! { LoadingBody {} },
-                ScreenState::Empty => rsx! { EmptyBody {} },
+                ScreenState::Empty => rsx! {
+                    EmptyBody { first_run: Some(rsx! { crate::screens::first_run::FirstRunCard {} }) }
+                },
                 ScreenState::EngineStopped(engine) => rsx! { EngineStoppedBody { engine: *engine } },
                 ScreenState::Unreachable => rsx! {
                     div { class: "projects-empty",

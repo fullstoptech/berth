@@ -56,6 +56,9 @@ fn boot_services(mut state: AppState) -> Boot {
             settings.inspector_width_px =
                 crate::ui::dock::clamp_stored_width(settings.inspector_width_px);
             settings.inspector_split_pct = settings.inspector_split_pct.clamp(1, 99);
+            settings.log_buffer_lines =
+                crate::screens::settings::snap_log_buffer(settings.log_buffer_lines);
+            crate::services::logs::set_ring_lines(settings.log_buffer_lines as usize);
             let mut state = state;
             state.settings.set(settings);
         }
@@ -210,40 +213,43 @@ pub fn App() -> Element {
         }
     });
 
-    // Text size and inspector changes are saved as they happen (one small
-    // write, off the UI path; a drag writes once, on mouse-up). The first
-    // run only records the loaded values, and a forced BERTH_TEXT_SCALE or
-    // BERTH_INSPECTOR_WIDTH, or a scene, is never written to the owner's
-    // settings.
-    let store = boot.services.store.clone();
-    let saved = use_hook(|| std::rc::Rc::new(std::cell::Cell::new(None)));
+    // Every settings change is saved as it happens (one small write off the UI path, latest
+    // value wins); a forced BERTH_TEXT_SCALE, BERTH_INSPECTOR_WIDTH or BERTH_THEME, or a scene,
+    // is never written to the owner's settings.
+    crate::services::settings_save::use_save_settings(state, boot.services.store.clone());
+
+    // After the first paint: look for Colima, Docker and the assistants, and start the daily
+    // update check. A scene runs neither; the mock reports the tools present and asks no one.
+    let first_run = use_context::<crate::services::first_run::FirstRunStore>();
+    let updates = use_context::<crate::services::updates::UpdatesView>();
+    let cancel = boot.services.cancel.clone();
     use_effect(move || {
-        let settings = state.settings.read().clone();
-        let key = (
-            settings.text_scale.to_bits(),
-            settings.inspector_width_px,
-            settings.inspector_dock,
-            settings.inspector_split_pct,
+        if std::env::var_os("BERTH_SCENE").is_some() {
+            return;
+        }
+        let mock = *state.backing.peek() == crate::services::backing::Backing::Mock;
+        crate::services::first_run::refresh(
+            state,
+            first_run,
+            mock,
+            crate::services::first_run::Scan::Launch,
         );
-        if saved.get() == Some(key) {
-            return;
-        }
-        let first_run = saved.get().is_none();
-        saved.set(Some(key));
-        if first_run
-            || crate::text_scale::forced_from_env().is_some()
-            || crate::ui::dock::forced_width_from_env().is_some()
-            || std::env::var_os("BERTH_SCENE").is_some()
-        {
-            return;
-        }
-        let store = store.clone();
-        spawn(async move {
-            let saved = tokio::task::spawn_blocking(move || store.set_settings(&settings)).await;
-            if !matches!(saved, Ok(Ok(()))) {
-                tracing::warn!("settings save failed");
+        if !mock {
+            if let Some(feed) = crate::services::updates::GithubFeed::for_this_build() {
+                crate::services::updates::start(
+                    state,
+                    updates,
+                    std::sync::Arc::new(feed),
+                    cancel.clone(),
+                );
             }
-        });
+        }
+    });
+
+    // The terminal app chosen in Settings is the one Open in Terminal uses.
+    use_effect(move || {
+        let chosen = state.settings.read().terminal_app.clone();
+        platform::set_preferred_terminal(chosen);
     });
 
     // The View menu item names the side a click moves the inspector to.

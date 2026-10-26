@@ -94,6 +94,7 @@ fn projects_empty(state: &mut AppState) {
     state.section.set(Section::Projects);
     state.projects.set(Vec::new());
     state.problems.set(Vec::new());
+    super::first_run::seed_all_found(state);
 }
 
 pub(super) const SCENES: &[Scene] = &[

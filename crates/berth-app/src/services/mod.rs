@@ -15,6 +15,7 @@ pub mod engines;
 pub mod exec;
 pub mod files;
 pub mod find_images;
+pub mod first_run;
 pub mod folders;
 pub mod group_ops;
 pub mod images;
@@ -27,8 +28,10 @@ pub mod problems;
 pub mod project_files;
 pub mod prune;
 pub mod search;
+pub mod settings_save;
 pub mod stats;
 pub mod templates;
+pub mod updates;
 pub mod volume_backup;
 pub mod volumes;
 

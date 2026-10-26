@@ -11,6 +11,7 @@ pub(crate) mod css_tracks;
 pub mod engine_dashboard;
 pub mod engines;
 pub mod find_images;
+pub mod first_run;
 pub mod image_detail;
 pub mod images;
 pub mod logs;
@@ -23,6 +24,7 @@ pub mod project_detail;
 pub mod projects;
 mod projects_order;
 pub mod recent_activity;
+pub mod settings;
 #[cfg(test)]
 pub(crate) mod table_tiers;
 pub mod templates;

@@ -42,10 +42,20 @@ fn projects_empty_body_is_centred_without_a_first_run_card() {
     assert!(!html.contains("projects-first-run"), "{html}");
     assert!(html.contains("No projects yet"), "{html}");
     assert!(html.contains("Drop a folder here"), "{html}");
-    // The real scene has no card today, so it is the centred case.
+}
+
+#[test]
+fn projects_empty_scene_carries_the_first_run_checks_card() {
+    // P6-T2 fills the slot: the frame shows the block on the left and the card on its right.
     let page = scene("Projects / empty / 1440");
-    assert!(page.contains("class=\"projects-empty\""), "{page}");
-    assert!(!page.contains("has-first-run"), "{page}");
+    assert!(page.contains("projects-empty has-first-run"), "{page}");
+    assert!(page.contains("First-run checks"), "{page}");
+    assert!(page.contains("0.10.3 \u{b7} running"), "{page}");
+    let block = page
+        .find("projects-empty-column")
+        .expect("the empty state block");
+    let card = page.find("projects-first-run").expect("the card slot");
+    assert!(block < card, "the card sits after (right of) the block");
 }
 
 #[test]
