@@ -30,8 +30,24 @@ use tokio_util::sync::CancellationToken;
 
 use super::Services;
 
-/// Lines one view keeps (D25).
+/// Lines one view keeps (D25) until Settings says otherwise.
 pub const RING_LINES: usize = 100_000;
+
+/// The ring size a new log view gets: `Settings::log_buffer_lines` (P6-T2), read when a view is
+/// created, so a change applies to the next view that opens.
+static RING_SETTING: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(RING_LINES);
+
+/// Set the ring size new views are created with (the setting, applied at once, never to a view
+/// already open).
+pub fn set_ring_lines(lines: usize) {
+    RING_SETTING.store(lines.max(1_000), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The ring size a log view created now gets.
+pub fn ring_lines() -> usize {
+    RING_SETTING.load(std::sync::atomic::Ordering::Relaxed)
+}
 /// One batch per tick at most (PLAN §1.3).
 pub const TICK: Duration = Duration::from_millis(16);
 /// Lines asked of each container before following.
@@ -390,7 +406,7 @@ async fn session(
 ) {
     // Built here, not on the UI path: the first allocation and the lazily compiled patterns.
     warm_up();
-    *lock(&core.view) = Some(LogView::new(RING_LINES, names));
+    *lock(&core.view) = Some(LogView::new(ring_lines(), names));
     core.wake.notify_one();
     let streams = open(cancel.clone(), Arc::downgrade(&core));
     let merge = streams.len() > 1;

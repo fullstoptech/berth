@@ -334,12 +334,19 @@ pub fn EnginesScreen() -> Element {
         }
     });
     // Elapsed seconds move while a Colima command runs.
+    // The clock parks while the window is hidden (AD32).
+    let visibility = try_use_context::<crate::services::visibility::Visibility>();
     let mut tick = use_signal(|| 0_u32);
-    use_future(move || async move {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            if any_running(&state.pending.peek()) {
-                tick += 1;
+    use_future(move || {
+        let mut pacer = crate::services::visibility::Pacer::of(
+            visibility.as_ref(),
+            std::time::Duration::from_millis(500),
+        );
+        async move {
+            while pacer.tick().await {
+                if any_running(&state.pending.peek()) {
+                    tick += 1;
+                }
             }
         }
     });

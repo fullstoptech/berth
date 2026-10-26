@@ -509,7 +509,7 @@ fn Detail(
                         InlineMessage { message: format!("Could not load the tags: {message}"), tone: InlineTone::Danger }
                     },
                     Some(TagsEntry::Ready { .. }) => rsx! {
-                        div { class: "fd-tags", role: "table",
+                        div { class: "fd-tags", role: "table", "aria-label": "Tags",
                             div { class: "fd-tag-head", role: "row",
                                 span { "Tag" }
                                 span { "Download" }
@@ -903,7 +903,7 @@ pub fn FindImages() -> Element {
                         }
                     },
                     Body::Rows => rsx! {
-                        div { class: "fi-table", role: "table", "aria-rowcount": "{row_count}",
+                        div { class: "fi-table", role: "table", "aria-label": "Search results", "aria-rowcount": "{row_count}",
                             div { class: "fi-head", role: "row",
                                 TableHeaderCell { label: "Name".to_string() }
                                 TableHeaderCell { label: "Publisher".to_string() }

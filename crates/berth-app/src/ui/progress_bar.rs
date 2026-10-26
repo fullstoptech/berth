@@ -33,6 +33,11 @@ pub fn ProgressBar(
         value_text.or_else(|| percent.map(|p| format!("{p:.0}%")))
     };
     let name = aria_label.or_else(|| label.clone());
+    // What a screen reader says for the value: the visible text when there
+    // is one ("65%", "3 of 8 layers"), else the percent.
+    let spoken = shown
+        .clone()
+        .or_else(|| percent.map(|p| format!("{p:.0}%")));
     let label = if thin { None } else { label };
     rsx! {
         div { class,
@@ -53,6 +58,7 @@ pub fn ProgressBar(
                 "aria-valuemin": "0",
                 "aria-valuemax": "100",
                 "aria-valuenow": percent.map(|p| format!("{p:.0}")),
+                "aria-valuetext": spoken,
                 div {
                     class: "progress-fill",
                     style: percent.map(|p| format!("width: {p:.0}%;")),

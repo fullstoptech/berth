@@ -208,6 +208,8 @@ const CONTAINER_VERBS: &[Verb] = &[
     verb("container.kill", "Kill", "zap", true),
     verb("container.delete", "Delete", "trash-2", true),
     verb("container.logs", "Show logs of", "logs", false),
+    verb("container.terminal", "Open terminal in", "terminal", false),
+    verb("container.edit", "Edit and recreate", "settings", false),
 ];
 
 const PROJECT_VERBS: &[Verb] = &[
@@ -221,12 +223,27 @@ const PROJECT_VERBS: &[Verb] = &[
         "arrow-down-to-line",
         false,
     ),
+    verb("project.open_folder", "Open folder of", "folder", false),
+    verb(
+        "project.open_in_editor",
+        "Open in editor",
+        "open-external",
+        false,
+    ),
+    verb("project.delete", "Delete project", "trash-2", false),
 ];
 
 const ENGINE_VERBS: &[Verb] = &[
     verb("engine.start", "Start engine", "play", false),
     verb("engine.stop", "Stop engine", "square", true),
     verb("engine.restart", "Restart engine", "rotate-cw", true),
+    verb(
+        "engine.edit_resources",
+        "Edit resources of",
+        "settings",
+        false,
+    ),
+    verb("engine.clean_up", "Clean up", "trash-2", false),
 ];
 
 fn verbs_of(group: Group) -> &'static [Verb] {
@@ -239,11 +256,10 @@ fn verbs_of(group: Group) -> &'static [Verb] {
 }
 
 /// Global actions the palette offers, in the order an empty query lists
-/// them. Every other `ActionDef` is either contextual (Logs, Assistant,
-/// per-subject verbs) or palette navigation itself. "Toggle inspector"
-/// and "Filter current list" are missing on purpose: `keys::dispatch` has
-/// no handler for them yet (P2-T7), and a palette row that does nothing is
-/// worse than none; add them to this table with their handlers.
+/// them. An `ActionDef` the palette does not list is named, with its other
+/// way in, in `NOT_IN_PALETTE` (search_tests.rs); a palette row that does
+/// nothing is worse than none, so an action joins this table with its
+/// handler.
 const GLOBALS: &[(ActionId, &str, &str)] = &[
     ("global.open_folder", "Open folder…", "folder"),
     ("global.new_project", "New project", "plus"),
@@ -268,6 +284,12 @@ const GLOBALS: &[(ActionId, &str, &str)] = &[
     ("view.text_bigger", "Bigger text", "plus"),
     ("view.text_smaller", "Smaller text", "minus"),
     ("view.text_reset", "Actual text size", "eye"),
+    ("global.toggle_inspector", "Toggle inspector", "eye"),
+    (
+        "view.dock_inspector",
+        "Dock inspector at the other side",
+        "corner-down-left",
+    ),
 ];
 
 // ---------------------------------------------------------------------
@@ -349,7 +371,9 @@ fn container_caps(state: ContainerState, engine_up: bool) -> Vec<ActionId> {
     }
     if state == S::Running {
         caps.push("container.pause");
+        caps.push("container.terminal");
     }
+    caps.push("container.edit");
     if paused {
         caps.push("container.resume");
     }
@@ -357,10 +381,20 @@ fn container_caps(state: ContainerState, engine_up: bool) -> Vec<ActionId> {
 }
 
 fn project_caps(project: &berth_core::Project, engine_up: bool) -> Vec<ActionId> {
-    if !engine_up || project.folder.is_none() || project.compose_files.is_empty() {
+    if project.folder.is_none() || project.compose_files.is_empty() {
         return Vec::new();
     }
-    let mut caps = vec!["project.rebuild", "project.pull_images"];
+    // Folder, editor and delete work on files and the project's record: no
+    // engine needed.
+    let mut caps = vec![
+        "project.open_folder",
+        "project.open_in_editor",
+        "project.delete",
+    ];
+    if !engine_up {
+        return caps;
+    }
+    caps.extend(["project.rebuild", "project.pull_images"]);
     if project.status != ProjectStatus::AllRunning {
         caps.push("project.start");
     }
@@ -390,7 +424,12 @@ fn engine_caps(engine: &berth_core::Engine) -> Vec<ActionId> {
     }
     match engine.state {
         EngineState::Stopped => vec!["engine.start"],
-        EngineState::Running => vec!["engine.stop", "engine.restart"],
+        EngineState::Running => vec![
+            "engine.stop",
+            "engine.restart",
+            "engine.edit_resources",
+            "engine.clean_up",
+        ],
         _ => Vec::new(),
     }
 }
@@ -1440,9 +1479,19 @@ pub fn run(
             None => RunOutcome::Refused("This is no longer available".to_string()),
         };
     }
-    if action == "container.logs" {
+    // Actions that work on the selection: select the subject, then run the
+    // handler the shortcut would.
+    if matches!(
+        action,
+        "container.logs"
+            | "container.terminal"
+            | "container.edit"
+            | "project.open_folder"
+            | "project.open_in_editor"
+            | "project.delete"
+    ) {
         open(state, &subject);
-        crate::keys::dispatch(state, "container.logs");
+        crate::keys::dispatch(state, action);
         return RunOutcome::Done;
     }
     // Sheets, not actions: Edit resources and Clean up open over the shell.

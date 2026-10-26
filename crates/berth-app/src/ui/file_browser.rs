@@ -333,7 +333,7 @@ pub fn FileBrowser(
                     }
                 },
                 Listing::Ready(_) => rsx! {
-                    div { class: "fb-table", role: "table",
+                    div { class: "fb-table", role: "table", "aria-label": "Files",
                         div { class: "fb-cols", role: "row",
                             span { class: "fb-col", role: "columnheader", "Name" }
                             span { class: "fb-col fb-col-right", role: "columnheader", "Size" }

@@ -25,6 +25,8 @@ pub fn provide_screen_views(state: AppState) -> ScreenViews {
     let details = details();
     let images = images();
     find_images();
+    first_run();
+    updates();
     engine_dashboard();
     folder_view();
     plans();
@@ -57,6 +59,14 @@ fn images() -> ImageStore {
 
 fn find_images() {
     crate::services::find_images::provide_find_store();
+}
+
+fn first_run() {
+    crate::services::first_run::provide_first_run_store();
+}
+
+fn updates() {
+    crate::services::updates::provide_updates_view();
 }
 
 fn engine_dashboard() {

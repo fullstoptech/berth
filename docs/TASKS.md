@@ -215,24 +215,58 @@ Done when: `cargo nextest run -p berth-app a11y` passes (SSR: no `button` withou
 
 ## Phase 7 — Assistant (branch `phase/7-assistant`, tag `v0.7`)
 
-Learned: —
+Learned: Phase 6 closed 2026-10-26 with the perf gate green but noisy (cold start is WKWebView-bound; measure on a quiet machine and report the range). Timers follow the one `Visibility` signal (`services/visibility.rs` Pacer); a hidden-window wake must filter event-loop lifecycle events or the app spins a core (`event_may_show_window`). Every new screen is automatically covered by the scene-wide SSR a11y audit, and bare-key shortcuts go through `focus::bare_keys_allowed`. The login-shell PATH is resolved once (`services/login_path`); snapshots paint before discovery. AD37 settled the Phase 7 contracts before any coding: wire tool names, the redact module as the only path for anything a harness sees, one short `bridge.sock`, live harness tests in `berth-app/tests/assistant_it.rs`, and only four live harness runs in total (recorded transcripts and a fake harness cover the rest). The tray menu is AX-scriptable end to end (osascript menu bar 2), including Stop/Start project with the window closed. Owner decision 2026-10-26: no voice in the app.
+
+**Architect notes (gap review 2026-10-26, AD37):** all Phase 7 tasks.
+- The installed harnesses are now `claude` 2.1.310 and `muse` 1.4.13; the done-whens that say "or newer" hold.
+- The owner's by-hand checks (resume after quitting and reopening; Fix with Claude Code on the portclash problem) fold into one acceptance sitting at phase close.
 
 **P7-T1 Harness detection, tool catalog, redaction.** `crates/berth-assistant/src/{lib,detect,catalog,redact}.rs` and `examples/detect.rs` per PLAN §6.9, D43, D79. `catalog()` holds the 25 tools with JSON schemas (`schemars`) and risks.
+**Architect notes (gap review 2026-10-26, AD37):**
+- Create `lib.rs` with every module, plus empty `claude.rs`, `muse.rs`, `context.rs` and the `start()` dispatcher, so T3 and T4 never edit a shared file.
+- Add `ToolDef::wire_name()` and `tool(name)` (PLAN §6.9): Claude API tool names forbid `.`, so the wire form is `containers_list`; `tool()` accepts the dotted, wire and `mcp__berth__` forms.
+- `redact` gains `is_env_file`, `compose_text`, `scrub` and `unmask_env` next to the existing functions; the `compose.config` tool runs `docker compose config --no-interpolate`.
 Done when: `cargo nextest run -p berth-assistant detect catalog redact` reports ≥ 15 passed (25 tools; unique names; every Destructive tool has a `name` argument; env file and inspect redaction); `env -i HOME=$HOME SHELL=/bin/zsh PATH=/usr/bin:/bin:/usr/sbin:/sbin cargo run -q -p berth-assistant --example detect` prints Claude Code 2.1.309 or newer and Muse Code 1.4.12 or newer with `~/.local/bin` paths.
 
 **P7-T2 MCP server, bridge, gated execution.** `crates/berth-assistant/src/{bridge,mcp}.rs` (`serve_mcp_stdio` with rmcp `server` + `transport-io`), `berth-app/src/main.rs` `mcp` mode, `berth-app/src/services/tools.rs` (bind the bridge at start, execute tools against engines, rules and store, gate Change and Destructive with approval state in `AppState`, redact results, Activity `assistant.<tool>`, `files.propose_edit` creates a pending plan). ADR 0006.
+**Architect notes (gap review 2026-10-26, AD37):**
+- Add `BridgeServer::bind_at(socket, token, cancel)` and use one short `bridge.sock` per app in the runtime dir (`runtime_dir()` is 64 bytes and `sun_path` holds 104, so a uuid name overflows). Write the `--mcp-config` file holding the token 0600 and delete it on close. `BridgeRequest` gains `call_id`.
+- Prove ADR 0006 "fails at once when Berth is not running": `berth mcp` today prints "not implemented yet" and exits 2.
+- Put `mcp_it` and the smoke tests in `crates/berth-app/tests/assistant_it.rs`: only berth-app has `CARGO_BIN_EXE_berth`.
+- Keep the core of `services/tools.rs` Dioxus-free.
+- Tools go through `services/confirm` and `ActionsService`: `containers.remove` is `ContainerAction::Remove{force,volumes}`; `images.remove` and `volumes.remove` are `EngineAction::Remove{target}`; `system.prune` is `Prune{plan}` through `services/prune.rs`.
+- Under mock, return `Backing` unsupported reasons (`Capability::WriteFiles` for `files.propose_edit`).
+- Never log `files.propose_edit` args.
 Done when: `scripts/it.sh -p berth-assistant mcp_it` passes: an rmcp client (dev feature `client`, `transport-child-process`) spawns `target/debug/berth mcp --bridge <test socket>` against a test bridge backed by MockEngine, lists 25 tools, `containers.list` returns at once, `containers.restart` blocks until the test approves and returns denied when it denies, `files.read` of a `.env` returns masked values, a wrong token is refused.
 
 **P7-T3 Claude Code adapter.** `crates/berth-assistant/src/claude.rs`: flag table (D43), `--mcp-config` file in `runtime_dir` with the `berth` server, stream-json writer for user turns (context rendered by `context::render`), line parser to `AssistantEvent` (text deltas, `tool_use` and results for `mcp__berth__*`, result line), `--session-id`/`--resume`, interrupt (verify how a stream-json session is interrupted: a control message if `--help` or the docs name one, else SIGINT; record the finding). First verify `--allowedTools mcp__berth` lets Berth's tools run without prompts under `-p`; if not, try `mcp__berth__*` and record which works.
+**Architect notes (gap review 2026-10-26, AD37):**
+- Capture fixtures through a working `berth mcp` (after T2).
+- Live runs only with `BERTH_HARNESS_SMOKE=1`, with `--model haiku` and one-turn prompts.
+- Spend two live runs: one probe (`--allowedTools mcp__berth`, interrupt) and one capture run (`BERTH_RECORD=1` writes `fixtures/assistant/claude/*.jsonl`) that doubles as the smoke test. Everything else replays fixtures through a fake harness script set as `Harness.binary`.
+- `parse_line` maps wire names back through `tool()`.
 Done when: `cargo nextest run -p berth-assistant claude` reports ≥ 10 passed on recorded stream-json fixtures (`fixtures/assistant/claude/*.jsonl`, captured in this task); `BERTH_HARNESS_SMOKE=1 cargo nextest run -p berth-assistant --run-ignored only smoke_claude` passes: asked "List the containers on this engine", the session calls `containers.list` through the bridge (MockEngine) and the answer names `shop-api-api-1`.
 
 **P7-T4 muse adapter.** `crates/berth-assistant/src/muse.rs`: `muse serve --disable-shell --disable-write` over stdio, MSP framing (check the schema export: `muse schema generate-json-schema --out <tmp>`; record the framing and the `initialize` handshake in STATUS.md), `session/start` with `workspaceRoot` and `config.mcpServers.berth`, `turn/start`, `turn/interrupt`, notifications to `AssistantEvent`, `approval/requested` for `berth` tools answered with the allow choice, others denied; fallback `muse exec --json`.
+**Architect notes (gap review 2026-10-26, AD37):**
+- Same method as T3: fixtures captured through a working `berth mcp`; live runs only with `BERTH_HARNESS_SMOKE=1` and the cheapest model (muse `modelId`), one-turn prompts; one probe and one capture run (`BERTH_RECORD=1` writes `fixtures/assistant/muse/*.jsonl`) that doubles as the smoke test; everything else replays fixtures through a fake harness script set as `Harness.binary`.
+- Add the pure `approval_decision(params)` (PLAN §6.9) and test it directly.
+- D43 framing: the `berth` MCP server entry uses the MSP stdio schema (`command, args, env, framing, mode`) with `framing` newline-delimited, which is what rmcp `transport-io` speaks.
 Done when: `cargo nextest run -p berth-assistant muse` reports ≥ 10 passed on recorded fixtures (`fixtures/assistant/muse/*.jsonl`); `BERTH_HARNESS_SMOKE=1 cargo nextest run -p berth-assistant --run-ignored only smoke_muse` passes the same question as P7-T3.
 
 **P7-T5 Assistant UI.** `screens/assistant.rs` (bottom tab and full section), `ui/{chat_turn,tool_call_row,approval_card,proposed_change_card,context_chip,harness_picker}.rs`, `services/assistant.rs` (one session per project, saved with `Store::save_session`, resumed on reopen; streaming; ⌘. interrupt per D77; Approve / Deny; typed name for Destructive; Review changes from a proposed change; harness error with stderr and Retry; no-harness state with install hints while rules still work). Frame: "Project / assistant / 1440".
+**Architect notes (gap review 2026-10-26, AD37):**
+- The "full section" is a maximized bottom panel (`BottomPanel.maximized`); there is no `Section::Assistant`.
+- Add `state.assistant`, `state.approvals` and `Approval.after_plan` (PLAN §6.11). `TurnPart::ProposedChange` stores a summary and `ProposalState`, not the plan.
+- The harness slots are in `screens/problems/model.rs` (`problem_view` "Needs a harness (P7-T6)"; `fix_click` returns `Nothing`), `ui/problem_item.rs`, `ui/log_view.rs` (the Ask button) and `sheets/generate.rs` (harness choice). `container_detail_tests.rs` asserts the disabled tooltip and needs updating.
+- If P6-T2 did not fill `state.harnesses` from `detect`, do it here.
+- Review changes: `PendingPlan::new(plan, title)` with `.run = PlanRun::for_project` or `for_folder`, `PlanStore::insert`, `Overlay::ReviewChanges`; `PlanSource::Harness` already renders.
 Done when: `cargo nextest run -p berth-app assistant` passes the scene and states (thinking, waiting for approval, watch banner, error, no harness); the shot matches the frame; by hand with Claude Code on berthfx: "What is using the most memory?" streams an answer with tool rows; quitting and reopening resumes the conversation.
 
 **P7-T6 Entry points and watch mode.** Ask about these lines (log selection → `ContextItem::Logs`), Explain this error (rules first, then the assistant), Fix with Claude Code / muse on problems (problem, its log lines, inspect, compose file and folder tree attached), Generate with harness in the Generate sheet (result lands in Review changes), Watch and fix (follows logs after each change; proposes, never applies, D71), Open in terminal (the harness TUI in a terminal tab with `--mcp-config` attached; `muse` with its session config).
+**Architect notes (gap review 2026-10-26, AD37):**
+- Rules never emit `FixSource::Harness`; build the harness button in the view from `state.harnesses`.
+- `Clicked::Assistant(SessionId)` is the result of clicking a harness fix; `Turn.origin` carries the entry point text ("From Logs · Ask about 2 lines").
 Done when: `cargo nextest run -p berth-app assistant_entry` passes (context chips built from a selection; watch mode never calls write); by hand with `--broken`: Fix with Claude Code on the portclash problem reads logs through Berth's tools, proposes a compose change that opens Review changes, and `compose.up` waits for Approve.
 
 ---

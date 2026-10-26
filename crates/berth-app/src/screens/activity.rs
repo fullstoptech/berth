@@ -679,7 +679,7 @@ pub fn ActivityScreen() -> Element {
                     }
                 }
             }
-            div { class: "activity-table",
+            div { class: "activity-table", role: "table", "aria-label": "Activity",
                 div { class: "activity-thead", role: "row",
                     div { class: "activity-cols",
                         TableHeaderCell { label: "Time".to_string() }

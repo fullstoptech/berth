@@ -782,7 +782,7 @@ pub fn ImagesScreen() -> Element {
                         }
                     },
                     ScreenState::Rows => rsx! {
-                        div { class: "im-table", role: "table", "aria-rowcount": "{row_count}",
+                        div { class: "im-table", role: "table", "aria-label": "Images", "aria-rowcount": "{row_count}",
                             div { class: "im-head", role: "row",
                                 TableHeaderCell {
                                     label: "Image".to_string(),

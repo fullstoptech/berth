@@ -250,7 +250,7 @@ fn shell_status_bar_text_is_exactly_the_frames() {
     let html = scene_html();
     assert!(
         html.contains(
-            "<span class=\"statusbar-summary\">colima/default \u{b7} Docker 28.4.0 \u{b7} 4 CPU \u{b7} 8 GB \u{b7} 15 running</span>"
+            "<span class=\"statusbar-summary\" role=\"status\">colima/default \u{b7} Docker 28.4.0 \u{b7} 4 CPU \u{b7} 8 GB \u{b7} 15 running</span>"
         ),
         "{html}"
     );

@@ -269,3 +269,25 @@
 .gallery-title { font-size: var(--text-h3-size); line-height: var(--text-h3-line); font-weight: var(--text-h3-weight); margin: 0 0 var(--space-8); }
 .gallery-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-12); }
 .gallery-status { display: inline-flex; align-items: center; gap: var(--space-6); color: var(--color-ink-muted); font-size: var(--text-caption-size); }
+
+/* Keyboard focus (P6-T4). Anything reachable by Tab shows the ring, even a
+   control no component styled; :where() keeps this at zero specificity so a
+   component's own ring wins. Fields draw theirs on the wrapper (above) and
+   search fields use the ink border, so inputs are not listed. */
+:where(button, a[href], summary, [role="button"], [role="tab"], [role="switch"],
+       [role="checkbox"], [role="radio"], [role="menuitem"], [tabindex="0"]):focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+/* Reduced motion (P6-T4): tokens.css zeroes the --motion-* durations; this
+   stops the rest (spinner, skeleton pulse, indeterminate bar) at their end
+   state instead of looping. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,18 @@
+# 46 idle containers: with the four berthfx ones that makes the 50 of PLAN §9 row 6
+# (idle memory with 50 containers). Own project, no ports, nothing that does work.
+name: berthfx-perf
+services:
+  idle:
+    image: busybox:1.37
+    command: ["tail", "-f", "/dev/null"]
+    labels:
+      - dev.berth.fixture=1
+      - dev.berth.fixture.set=perf
+    deploy:
+      replicas: 46
+
+networks:
+  default:
+    labels:
+      - dev.berth.fixture=1
+      - dev.berth.fixture.set=perf

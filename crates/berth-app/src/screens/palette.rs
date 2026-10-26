@@ -240,6 +240,11 @@ pub fn PaletteScreen() -> Element {
                             initial_value: "{seed_for(generation, &seed)}",
                             placeholder: "Search or run a command\u{2026}",
                             "aria-label": "Search or run a command",
+                            role: "combobox",
+                            "aria-expanded": "true",
+                            "aria-controls": "palette-list",
+                            "aria-autocomplete": "list",
+                            "aria-activedescendant": if flat_len > 0 { format!("palette-item-{active_row}") },
                             id: "palette-input",
                             // Focus with the caret after any seeded text (a
                             // plain focus() would leave it selected).
@@ -319,7 +324,7 @@ pub fn PaletteScreen() -> Element {
                     }
                 }
             }
-            div { class: "palette-body", role: "listbox", "aria-label": "Results",
+            div { class: "palette-body", id: "palette-list", role: "listbox", "aria-label": "Results",
                 for group in snapshot.groups.iter() {
                     div { class: "palette-group", key: "{group.group.title()}",
                         div { class: "palette-group-title", "{group.group.title()}" }

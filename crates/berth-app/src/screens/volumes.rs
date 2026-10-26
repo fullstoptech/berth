@@ -468,7 +468,7 @@ pub fn VolumesScreen() -> Element {
             }
             match status {
                 ListStatus::Loading => rsx! {
-                    div { class: "vl-table", role: "table",
+                    div { class: "vl-table", role: "table", "aria-label": "Volumes",
                         {head.clone()}
                         div { class: "vl-skeleton", SkeletonRows { count: 8_usize } }
                     }
@@ -504,7 +504,7 @@ pub fn VolumesScreen() -> Element {
                     }
                 }
                 ListStatus::Ready => rsx! {
-                    div { class: "vl-table", role: "table",
+                    div { class: "vl-table", role: "table", "aria-label": "Volumes",
                         {head.clone()}
                         VirtualTable {
                             total: row_count,

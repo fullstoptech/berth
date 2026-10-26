@@ -20,9 +20,12 @@ pub fn config() -> Config {
         .with_titlebar_transparent(true)
         .with_fullsize_content_view(true)
         .with_title_hidden(true);
+    // No menu bar yet: it is built and handed to AppKit after the first paint (P6-T3, see
+    // [`install_menu`]). Building it and the first `setMainMenu:` cost about 0.5 s together
+    // and would hold the window back.
     Config::new()
         .with_window(window)
-        .with_menu(build_menu())
+        .with_menu(None::<Menu>)
         .with_custom_head(assets::head_html())
         // D38: closing the window leaves the menu bar item running; `platform::quit` flips this.
         .with_close_behaviour(WindowCloseBehaviour::WindowHides)
@@ -252,6 +255,43 @@ pub fn terminal_apps_in(roots: &[&std::path::Path]) -> Vec<TerminalApp> {
     found
 }
 
+static PREFERRED_TERMINAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// The terminal app the owner chose in Settings (empty or `None`: the first one found).
+pub fn set_preferred_terminal(name: Option<String>) {
+    let mut slot = match PREFERRED_TERMINAL.lock() {
+        Ok(slot) => slot,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    *slot = name.filter(|n| !n.trim().is_empty());
+}
+
+fn preferred_terminal() -> Option<String> {
+    match PREFERRED_TERMINAL.lock() {
+        Ok(slot) => slot.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+/// The app to use: the one whose name the owner typed (case ignored, "iTerm2" finds iTerm), else
+/// the first found.
+pub fn pick_terminal<'a>(
+    apps: &'a [TerminalApp],
+    preferred: Option<&str>,
+) -> Option<&'a TerminalApp> {
+    let wanted = preferred
+        .map(|p| p.trim().to_lowercase())
+        .filter(|p| !p.is_empty());
+    wanted
+        .and_then(|wanted| {
+            apps.iter().find(|app| {
+                let name = app.name.to_lowercase();
+                name == wanted || wanted.starts_with(&name)
+            })
+        })
+        .or_else(|| apps.first())
+}
+
 pub fn terminal_apps() -> Vec<TerminalApp> {
     terminal_apps_in(&[
         std::path::Path::new("/Applications"),
@@ -301,12 +341,9 @@ pub async fn open_in_terminal_app(target: ExecTarget) -> Result<&'static str, St
     use std::io::Write;
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let apps = terminal_apps();
-    let app = apps
-        .first()
+    let app = pick_terminal(&apps, preferred_terminal().as_deref())
         .ok_or_else(|| "No terminal app was found in /Applications".to_string())?;
-    let search = berth_sys::SearchPath::from_process()
-        .with_login_shell()
-        .await;
+    let search = crate::services::login_path::search_path().await;
     let docker = search
         .find("docker")
         .ok_or_else(|| "The docker command was not found on this Mac".to_string())?;
@@ -568,6 +605,29 @@ fn build_menu() -> Menu {
 }
 
 thread_local! {
+    /// The installed menu bar, kept alive for the run (main thread only).
+    static INSTALLED_MENU: std::cell::RefCell<Option<Menu>> = const { std::cell::RefCell::new(None) };
+    /// The side the dock item last named, for an item that did not exist yet.
+    static DOCK_LABEL: std::cell::Cell<Option<berth_store::InspectorDock>> = const { std::cell::Cell::new(None) };
+}
+
+/// Build the menu bar and hand it to AppKit. The App root calls it once, after the first paint,
+/// on the main thread: building it and the first `setMainMenu:` (AppKit loads its Writing Tools
+/// UI to add that Edit item) cost about 0.5 s, which would hold the window back. A second call
+/// does nothing.
+pub fn install_menu() {
+    if INSTALLED_MENU.with(|slot| slot.borrow().is_some()) {
+        return;
+    }
+    let menu = build_menu();
+    menu.init_for_nsapp();
+    INSTALLED_MENU.with(|slot| *slot.borrow_mut() = Some(menu));
+    if let Some(dock) = DOCK_LABEL.with(std::cell::Cell::get) {
+        set_dock_menu_label(dock);
+    }
+}
+
+thread_local! {
     /// The View menu's dock item, kept to change its label (main thread only).
     static DOCK_ITEM: std::cell::RefCell<Option<MenuItem>> = const { std::cell::RefCell::new(None) };
 }
@@ -575,6 +635,7 @@ thread_local! {
 /// Name the side the dock item moves the inspector to ("Dock Inspector at
 /// Bottom" while it is at the right).
 pub fn set_dock_menu_label(dock: berth_store::InspectorDock) {
+    DOCK_LABEL.with(|slot| slot.set(Some(dock)));
     DOCK_ITEM.with(|slot| {
         if let Some(item) = slot.borrow().as_ref() {
             item.set_text(crate::ui::dock::dock_menu_label(dock));
@@ -653,6 +714,25 @@ mod tests {
             script.contains("exec '/d' exec -it 'abc123' 'bash'\n"),
             "{script}"
         );
+    }
+
+    #[test]
+    fn terminal_app_choice_follows_settings_and_falls_back_to_the_first_found() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        for bundle in ["Terminal.app", "iTerm.app", "Ghostty.app"] {
+            std::fs::create_dir(dir.path().join(bundle)).expect("app");
+        }
+        let apps = terminal_apps_in(&[dir.path()]);
+        let pick = |preferred: Option<&str>| pick_terminal(&apps, preferred).map(|a| a.name);
+        assert_eq!(pick(None), Some("Terminal"));
+        assert_eq!(pick(Some("Ghostty")), Some("Ghostty"));
+        assert_eq!(pick(Some("  ghostty ")), Some("Ghostty"));
+        // The app is called iTerm2 in Finder; the setting may say either.
+        assert_eq!(pick(Some("iTerm2")), Some("iTerm"));
+        // An app that is not installed does not stop the session from opening.
+        assert_eq!(pick(Some("Kitty")), Some("Terminal"));
+        assert_eq!(pick(Some("")), Some("Terminal"));
+        assert_eq!(pick_terminal(&[], Some("iTerm")), None);
     }
 
     #[test]

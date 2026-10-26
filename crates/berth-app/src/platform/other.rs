@@ -17,11 +17,17 @@ pub fn config() -> Config {
 
 pub fn use_traffic_lights() {}
 
+/// No native menu bar off macOS yet (D3).
+pub fn install_menu() {}
+
 /// No menu bar item off macOS yet (D3).
 pub fn use_tray(_model: dioxus::prelude::ReadSignal<crate::services::menubar::MenuModel>) {}
 
 /// No Dock off macOS.
 pub fn set_dock_icon_visible(_visible: bool) {}
+
+/// Only macOS hands sessions to a terminal app.
+pub fn set_preferred_terminal(_name: Option<String>) {}
 
 /// No native menu bar off macOS yet (D3).
 pub fn use_menu_events(_state: crate::state::AppState) {}

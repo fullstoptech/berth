@@ -814,7 +814,7 @@ pub fn LogViewer(
                 id: "{scroller}",
                 style,
                 tabindex: "0",
-                role: "table",
+                role: "table", "aria-label": "Log lines",
                 "aria-rowcount": "{snap.len}",
                 "data-follow": follow_attr,
                 onmounted: {

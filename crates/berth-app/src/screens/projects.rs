@@ -667,7 +667,9 @@ pub fn ProjectsScreen() -> Element {
             }
             match screen {
                 ScreenState::Loading => rsx! { LoadingBody {} },
-                ScreenState::Empty => rsx! { EmptyBody {} },
+                ScreenState::Empty => rsx! {
+                    EmptyBody { first_run: Some(rsx! { crate::screens::first_run::FirstRunCard {} }) }
+                },
                 ScreenState::EngineStopped(engine) => rsx! { EngineStoppedBody { engine: *engine } },
                 ScreenState::Unreachable => rsx! {
                     div { class: "projects-empty",
@@ -687,7 +689,7 @@ pub fn ProjectsScreen() -> Element {
                             }
                         }
                     }
-                    div { class: "projects-table", role: "table", "aria-rowcount": "{row_count}",
+                    div { class: "projects-table", role: "table", "aria-label": "Projects", "aria-rowcount": "{row_count}",
                         div { class: "projects-head", role: "row",
                             div { class: "projects-head-name table-header-cell", role: "columnheader",
                                 span { class: "table-header-label", "Project" }

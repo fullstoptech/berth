@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Start Berth fixture Compose projects (PLAN 8.1). Touches only resources
 # labelled dev.berth.fixture=1.
-#   scripts/fx-up.sh [--broken | --broken-only] [--registry]
+#   scripts/fx-up.sh [--broken | --broken-only] [--registry] [--perf]
 # --broken-only brings up just berthfx-broken (the live problems tests call it and
-# take the project down again themselves).
+# take the project down again themselves). --perf brings up just berthfx-perf (46 idle
+# busybox containers; with the four berthfx ones that is the 50 of scripts/perf.sh --app) and
+# leaves berthfx alone. scripts/fx-down.sh --perf takes it down alone.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -11,11 +13,13 @@ cd "$(dirname "$0")/.."
 BROKEN=0
 NORMAL=1
 REGISTRY=0
+PERF=0
 for arg in "$@"; do
   case "$arg" in
     --broken) BROKEN=1 ;;
     --broken-only) BROKEN=1; NORMAL=0 ;;
     --registry) REGISTRY=1 ;;
+    --perf) PERF=1; NORMAL=0 ;;
     *) echo "fx-up.sh: unknown argument $arg" >&2; exit 2 ;;
   esac
 done
@@ -33,6 +37,10 @@ fi
 
 if [ "$REGISTRY" = 1 ]; then
   compose fixtures/compose/berthfx-registry berthfx-registry up -d --wait
+fi
+
+if [ "$PERF" = 1 ]; then
+  compose fixtures/compose/berthfx-perf berthfx-perf up -d --wait
 fi
 
 if [ "$BROKEN" = 1 ]; then

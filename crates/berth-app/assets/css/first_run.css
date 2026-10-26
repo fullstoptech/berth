@@ -1,0 +1,145 @@
+/* First run (P6-T2). The card is the frame "Projects / empty / 1440": 418 px, a title, one row per
+   check (icon, label, value in mono) and a note. The full-screen setup reuses the rows. Colours and
+   sizes come only from tokens.css. */
+
+.fr-card {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--space-16);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.fr-card-title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+  font-weight: var(--text-body-weight);
+  color: var(--color-ink);
+}
+
+.fr-rows {
+  display: flex;
+  flex-direction: column;
+}
+.fr-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-8);
+  min-height: calc(var(--size-row) + var(--space-8));
+  border-bottom: 1px solid var(--color-line);
+}
+.fr-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.fr-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fr-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+}
+.fr-fail .fr-value,
+.fr-warn .fr-value {
+  color: var(--color-ink);
+}
+.fr-absent .fr-label {
+  color: var(--color-ink-muted);
+}
+.fr-hint {
+  grid-column: 2 / -1;
+  padding-bottom: var(--space-8);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  color: var(--color-ink-muted);
+}
+.fr-note {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  color: var(--color-ink-muted);
+}
+.fr-actions {
+  display: flex;
+  gap: var(--space-8);
+  padding-top: var(--space-12);
+}
+
+/* Full-screen setup */
+.first-run-screen {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: var(--space-48) var(--space-24);
+  overflow: auto;
+}
+.fr-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  width: 520px;
+  max-width: 100%;
+}
+.fr-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-h1-weight);
+  color: var(--color-ink);
+}
+.fr-lead {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.fr-install {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.fr-install-text {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.fr-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-8) var(--space-12);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+.fr-command-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+  color: var(--color-ink);
+  user-select: all;
+}
+.fr-footer {
+  display: flex;
+  gap: var(--space-8);
+}
