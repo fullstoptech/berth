@@ -130,6 +130,15 @@ fn engine_recent_entries(
     entries
 }
 
+/// "Dev / add engine": the sheet over the dashboard (no frame, P8-T1).
+fn add_engine_sheet(state: &mut AppState) {
+    load_engines_world(state);
+    state
+        .overlays
+        .write()
+        .push(crate::state::Overlay::AddEngine);
+}
+
 /// "Engines / dashboard / 1440": `default` selected and running.
 fn engines_dashboard(state: &mut AppState) {
     load_engines_world(state);
@@ -191,4 +200,5 @@ pub(super) const SCENES: &[Scene] = &[
     Scene::design("Engines / dashboard / 1440", engines_dashboard),
     Scene::design("Engines / starting / 1440", engines_starting),
     Scene::dev("Dev / edit resources", edit_resources_sheet),
+    Scene::dev("Dev / add engine", add_engine_sheet),
 ];

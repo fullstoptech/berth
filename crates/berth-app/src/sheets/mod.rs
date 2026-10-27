@@ -1,6 +1,7 @@
 //! Sheets: floating panels over the dimmed shell (PLAN §7.1). Each sheet
 //! is the body of one `Overlay` variant; `app.rs` mounts it.
 
+pub mod add_engine;
 pub mod add_service;
 pub mod clean_up;
 pub mod create_network;

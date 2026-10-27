@@ -209,23 +209,13 @@ fn engine_for_user(user: &UserEngineRef) -> berth_core::Engine {
             },
             Some(format!("unix://{}", path.display())),
         ),
-        berth_core::EngineKind::Remote { transport } => {
-            let host = match transport {
-                berth_core::RemoteTransport::Ssh { host, user, port } => {
-                    let user = user.as_ref().map_or(String::new(), |u| format!("{u}@"));
-                    let port = port.map_or(String::new(), |p| format!(":{p}"));
-                    format!("ssh://{user}{host}{port}")
-                }
-                berth_core::RemoteTransport::Tcp { url, .. } => url.to_string(),
-            };
-            (
-                berth_core::EngineState::Unreachable {
-                    reason: "not yet connected".to_string(),
-                    last_seen: None,
-                },
-                Some(host),
-            )
-        }
+        berth_core::EngineKind::Remote { transport } => (
+            // Optimistic, like an existing socket (AD41): the engines
+            // service connects it and EngineFailed flips a real failure
+            // to Unreachable with its last_seen.
+            berth_core::EngineState::Running,
+            Some(crate::remote::docker_host(transport)),
+        ),
         berth_core::EngineKind::Colima { .. } => (berth_core::EngineState::Stopped, None),
     };
     berth_core::Engine {

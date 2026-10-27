@@ -62,7 +62,7 @@ directories = "6"
 rusqlite = { version = "0.41", features = ["bundled"] }
 keyring = { version = "3.6", features = ["apple-native"] }
 secrecy = { version = "0.10.3", features = ["serde"] }
-bollard = { version = "0.21.1", features = ["chrono"] }
+bollard = { version = "0.21.1", features = ["chrono", "ssh", "ssl"] }
 regex = "1.13"
 strip-ansi-escapes = "0.2.1"
 similar = "3.2"

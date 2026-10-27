@@ -9,6 +9,7 @@ pub mod git;
 pub mod mappers;
 pub mod mock;
 pub mod projects;
+pub mod remote;
 pub mod remove;
 pub mod timeouts;
 

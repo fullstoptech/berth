@@ -69,21 +69,33 @@ impl BollardEngine {
                 berth_core::EngineKind::Socket { path, .. } => {
                     Some(format!("unix://{}", path.display()))
                 }
+                berth_core::EngineKind::Remote { transport } => {
+                    Some(crate::remote::docker_host(transport))
+                }
                 _ => None,
             })
             .ok_or_else(|| EngineError::Unreachable {
                 engine: engine.name.clone(),
                 reason: "engine has no docker host".to_string(),
             })?;
-        let Some(socket) = host.strip_prefix("unix://") else {
-            // ssh/tcp engines arrive in P8-T1.
+        let timeout = LIST_INSPECT.as_secs();
+        let version = bollard::API_DEFAULT_VERSION;
+        let docker = if let Some(socket) = host.strip_prefix("unix://") {
+            bollard::Docker::connect_with_unix(socket, timeout, version)
+        } else if host.starts_with("ssh://") {
+            // The system ssh honours ~/.ssh/config and the agent (D47);
+            // no keypair path means exactly that.
+            bollard::Docker::connect_with_ssh(&host, timeout, version, None)
+        } else if let berth_core::EngineKind::Remote {
+            transport: berth_core::RemoteTransport::Tcp { tls: Some(tls), .. },
+        } = &engine.kind
+        {
+            bollard::Docker::connect_with_ssl(&host, &tls.key, &tls.cert, &tls.ca, timeout, version)
+        } else if host.starts_with("tcp://") || host.starts_with("http://") {
+            bollard::Docker::connect_with_http(&host, timeout, version)
+        } else {
             return Err(EngineError::Unsupported(format!("connect to {host}")));
-        };
-        let docker = bollard::Docker::connect_with_unix(
-            socket,
-            LIST_INSPECT.as_secs(),
-            bollard::API_DEFAULT_VERSION,
-        )
+        }
         .map_err(|e| map_err(&engine.name, e))?;
         Ok(Self {
             docker,

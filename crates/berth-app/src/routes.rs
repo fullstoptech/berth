@@ -148,6 +148,7 @@ pub fn overlay(overlay: &Overlay) -> Element {
         },
         Overlay::NewProject => rsx! { crate::sheets::new_project::NewProjectSheet {} },
         Overlay::OpenFolder => rsx! { crate::sheets::open_folder::OpenFolderSheet {} },
+        Overlay::AddEngine => rsx! { crate::sheets::add_engine::AddEngineSheet {} },
         other => placeholder(other),
     }
 }
