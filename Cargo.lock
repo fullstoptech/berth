@@ -226,6 +226,7 @@ dependencies = [
  "rfd",
  "rmcp",
  "rustls",
+ "secrecy",
  "semver",
  "serde",
  "serde_json",

@@ -1256,7 +1256,7 @@ impl ToolCore {
         let platform = get_str(args, "platform");
         let (engine, client) = self.pick_engine(get_str(args, "engine").as_deref())?;
         let cancel = CancellationToken::new();
-        let mut stream = client.pull(&reference, platform.as_deref(), cancel.clone());
+        let mut stream = client.pull(&reference, platform.as_deref(), None, cancel.clone());
         let mut events = 0_u32;
         while let Some(item) = stream.next().await {
             item.map_err(err)?;

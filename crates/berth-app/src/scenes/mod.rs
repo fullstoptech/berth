@@ -73,6 +73,7 @@ scene_modules! {
     problems,
     project_detail,
     projects,
+    registries,
     review_changes,
     templates,
     terminal,

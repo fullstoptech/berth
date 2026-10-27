@@ -588,6 +588,7 @@ impl EngineClient for MockEngine {
         &self,
         reference: &str,
         _platform: Option<&str>,
+        _credentials: Option<&crate::client::PullCredentials>,
         cancel: Cancel,
     ) -> Bs<berth_core::PullProgress> {
         let reference = reference.to_string();

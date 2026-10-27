@@ -662,12 +662,26 @@ impl ImageStore {
         let mut cancels = self.cancels;
         cancels.write().insert(key.clone(), cancel.clone());
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<PullMessage>();
+        // Credentials for this reference's registry, when logged in
+        // (P8-T2); read from the Keychain here, never stored in state.
+        let wanted_credentials =
+            try_consume_context::<Option<crate::services::registries::RegistriesService>>()
+                .flatten()
+                .and_then(|registries| {
+                    let app = try_consume_context::<AppState>()?;
+                    let rows = app.registries.peek().clone();
+                    registries.credentials_for(&rows, &reference)
+                });
         let wanted = reference.clone();
         let wanted_platform = platform.map(str::to_string);
         let stream_cancel = cancel.clone();
         spawn_io(async move {
-            let mut stream =
-                client.pull(&wanted, wanted_platform.as_deref(), stream_cancel.clone());
+            let mut stream = client.pull(
+                &wanted,
+                wanted_platform.as_deref(),
+                wanted_credentials.as_ref(),
+                stream_cancel.clone(),
+            );
             let mut failure = None;
             while let Some(item) = stream.next().await {
                 match item {

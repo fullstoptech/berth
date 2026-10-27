@@ -1058,6 +1058,7 @@ impl EngineClient for BollardEngine {
         &self,
         reference: &str,
         platform: Option<&str>,
+        credentials: Option<&crate::client::PullCredentials>,
         cancel: Cancel,
     ) -> Bs<berth_core::PullProgress> {
         let (from_image, tag) = split_image_ref(reference);
@@ -1068,9 +1069,15 @@ impl EngineClient for BollardEngine {
         if let Some(platform) = platform {
             builder = builder.platform(platform);
         }
+        let credentials = credentials.map(|c| bollard::auth::DockerCredentials {
+            username: Some(c.username.clone()),
+            password: Some(secrecy::ExposeSecret::expose_secret(&c.password).to_string()),
+            serveraddress: Some(c.server.clone()),
+            ..Default::default()
+        });
         let stream =
             self.docker_for(CallKind::Pull)
-                .create_image(Some(builder.build()), None, None);
+                .create_image(Some(builder.build()), None, credentials);
         cancellable(
             stream,
             cancel,

@@ -21,6 +21,7 @@ pub fn screen(section: Section, dev_gallery: bool) -> Element {
         Section::Volumes => rsx! { crate::screens::volumes::VolumesScreen {} },
         Section::Images => rsx! { crate::screens::images::ImagesScreen {} },
         Section::Engines => rsx! { crate::screens::engines::EnginesScreen {} },
+        Section::Registries => rsx! { crate::screens::registries::RegistriesScreen {} },
         Section::FirstRun => rsx! { crate::screens::first_run::FirstRunScreen {} },
         Section::Settings => rsx! { crate::screens::settings::SettingsScreen {} },
         _ => rsx! {},
@@ -98,7 +99,7 @@ fn overlay_title(overlay: &Overlay) -> &'static str {
         Overlay::CreateNetwork => "Create network",
         Overlay::EditResources(_) => "Edit resources",
         Overlay::AddEngine => "Add engine",
-        Overlay::AddRegistry => "Add registry",
+        Overlay::AddRegistry(_) => "Add registry",
         Overlay::BuildImage => "Build image",
         Overlay::AddService(_) => "Add service",
         Overlay::DeleteProject(_) => "Delete project",
@@ -149,6 +150,12 @@ pub fn overlay(overlay: &Overlay) -> Element {
         Overlay::NewProject => rsx! { crate::sheets::new_project::NewProjectSheet {} },
         Overlay::OpenFolder => rsx! { crate::sheets::open_folder::OpenFolderSheet {} },
         Overlay::AddEngine => rsx! { crate::sheets::add_engine::AddEngineSheet {} },
+        Overlay::AddRegistry(existing) => rsx! {
+            crate::sheets::registry_login::RegistryLoginSheet {
+                key: "{existing:?}",
+                existing: existing.clone(),
+            }
+        },
         other => placeholder(other),
     }
 }

@@ -423,7 +423,7 @@ pub async fn pull_helper(
 ) -> Result<(), String> {
     use futures::StreamExt;
     let mut layers: BTreeMap<String, (u64, u64)> = BTreeMap::new();
-    let mut stream = client.pull(HELPER_IMAGE, None, cancel);
+    let mut stream = client.pull(HELPER_IMAGE, None, None, cancel);
     while let Some(item) = stream.next().await {
         let update = item.map_err(|e| e.to_string())?;
         if let (Some(layer), Some(total)) = (update.layer, update.total) {

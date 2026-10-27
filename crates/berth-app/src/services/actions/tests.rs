@@ -210,9 +210,10 @@ impl berth_engine::EngineClient for TestEngine {
         &self,
         reference: &str,
         platform: Option<&str>,
+        credentials: Option<&berth_engine::client::PullCredentials>,
         cancel: CancellationToken,
     ) -> Bs<berth_core::PullProgress> {
-        self.inner.pull(reference, platform, cancel)
+        self.inner.pull(reference, platform, credentials, cancel)
     }
     async fn remove_image(&self, id: &str, force: bool) -> Result<(), EngineError> {
         self.inner.remove_image(id, force).await

@@ -30,6 +30,7 @@ pub mod ports;
 pub mod problems;
 pub mod project_files;
 pub mod prune;
+pub mod registries;
 pub mod search;
 pub mod settings_save;
 pub mod stats;

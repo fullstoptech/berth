@@ -21,6 +21,8 @@ struct Boot {
     tools: Option<crate::services::tools::ToolsHandle>,
     /// Live assistant sessions + approvals (P7-T5); None in a scene.
     assistant: Option<crate::services::assistant::AssistantService>,
+    /// Registry rows + Keychain passwords (P8-T2); None in a scene.
+    registries: Option<crate::services::registries::RegistriesService>,
     /// Whether the window is shown (AD32); every screen timer follows it.
     visibility: Visibility,
     /// Brings engines online after Colima starts them; None in a scene.
@@ -132,6 +134,15 @@ fn boot_services(mut state: AppState, plans: crate::services::plans::PlanStore) 
             },
         )
     });
+    // Registries (P8-T2): rows into state; passwords stay in the Keychain.
+    let registries = if scene {
+        None
+    } else {
+        Some(crate::services::registries::RegistriesService::start(
+            state,
+            std::sync::Arc::clone(&store),
+        ))
+    };
     // The Problems list (P5-T8): rules re-run when the engines, projects or a Compose
     // failure change. A scene shows the frame's problems and runs no pass.
     let problems = if scene {
@@ -158,6 +169,7 @@ fn boot_services(mut state: AppState, plans: crate::services::plans::PlanStore) 
         stats,
         tools,
         assistant,
+        registries,
         visibility,
         link,
         _engines: handle,
@@ -189,6 +201,8 @@ pub fn App() -> Element {
     use_context_provider(|| tools);
     let assistant = boot.assistant.clone();
     use_context_provider(|| assistant);
+    let registries = boot.registries.clone();
+    use_context_provider(|| registries);
     let problems = boot.problems.clone();
     use_context_provider(|| problems.clone());
     use_effect(move || {

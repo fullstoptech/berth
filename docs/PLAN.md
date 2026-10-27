@@ -939,7 +939,7 @@ pub trait EngineClient: Send + Sync {
     async fn list_files(&self, target: &berth_core::FileTarget, path: &str) -> Result<Vec<berth_core::FileEntry>, EngineError>;
     fn download(&self, target: &berth_core::FileTarget, path: &str, cancel: Cancel) -> Bs<bytes::Bytes>;   // tar stream
     async fn upload(&self, target: &berth_core::FileTarget, dir: &str, tar: bytes::Bytes) -> Result<(), EngineError>;
-    fn pull(&self, reference: &str, platform: Option<&str>, cancel: Cancel) -> Bs<berth_core::PullProgress>;
+    fn pull(&self, reference: &str, platform: Option<&str>, credentials: Option<&PullCredentials>, cancel: Cancel) -> Bs<berth_core::PullProgress>;   // AD42 (2026-10-27): PullCredentials { username, password: SecretString, server } in client.rs; push (P8-T3) takes the same
     async fn remove_image(&self, id: &str, force: bool) -> Result<(), EngineError>;
     async fn search_images(&self, term: &str, limit: u32) -> Result<Vec<berth_core::ImageSearchHit>, EngineError>;
     async fn create_volume(&self, spec: &berth_core::VolumeSpec) -> Result<berth_core::Volume, EngineError>;
@@ -1383,6 +1383,7 @@ pub struct AppState {
     pub projects: Signal<Vec<berth_core::Project>>,
     pub images: Signal<Vec<berth_core::Image>>, pub volumes: Signal<Vec<berth_core::Volume>>, pub networks: Signal<Vec<berth_core::Network>>,
     pub problems: Signal<Vec<berth_core::Problem>>,
+    pub registries: Signal<Vec<berth_core::Registry>>,         // AD42 (2026-10-27): rows only; passwords live in the Keychain
     pub pending: Signal<std::collections::BTreeMap<PendingKey, PendingState>>,   // D34
     pub section: Signal<Section>, pub selection: Signal<Selection>, pub overlays: Signal<Vec<Overlay>>,
     pub bottom: Signal<BottomPanel>,                           // open, height, tab, terminal tabs

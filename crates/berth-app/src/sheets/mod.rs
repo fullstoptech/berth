@@ -13,5 +13,6 @@ pub mod edit_resources;
 pub mod generate;
 pub mod new_project;
 pub mod open_folder;
+pub mod registry_login;
 pub mod review_changes;
 pub mod run;
