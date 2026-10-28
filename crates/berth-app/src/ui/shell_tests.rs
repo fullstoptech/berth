@@ -1101,3 +1101,144 @@ fn shell_bottom_panel_reset_spares_the_shared_button() {
     let bottom = &html[html.find("bottom-panel").expect("the panel")..];
     assert!(bottom.contains("class=\"btn btn-"), "{bottom}");
 }
+
+/// The specificity (ids, classes and pseudo-classes, types) of one compound or
+/// complex selector. `:where()` counts for nothing; `:not()` and `:is()` count
+/// for their argument. Enough for the selectors in shell.css and ui.css.
+fn specificity(selector: &str) -> (u32, u32, u32) {
+    let mut total = (0, 0, 0);
+    let mut rest = selector.trim();
+    while !rest.is_empty() {
+        let ch = rest.chars().next().unwrap_or(' ');
+        if let Some(after) = rest.strip_prefix(":where(") {
+            rest = after_group(after);
+        } else if let Some(after) = rest
+            .strip_prefix(":not(")
+            .or_else(|| rest.strip_prefix(":is("))
+        {
+            let inner = &after[..after.len() - after_group(after).len() - 1];
+            let (a, b, c) = specificity(inner);
+            total = (total.0 + a, total.1 + b, total.2 + c);
+            rest = after_group(after);
+        } else if ch == '#' || ch == '.' || ch == '[' || ch == ':' {
+            let pseudo_element = rest.starts_with("::");
+            let skip = if pseudo_element { 2 } else { 1 };
+            let end = if ch == '[' {
+                rest.find(']').map_or(rest.len(), |i| i + 1)
+            } else {
+                rest[skip..]
+                    .find(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
+                    .map_or(rest.len(), |i| i + skip)
+            };
+            match ch {
+                '#' => total.0 += 1,
+                ':' if pseudo_element => total.2 += 1,
+                _ => total.1 += 1,
+            }
+            rest = &rest[end..];
+        } else if ch.is_alphabetic() {
+            let end = rest
+                .find(|c: char| !(c.is_alphanumeric() || c == '-'))
+                .unwrap_or(rest.len());
+            total.2 += 1;
+            rest = &rest[end..];
+        } else {
+            rest = &rest[ch.len_utf8()..];
+        }
+    }
+    total
+}
+
+/// The text after the `)` that closes the group whose body is `after`.
+fn after_group(after: &str) -> &str {
+    let mut depth = 1;
+    for (i, ch) in after.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &after[i + 1..];
+                }
+            }
+            _ => {}
+        }
+    }
+    ""
+}
+
+#[test]
+fn shell_specificity_helper_reads_where_not_and_classes() {
+    assert_eq!(specificity(".bottom-panel button:not(.btn)"), (0, 2, 1));
+    assert_eq!(
+        specificity(":where(.bottom-panel button:not(.btn))"),
+        (0, 0, 0)
+    );
+    assert_eq!(
+        specificity(":where(.bottom-panel button:not(.btn):focus-visible)"),
+        (0, 0, 0)
+    );
+    assert_eq!(specificity(".bottom-head .tab"), (0, 2, 0));
+    assert_eq!(specificity(".tab:hover"), (0, 2, 0));
+}
+
+/// The bottom panel's reset once outranked `.tab` (0,2,1 against 0,2,0), so the
+/// strip lost its padding and the active underline. The reset has no
+/// specificity: every component class in the panel beats it, in any order.
+#[test]
+fn shell_bottom_panel_reset_has_zero_specificity_so_tabs_keep_their_rules() {
+    let shell = include_str!("../../assets/css/shell.css");
+    let ui = include_str!("../../assets/css/ui.css");
+    let selectors = |css: &str| -> Vec<String> {
+        css.split('{')
+            .map(|head| head.rsplit('}').next().unwrap_or(head).to_string())
+            .flat_map(|head| {
+                head.split(',')
+                    .map(|s| s.trim().to_string())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    };
+    let resets: Vec<String> = selectors(shell)
+        .into_iter()
+        .filter(|s| s.contains(".bottom-panel button"))
+        .collect();
+    assert!(
+        resets.len() >= 2,
+        "the reset and its focus ring: {resets:?}"
+    );
+    for reset in &resets {
+        assert_eq!(
+            specificity(reset),
+            (0, 0, 0),
+            "`{reset}` must not outrank a component class"
+        );
+    }
+    // The tab rules that reach into the panel are heavier than any reset, and the
+    // shared `.tab` (one class) is too, so the padding and underline apply.
+    let tab_rules: Vec<String> = selectors(shell)
+        .into_iter()
+        .chain(selectors(ui))
+        .filter(|s| s == ".bottom-head .tab" || s == ".tab" || s == ".tab-close")
+        .collect();
+    assert!(tab_rules.len() >= 3, "{tab_rules:?}");
+    for tab in &tab_rules {
+        assert!(specificity(tab) > (0, 0, 0), "`{tab}`");
+    }
+    let tab_block = css_block(shell, ".bottom-head .tab {");
+    assert!(
+        tab_block.contains("padding: 0 var(--space-12);"),
+        "{tab_block}"
+    );
+    let underline = css_block(ui, ".tabs-underline .tab-selected {");
+    assert!(
+        underline.contains("border-bottom-color: var(--color-accent)"),
+        "{underline}"
+    );
+}
+
+/// The body of the first rule that starts with `head`.
+fn css_block<'a>(css: &'a str, head: &str) -> &'a str {
+    let start = css.find(head).map_or(0, |i| i + head.len());
+    css[start..].split('}').next().unwrap_or("")
+}

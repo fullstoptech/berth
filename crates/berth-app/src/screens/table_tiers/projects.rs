@@ -48,7 +48,7 @@ fn projects_need(tier: usize, scale: f32, view: View) -> f32 {
     let tracks = css::tracks(&lists[tier]);
     let vars = [("--projects-actions-w", actions_w(view))];
     css::min_sum_with(&tracks, scale, &vars)
-        + projects_reserve(tier, scale, view)
+        + projects_reserve(tier)
         + 16.0
         + 2.0 * view.gutter()
 }
@@ -67,11 +67,12 @@ pub fn projects_tracks_at(view: View, width: f32, scale: f32) -> Vec<String> {
     css::tracks(&projects_lists()[projects_tier_at(view, width, scale)])
 }
 
-/// What the flexible tracks of a tier keep: the buttons for the full list
-/// (its `1fr` track), the `PROJECTS_RESERVE` of the others.
-fn projects_reserve(tier: usize, scale: f32, view: View) -> f32 {
+/// What the flexible tracks of a tier keep: nothing for the full list (its last
+/// track is `minmax(<the buttons>, 1fr)`, so the buttons are already in the
+/// minimums), the `PROJECTS_RESERVE` of the others.
+fn projects_reserve(tier: usize) -> f32 {
     if tier == 0 {
-        160.0 * scale + actions_w(view)
+        0.0
     } else {
         PROJECTS_RESERVE[tier - 1]
     }

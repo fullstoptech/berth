@@ -752,7 +752,11 @@ fn projects_table_wide_tracks_grow_with_the_text() {
     for (i, t) in tracks[..8].iter().enumerate() {
         assert!(css::has_scale(t), "track {i} `{t}` needs a scale term");
     }
-    assert_eq!(tracks[8], "1fr");
+    // The buttons' track: no less than the buttons need, the rest of the row above it.
+    assert_eq!(
+        tracks[8],
+        "minmax(calc(160px * var(--text-scale, 1) + var(--projects-actions-w)), 1fr)"
+    );
 }
 
 #[test]
@@ -845,9 +849,9 @@ fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
             // The buttons are a track of their own in the narrow lists and
             // the `1fr` in the wide one; Path and Services (or Services
             // alone, once Path is gone) keep some room.
-            let buttons = 160.0 * scale + vars[0].1;
             let (need, what) = match projects_tier_at(view_of(width), width, scale) {
-                0 => (buttons, "the buttons"),
+                // The buttons are the last track's minimum, so they are in `room`'s sum.
+                0 => (0.0, "the tracks' minimums"),
                 1 => (216.0, "Path and Services"),
                 2 => (250.0, "Path and Services"),
                 _ => (96.0, "Services"),
@@ -858,6 +862,136 @@ fn projects_table_fits_at_1024_and_1440_for_every_text_size() {
             );
         }
     }
+}
+
+/// The width the grid gives each track in `avail` px: every track starts at its
+/// minimum, the free space is shared out equally among tracks with a finite
+/// maximum up to that maximum (Services), and what is left goes to the `fr`
+/// tracks by their factors (CSS Grid "maximize tracks", then "expand flexible
+/// tracks"; no intrinsic sizes are involved in these lists).
+fn resolve_tracks(tracks: &[String], scale: f32, vars: &[(&str, f32)], avail: f32) -> Vec<f32> {
+    // (minimum, finite maximum, fr factor)
+    let spec: Vec<(f32, Option<f32>, f32)> = tracks
+        .iter()
+        .map(|t| {
+            let min = css::min_px_with(t, scale, vars);
+            let Some(inner) = t.strip_prefix("minmax(").and_then(|i| i.strip_suffix(')')) else {
+                return if t.ends_with("fr") {
+                    (min, None, t.trim_end_matches("fr").parse().unwrap_or(1.0))
+                } else {
+                    (min, Some(min), 0.0)
+                };
+            };
+            let mut depth = 0;
+            let mut cut = 0;
+            for (i, ch) in inner.char_indices() {
+                match ch {
+                    '(' => depth += 1,
+                    ')' => depth -= 1,
+                    ',' if depth == 0 => cut = i,
+                    _ => {}
+                }
+            }
+            let max = inner[cut + 1..].trim();
+            if max.ends_with("fr") {
+                (min, None, max.trim_end_matches("fr").parse().unwrap_or(1.0))
+            } else {
+                (min, Some(css::min_px_with(max, scale, vars)), 0.0)
+            }
+        })
+        .collect();
+    let mut size: Vec<f32> = spec.iter().map(|s| s.0).collect();
+    let mut free = avail - size.iter().sum::<f32>();
+    while free > 0.001 {
+        let open: Vec<usize> = (0..size.len())
+            .filter(|&i| spec[i].1.is_some_and(|max| size[i] < max - 0.001))
+            .collect();
+        if open.is_empty() {
+            break;
+        }
+        let share = free / open.len() as f32;
+        for i in open {
+            let room = spec[i].1.unwrap_or(0.0) - size[i];
+            let add = share.min(room);
+            size[i] += add;
+            free -= add;
+        }
+    }
+    let factors: f32 = spec.iter().map(|s| s.2).sum();
+    if free > 0.0 && factors > 0.0 {
+        for (i, s) in spec.iter().enumerate() {
+            if s.2 > 0.0 {
+                size[i] += free * s.2 / factors;
+            }
+        }
+    }
+    size
+}
+
+#[test]
+fn projects_row_buttons_keep_their_whole_track_in_every_tier_down_to_its_minimum_width() {
+    // The row-menu buttons sit in the last track. In every tier, at the narrowest width
+    // the tier is used at, the grid must leave that track what the buttons need, whatever
+    // Path and Services grow to (Services takes free space before a bare `1fr` does).
+    for view in [View::Narrow, View::Wide] {
+        let gutter = if view == View::Narrow { 16.0 } else { 20.0 };
+        let vars = [(
+            "--projects-actions-w",
+            if view == View::Narrow { 56.0 } else { 68.0 },
+        )];
+        for scale in STEPS {
+            for tier in 0..4 {
+                let tracks = tier_tracks(tier);
+                // The first width this tier is in force at: its list's minimums, the
+                // room its flexible tracks keep, the rows' padding and both gutters.
+                let reserve = [0.0, 216.0, 250.0, 96.0][tier];
+                let min_width =
+                    (css::min_sum_with(&tracks, scale, &vars) + reserve + 16.0 + 2.0 * gutter)
+                        .ceil();
+                assert_eq!(
+                    projects_tier_at(view, min_width, scale),
+                    tier,
+                    "{view:?} {scale}: tier {tier} is not the one in force at {min_width}"
+                );
+                let sizes = resolve_tracks(&tracks, scale, &vars, min_width - 2.0 * gutter - 16.0);
+                let buttons = 160.0 * scale + vars[0].1;
+                let last = sizes[sizes.len() - 1];
+                assert!(
+                    last >= buttons - 0.01,
+                    "{view:?} {scale} tier {tier} at {min_width}: the buttons get {last} px of {buttons} ({sizes:?})"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn projects_at_1440_show_the_branch_and_all_four_row_buttons() {
+    // The 1440 frame: main is 1220 px, text at 100 %, the full list (Branch included).
+    let vars = actions_vars(MAIN_1440);
+    assert_eq!(projects_tier_at(view_of(MAIN_1440), MAIN_1440, 1.0), 0);
+    let tracks = projects_tracks(MAIN_1440, 1.0);
+    let sizes = resolve_tracks(&tracks, 1.0, &vars, MAIN_1440 - 40.0 - 16.0);
+    assert_eq!(sizes.len(), 9);
+    // Restart (65) + Start project (95) + the two icon buttons (44) + 3 gaps of 8.
+    let buttons = 65.0 + 95.0 + 44.0 + 3.0 * 8.0;
+    assert!(
+        sizes[8] >= buttons,
+        "the buttons get {} px of {buttons} ({sizes:?})",
+        sizes[8]
+    );
+    assert!(
+        sizes[3] >= 162.0,
+        "Branch {} px holds feat/checkout-flow",
+        sizes[3]
+    );
+    // No track is squeezed under its minimum, so the row does not overflow.
+    let total: f32 = sizes.iter().sum();
+    assert!(
+        total <= MAIN_1440 - 56.0 + 0.01,
+        "{total} px in a {} px row",
+        MAIN_1440 - 56.0
+    );
 }
 
 #[test]

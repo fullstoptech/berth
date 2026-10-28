@@ -58,8 +58,10 @@ html, body {
 }
 /* The panel's own chrome buttons (tabs, close, icon buttons) are reset here; a
    shared Button (`.btn`) inside the panel's content, or in the inspector docked
-   at the bottom, keeps the look ui.css gives it. */
-.titlebar button, .statusbar button, .sidebar button, .bottom-panel button:not(.btn), .engine-menu button {
+   at the bottom, keeps the look ui.css gives it. The panel's selector sits in
+   :where() so it has no specificity: any component class (.tab, .tab-close,
+   .icon-btn…) wins over the reset whatever the order. */
+.titlebar button, .statusbar button, .sidebar button, :where(.bottom-panel button:not(.btn)), .engine-menu button {
   font-family: var(--font-text);
   color: var(--color-ink);
   background: transparent;
@@ -70,7 +72,7 @@ html, body {
   margin: 0;
 }
 .titlebar button:focus-visible, .statusbar button:focus-visible, .sidebar button:focus-visible,
-.bottom-panel button:not(.btn):focus-visible, .engine-menu button:focus-visible {
+:where(.bottom-panel button:not(.btn):focus-visible), .engine-menu button:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 1px;
 }
