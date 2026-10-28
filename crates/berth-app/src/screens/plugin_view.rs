@@ -471,6 +471,19 @@ fn TableView(
                         },
                     }
                 }
+            } else if in_pane {
+                // The inspector is too narrow for a grid and its buttons: each
+                // row stacks (title and status, the muted facts, the buttons).
+                div { class: "pv-cards", role: "list", "aria-label": "{title}",
+                    for row in shown.iter() {
+                        PaneRow {
+                            key: "{row.id}",
+                            plugin: plugin.clone(),
+                            columns: columns.clone(),
+                            row: row.clone(),
+                        }
+                    }
+                }
             } else {
                 div {
                     class: "pv-grid",
@@ -496,6 +509,53 @@ fn TableView(
                         row_height_px,
                         viewport_height_px: TABLE_VIEWPORT_PX,
                         overscan: 10_usize,
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// One row of a table drawn inside the inspector: the first cell and the
+/// status on top, the other cells as one muted line, the row's buttons below.
+/// Clicking it opens what the row opens (a deployment's log), like a click on
+/// a row of the full table.
+#[component]
+fn PaneRow(plugin: String, columns: Vec<Column>, row: Row) -> Element {
+    let store = use_context::<PluginViewStore>();
+    let summary = row_summary(&columns, &row);
+    let context = row_context(&columns, &row);
+    let opens = row.open.is_some();
+    let select = {
+        let (plugin, context, open) = (plugin.clone(), context.clone(), row.open.clone());
+        move |_| {
+            if open.is_some() {
+                select_row(store, &plugin, &context, open.clone());
+            }
+        }
+    };
+    rsx! {
+        div {
+            class: if opens { "pv-card pv-card-opens" } else { "pv-card" },
+            role: "listitem",
+            onclick: select,
+            div { class: "pv-row-title",
+                span { class: "pv-card-title", title: "{summary.title}", "{summary.title}" }
+                if let Some(badge) = summary.badge.clone() {
+                    CellView { cell: Cell::Badge(badge) }
+                }
+            }
+            if !summary.line.is_empty() {
+                p { class: "pv-card-line", title: "{summary.line}", "{summary.line}" }
+            }
+            if !row.actions.is_empty() {
+                div { class: "pv-pane-actions",
+                    ActionButtons {
+                        plugin,
+                        actions: row.actions.clone(),
+                        size: ControlSize::Sm,
+                        quiet: true,
+                        context: Some(context),
                     }
                 }
             }

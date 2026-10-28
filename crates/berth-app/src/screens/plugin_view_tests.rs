@@ -447,6 +447,69 @@ fn plugin_view_table_draws_columns_cells_row_buttons_and_the_count() {
     assert!(!html.contains("btn-danger"), "{html}");
 }
 
+/// `content` drawn as the inspector draws a tab's table (`in_pane`).
+#[component]
+fn PaneHarness(content: View) -> Element {
+    let state = use_app_state();
+    use_context_provider(|| state);
+    let _store = crate::services::plugin_views::provide_plugin_view_store();
+    rsx! {
+        ViewContent { plugin: "demo".to_string(), content, in_pane: true }
+    }
+}
+
+#[test]
+fn plugin_view_a_table_in_the_inspector_stacks_each_row_with_its_buttons() {
+    let View::Table {
+        title,
+        columns,
+        mut rows,
+        empty,
+        groups,
+    } = table()
+    else {
+        unreachable!()
+    };
+    rows[1].actions = vec![
+        action("deploy", "Redeploy\u{2026}", false, None),
+        action("logs", "Logs", false, None),
+    ];
+    rows[1].open = Some("deployment/u-2/logs".to_string());
+    let content = View::Table {
+        title,
+        columns,
+        rows,
+        empty,
+        groups,
+    };
+    let mut dom = VirtualDom::new_with_props(PaneHarness, PaneHarnessProps { content });
+    let _ = dom.rebuild_to_vec();
+    let html = strip_styles(dioxus_ssr::render(&dom));
+    // No grid whose columns run past the pane: stacked rows instead.
+    assert!(!html.contains("pv-grid"), "{html}");
+    assert!(!html.contains("columnheader"), "{html}");
+    assert_eq!(
+        count(&html, "class=\"pv-card\"") + count(&html, "class=\"pv-card pv-card-opens\""),
+        2,
+        "{html}"
+    );
+    // Every row's buttons are drawn, inside the row. A card is not a `.pv-row`,
+    // the only place the stylesheet hides a plain button until hover.
+    for label in ["Stop", "Redeploy\u{2026}", "Logs"] {
+        assert!(
+            html.contains(&format!("<span class=\"btn-label\">{label}</span>")),
+            "{label}: {html}"
+        );
+    }
+    assert!(!html.contains("class=\"pv-row\""), "{html}");
+    // The title, the status and the muted facts of the row.
+    assert!(html.contains("title=\"beta\">beta</span>"), "{html}");
+    assert!(html.contains("status-badge tone-danger"), "{html}");
+    assert!(html.contains("c2a7e94"), "{html}");
+    // Only a row that opens something is clickable.
+    assert_eq!(count(&html, "pv-card-opens"), 1, "{html}");
+}
+
 #[test]
 fn plugin_view_table_without_rows_says_what_the_plugin_said() {
     let View::Table {

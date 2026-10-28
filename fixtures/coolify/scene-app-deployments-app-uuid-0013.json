@@ -1,0 +1,50 @@
+[
+  {
+    "id": 300,
+    "application_id": 13,
+    "deployment_uuid": "dep-uuid-0001",
+    "commit": "5e8d1f00123456789abcdef0123456789abcdef0",
+    "commit_message": "Add ingest health check",
+    "status": "in_progress",
+    "is_webhook": false,
+    "is_api": true,
+    "force_rebuild": false,
+    "application_name": "analytics-ingest",
+    "server_name": "hetzner-1",
+    "server_id": 1,
+    "created_at": "2026-10-24T14:31:00.000000Z",
+    "updated_at": "2026-10-24T14:31:38.000000Z"
+  },
+  {
+    "id": 296,
+    "application_id": 13,
+    "deployment_uuid": "dep-uuid-0103",
+    "commit": "f07c3a50123456789abcdef0123456789abcdef0",
+    "commit_message": "Pin clickhouse to 24.8",
+    "status": "finished",
+    "is_webhook": false,
+    "is_api": true,
+    "force_rebuild": false,
+    "application_name": "analytics-ingest",
+    "server_name": "hetzner-1",
+    "server_id": 1,
+    "created_at": "2026-10-24T14:03:00.000000Z",
+    "updated_at": "2026-10-24T14:05:05.000000Z"
+  },
+  {
+    "id": 292,
+    "application_id": 13,
+    "deployment_uuid": "dep-uuid-0107",
+    "commit": "6f3e9b10123456789abcdef0123456789abcdef0",
+    "commit_message": "Retry on 503 from clickhouse",
+    "status": "finished",
+    "is_webhook": false,
+    "is_api": true,
+    "force_rebuild": false,
+    "application_name": "analytics-ingest",
+    "server_name": "hetzner-1",
+    "server_id": 1,
+    "created_at": "2026-10-24T13:35:00.000000Z",
+    "updated_at": "2026-10-24T13:37:11.000000Z"
+  }
+]

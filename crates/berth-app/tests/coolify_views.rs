@@ -38,8 +38,28 @@ const FAILED: &str = "dep-uuid-00ff";
 const RESOURCES: &str = include_str!("../../../fixtures/coolify/resources.json");
 const SERVERS: &str = include_str!("../../../fixtures/coolify/servers.json");
 const APPLICATION: &str = include_str!("../../../fixtures/coolify/application.json");
-const APP_DEPLOYMENTS: &str = include_str!("../../../fixtures/coolify/app-deployments.json");
-const DEPLOYMENTS: &str = include_str!("../../../fixtures/coolify/scene-deployments.json");
+/// `GET /deployments`: what is running now, as the real API answers it.
+const RUNNING: &str = include_str!("../../../fixtures/coolify/scene-running-deployments.json");
+/// `GET /deployments/applications/{uuid}`: each application's own history
+/// (the scene's twelve deployments, split by application).
+const HISTORY: [(&str, &str); 4] = [
+    (
+        "app-uuid-0001",
+        include_str!("../../../fixtures/coolify/scene-app-deployments-app-uuid-0001.json"),
+    ),
+    (
+        "app-uuid-0012",
+        include_str!("../../../fixtures/coolify/scene-app-deployments-app-uuid-0012.json"),
+    ),
+    (
+        "app-uuid-0013",
+        include_str!("../../../fixtures/coolify/scene-app-deployments-app-uuid-0013.json"),
+    ),
+    (
+        "app-uuid-0014",
+        include_str!("../../../fixtures/coolify/scene-app-deployments-app-uuid-0014.json"),
+    ),
+];
 const APPLICATIONS: &str = include_str!("../../../fixtures/coolify/scene-applications.json");
 const FAILED_DEPLOYMENT: &str =
     include_str!("../../../fixtures/coolify/scene-deployment-landing-failed.json");
@@ -106,9 +126,14 @@ async fn get(server: &MockServer, route: &str, body: &str) {
         .await;
 }
 
-/// A Coolify with the scene's twelve deployments, the landing application
-/// and its failed deployment.
+/// A Coolify that answers like the real API: `/deployments` lists only the
+/// deployments running now, the history is per application. The scene's
+/// twelve deployments, the four applications and landing's failed log.
 async fn coolify() -> MockServer {
+    coolify_with_history(&HISTORY).await
+}
+
+async fn coolify_with_history(history: &[(&str, &str)]) -> MockServer {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/api/v1/version"))
@@ -117,15 +142,12 @@ async fn coolify() -> MockServer {
         .await;
     get(&server, "resources", RESOURCES).await;
     get(&server, "servers", SERVERS).await;
-    get(&server, "deployments", DEPLOYMENTS).await;
+    get(&server, "deployments", RUNNING).await;
     get(&server, "applications", APPLICATIONS).await;
     get(&server, "applications/app-uuid-0001", APPLICATION).await;
-    get(
-        &server,
-        "deployments/applications/app-uuid-0001",
-        APP_DEPLOYMENTS,
-    )
-    .await;
+    for (uuid, body) in history {
+        get(&server, &format!("deployments/applications/{uuid}"), body).await;
+    }
     get(&server, &format!("deployments/{FAILED}"), FAILED_DEPLOYMENT).await;
     server
 }
@@ -142,6 +164,10 @@ struct Rig {
 
 impl Rig {
     async fn start() -> Self {
+        Self::start_on(coolify().await).await
+    }
+
+    async fn start_on(server: MockServer) -> Self {
         let root = tempfile::tempdir().expect("tempdir");
         let app_dir = root.path().join("Berth.app/Contents/MacOS");
         std::fs::create_dir_all(&app_dir).expect("bundle dir");
@@ -149,7 +175,6 @@ impl Rig {
         std::fs::copy(plugin_binary(), app_dir.join("berth-coolify")).expect("copy plugin");
         std::fs::write(app_dir.join("berth-plugin.json"), MANIFEST).expect("manifest");
 
-        let server = coolify().await;
         let service = PluginsService::new(PluginsDeps {
             store: Arc::new(Store::open_in_memory().expect("store")),
             secrets: Arc::new(InMemorySecretStore::default()),
@@ -219,7 +244,16 @@ async fn coolify_views_resources_and_deployments_load_through_the_service() {
     let View::Table { columns, rows, .. } = rig.view("deployments").await else {
         panic!("deployments is a table");
     };
+    // Only one of the twelve is running; the other eleven are history read
+    // from each application, newest first.
     assert_eq!(rows.len(), 12);
+    let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(ids[..3], ["dep-uuid-0001", FAILED, "dep-uuid-0101"]);
+    assert_eq!(
+        ids.iter().filter(|id| **id == "dep-uuid-0001").count(),
+        1,
+        "a running deployment that is also in its application's history is one row"
+    );
     assert_eq!(columns[0].label, "App");
     let failed = rows
         .iter()
@@ -275,6 +309,42 @@ async fn coolify_views_resources_and_deployments_load_through_the_service() {
     );
     assert_eq!(finished_confirm.button, "Redeploy");
     assert!(finished_confirm.warnings.is_empty(), "{finished_confirm:?}");
+    rig.service.shutdown().await;
+}
+
+#[tokio::test]
+async fn coolify_views_one_applications_failing_history_does_not_blank_the_deployments() {
+    // berth-site's history is not answered (404); the other three applications and the
+    // running list still show.
+    let rig = Rig::start_on(
+        coolify_with_history(&HISTORY[..3]).await, // no mock for app-uuid-0014: a 404
+    )
+    .await;
+    let View::Table { rows, .. } = rig.view("deployments").await else {
+        panic!("deployments is a table");
+    };
+    assert_eq!(rows.len(), 9, "twelve less berth-site's three");
+    assert!(rows.iter().all(|r| r.id != "dep-uuid-0102"));
+    assert!(rows.iter().any(|r| r.id == FAILED));
+    rig.service.shutdown().await;
+}
+
+#[tokio::test]
+async fn coolify_views_an_applications_deployments_tab_lists_its_history_with_actions() {
+    // The Resources inspector's Deployments tab is the per-application view.
+    let rig = Rig::start().await;
+    let View::Table { rows, .. } = rig.view("deployments/app-uuid-0001").await else {
+        panic!("an application's deployments is a table");
+    };
+    let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(ids, [FAILED, "dep-uuid-0105", "dep-uuid-0109"]);
+    let failed = &rows[0];
+    let labels: Vec<&str> = failed.actions.iter().map(|a| a.label.as_str()).collect();
+    assert_eq!(labels, ["Redeploy\u{2026}", "Logs"]);
+    assert_eq!(
+        failed.open.as_deref(),
+        Some("deployment/dep-uuid-00ff/logs")
+    );
     rig.service.shutdown().await;
 }
 

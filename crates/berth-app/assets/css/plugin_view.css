@@ -97,6 +97,11 @@
 .pv-table-pane .pv-header {
   padding-left: 0;
   padding-right: 0;
+  flex-wrap: wrap;
+  row-gap: var(--space-8);
+}
+.pv-table-pane .pv-filter {
+  flex: 1 1 100%;
 }
 
 /* Grid: header and rows share one track list (--pv-cols, from the columns) */
@@ -230,6 +235,41 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-8);
+}
+/* A table inside the inspector: stacked rows, nothing clipped at the edge */
+.pv-cards {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pv-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-8) 0;
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink);
+}
+.pv-card-opens {
+  cursor: pointer;
+}
+.pv-card-opens:hover {
+  background: var(--color-surface-hover);
+}
+.pv-card-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pv-card-line {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
 }
 .pv-tab-body {
   min-width: 0;

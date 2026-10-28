@@ -31,7 +31,7 @@ use crate::logs::{
     deployment_log_lines, failure_line, follow_application_logs, is_final_status, poll_deployment,
 };
 use crate::mcp::mcp_servers_payload;
-use crate::types::Deployment;
+use crate::types::{Application, Deployment};
 use crate::views;
 
 /// The manifest's secret key the API token lives under.
@@ -44,6 +44,12 @@ pub const ERR_INVALID_PARAMS: i64 = -32602;
 
 /// Failed deployments whose logs are read to say why, per view.
 const MAX_FAILURE_LOOKUPS: usize = 5;
+/// History rows asked of each application for the Deployments view.
+const HISTORY_PER_APP: u32 = 10;
+/// Rows the Deployments view keeps, newest first (one screen of recent work).
+const RECENT_DEPLOYMENTS: usize = 20;
+/// History requests in flight at once.
+const HISTORY_CONCURRENCY: usize = 6;
 /// How many log lines one application-log poll asks Coolify for.
 const APP_LOG_LINES: u32 = 200;
 
@@ -104,6 +110,50 @@ struct Shared {
     config: Mutex<Config>,
     client: tokio::sync::Mutex<Option<Arc<CoolifyClient>>>,
     streams: Mutex<HashMap<String, CancellationToken>>,
+}
+
+/// Fills in what a history row may omit from the application it was listed
+/// under, so the table can name and link it.
+fn with_application(mut deployment: Deployment, application: Option<&Application>) -> Deployment {
+    if let Some(application) = application {
+        deployment.application_id = deployment.application_id.or(application.id);
+        if deployment.application_name.is_none() {
+            deployment.application_name.clone_from(&application.name);
+        }
+    }
+    deployment
+}
+
+/// The running deployments and every application's history as one list,
+/// newest first, each deployment once (the running list wins), at most `cap`.
+fn merge_recent(
+    running: Vec<Deployment>,
+    histories: Vec<Vec<Deployment>>,
+    cap: usize,
+) -> Vec<Deployment> {
+    let mut seen = std::collections::HashSet::new();
+    let mut merged: Vec<Deployment> = running
+        .into_iter()
+        .chain(histories.into_iter().flatten())
+        .filter(|d| match d.deployment_uuid.as_ref() {
+            Some(uuid) => seen.insert(uuid.clone()),
+            None => true,
+        })
+        .collect();
+    let started = |d: &Deployment| {
+        d.created_at
+            .as_deref()
+            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+    };
+    // Unreadable times sort last; ids break ties (a later row has a larger id).
+    merged.sort_by(|a, b| {
+        started(b)
+            .cmp(&started(a))
+            .then_with(|| b.id.cmp(&a.id))
+            .then_with(|| a.deployment_uuid.cmp(&b.deployment_uuid))
+    });
+    merged.truncate(cap);
+    merged
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -317,8 +367,12 @@ impl Shared {
     /// The deployments table with each row's application joined in and, for
     /// the failed ones, why they failed (best effort: a lookup that fails
     /// only leaves a row with fewer details).
-    async fn deployments_view(&self, client: &CoolifyClient, deployments: &[Deployment]) -> View {
-        let applications = client.applications(&self.cancel).await.unwrap_or_default();
+    async fn deployments_view(
+        &self,
+        client: &CoolifyClient,
+        deployments: &[Deployment],
+        applications: &[Application],
+    ) -> View {
         let mut failures = BTreeMap::new();
         let failed = deployments
             .iter()
@@ -336,7 +390,61 @@ impl Shared {
                 failures.insert(uuid.to_owned(), reason);
             }
         }
-        views::deployments_table(deployments, &applications, &failures)
+        views::deployments_table(deployments, applications, &failures)
+    }
+
+    /// The recent deployments across every application. `GET /deployments`
+    /// lists only what is running now, so the history comes from each
+    /// application's own list (`GET /deployments/applications/{uuid}`), asked
+    /// a few at a time. An application whose history cannot be read is left
+    /// out and noted in the log; the rest still show.
+    async fn recent_deployments(
+        &self,
+        client: &Arc<CoolifyClient>,
+        applications: &[Application],
+        running: Vec<Deployment>,
+    ) -> Vec<Deployment> {
+        let gate = Arc::new(tokio::sync::Semaphore::new(HISTORY_CONCURRENCY));
+        let mut lookups = tokio::task::JoinSet::new();
+        for application in applications {
+            let Some(uuid) = application.uuid.clone() else {
+                continue;
+            };
+            let (client, gate, cancel) =
+                (Arc::clone(client), Arc::clone(&gate), self.cancel.clone());
+            lookups.spawn(async move {
+                let _slot = gate.acquire().await;
+                let history = client
+                    .application_deployments(&uuid, None, Some(HISTORY_PER_APP), &cancel)
+                    .await;
+                (uuid, history)
+            });
+        }
+        let mut histories = Vec::new();
+        let mut failed = 0_usize;
+        while let Some(joined) = lookups.join_next().await {
+            match joined {
+                Ok((uuid, Ok(history))) => {
+                    let application = applications
+                        .iter()
+                        .find(|a| a.uuid.as_deref() == Some(uuid.as_str()));
+                    histories.push(
+                        history
+                            .into_iter()
+                            .map(|d| with_application(d, application))
+                            .collect::<Vec<_>>(),
+                    );
+                }
+                Ok((_, Err(_))) | Err(_) => failed += 1,
+            }
+        }
+        if failed > 0 {
+            self.log(
+                "warn",
+                &format!("Deployment history could not be read for {failed} application(s)."),
+            );
+        }
+        merge_recent(running, histories, RECENT_DEPLOYMENTS)
     }
 
     async fn build_view(&self, view: &str) -> Result<View, Fail> {
@@ -355,8 +463,14 @@ impl Shared {
             }
             ["deployments"] => {
                 let client = self.client().await?;
-                let deployments = client.deployments(&self.cancel).await?;
-                Ok(self.deployments_view(&client, &deployments).await)
+                let running = client.deployments(&self.cancel).await?;
+                let applications = client.applications(&self.cancel).await.unwrap_or_default();
+                let deployments = self
+                    .recent_deployments(&client, &applications, running)
+                    .await;
+                Ok(self
+                    .deployments_view(&client, &deployments, &applications)
+                    .await)
             }
             ["status"] => {
                 let client = self.client().await?;
@@ -367,7 +481,10 @@ impl Shared {
                 let deployments = client
                     .application_deployments(uuid, None, Some(50), &self.cancel)
                     .await?;
-                Ok(self.deployments_view(&client, &deployments).await)
+                let applications = client.applications(&self.cancel).await.unwrap_or_default();
+                Ok(self
+                    .deployments_view(&client, &deployments, &applications)
+                    .await)
             }
             ["application", uuid] => {
                 let client = self.client().await?;
@@ -607,4 +724,45 @@ where
     drop(shared);
     let _ = tokio::time::timeout(Duration::from_secs(1), writer_task).await;
     outcome
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod merge_tests {
+    use super::*;
+
+    fn deployment(uuid: &str, id: i64, created: &str) -> Deployment {
+        serde_json::from_value(json!({
+            "id": id,
+            "deployment_uuid": uuid,
+            "created_at": created,
+        }))
+        .expect("a deployment decodes")
+    }
+
+    fn uuids(deployments: &[Deployment]) -> Vec<&str> {
+        deployments
+            .iter()
+            .filter_map(|d| d.deployment_uuid.as_deref())
+            .collect()
+    }
+
+    #[test]
+    fn plugin_merge_recent_is_newest_first_without_repeats_and_capped() {
+        let running = vec![deployment("run", 5, "2026-10-24T14:31:00Z")];
+        let histories = vec![
+            vec![
+                deployment("old", 1, "2026-10-24T10:00:00Z"),
+                deployment("run", 5, "2026-10-24T14:31:00Z"),
+            ],
+            vec![
+                deployment("mid", 3, "2026-10-24T12:00:00Z"),
+                deployment("none", 2, "not a time"),
+            ],
+        ];
+        let all = merge_recent(running.clone(), histories.clone(), 10);
+        assert_eq!(uuids(&all), ["run", "mid", "old", "none"]);
+        let capped = merge_recent(running, histories, 2);
+        assert_eq!(uuids(&capped), ["run", "mid"]);
+    }
 }

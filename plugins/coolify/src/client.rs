@@ -154,8 +154,14 @@ impl CoolifyClient {
         if let Some(take) = take {
             query.push(("take", take.to_string()));
         }
-        self.get_json(&format!("deployments/applications/{uuid}"), &query, cancel)
-            .await
+        let page: DeploymentPage = self
+            .get_json(&format!("deployments/applications/{uuid}"), &query, cancel)
+            .await?;
+        Ok(match page {
+            DeploymentPage::List(deployments) | DeploymentPage::Wrapped { deployments, .. } => {
+                deployments
+            }
+        })
     }
 
     /// `GET /applications` — every application with its git repository,
@@ -379,6 +385,18 @@ impl CoolifyClient {
         };
         Ok(body.to_vec())
     }
+}
+
+/// The history endpoint answers a bare array in the published spec and
+/// `{"count": n, "deployments": [...]}` on instances; both decode.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum DeploymentPage {
+    List(Vec<Deployment>),
+    Wrapped {
+        #[serde(default)]
+        deployments: Vec<Deployment>,
+    },
 }
 
 fn normalize_base(base_url: &str) -> Result<String, ClientError> {
@@ -686,6 +704,29 @@ mod tests {
         assert_eq!(got.len(), 2);
         assert_eq!(got[0].status.as_deref(), Some("finished"));
         assert_eq!(got[1].status.as_deref(), Some("failed"));
+    }
+
+    #[tokio::test]
+    async fn client_application_deployments_also_decode_the_wrapped_page() {
+        let server = server().await;
+        mount(
+            &server,
+            Mock::given(path("/api/v1/deployments/applications/app-uuid-0001")).respond_with(
+                ResponseTemplate::new(200).set_body_string(
+                    r#"{"count":2,"deployments":[{"deployment_uuid":"a","status":"finished"},{"deployment_uuid":"b","status":"failed"}]}"#,
+                ),
+            ),
+        )
+        .await;
+        let got = client(&server)
+            .application_deployments("app-uuid-0001", None, None, &CancellationToken::new())
+            .await
+            .expect("wrapped page decodes");
+        let uuids: Vec<_> = got
+            .iter()
+            .filter_map(|d| d.deployment_uuid.as_deref())
+            .collect();
+        assert_eq!(uuids, ["a", "b"]);
     }
 
     #[tokio::test]
