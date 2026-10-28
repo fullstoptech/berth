@@ -158,6 +158,15 @@ impl CoolifyClient {
             .await
     }
 
+    /// `GET /applications` — every application with its git repository,
+    /// the list `project/badges` matches local remotes against.
+    pub async fn applications(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<Application>, ClientError> {
+        self.get_json("applications", &[], cancel).await
+    }
+
     /// `GET /applications/{uuid}/logs?lines=N`.
     pub async fn application_logs(
         &self,
@@ -536,6 +545,30 @@ mod tests {
             got.warning.as_deref(),
             Some("Built for Coolify 4.5; some actions may fail")
         );
+    }
+
+    #[tokio::test]
+    async fn client_applications_map_with_git_repository() {
+        let server = server().await;
+        let body = format!("[{}]", fixture("application"));
+        mount(
+            &server,
+            Mock::given(method("GET"))
+                .and(path("/api/v1/applications"))
+                .and(bearer_token(TOKEN))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .insert_header("content-type", "application/json")
+                        .set_body_string(body),
+                ),
+        )
+        .await;
+        let apps = client(&server)
+            .applications(&CancellationToken::new())
+            .await
+            .expect("applications ok");
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].git_repository.as_deref(), Some("example/landing"));
     }
 
     #[tokio::test]

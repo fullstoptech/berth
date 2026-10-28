@@ -23,9 +23,10 @@
     { "kind": "project_badge", "id": "coolify-deployed" }
   ],
   "config": [
-    { "key": "base_url", "label": "Coolify address", "kind": "url", "required": true }
+    { "key": "base_url", "label": "Coolify address", "kind": "url", "required": true },
+    { "key": "mcp_enabled", "label": "Offer Coolify's MCP server to the Assistant", "kind": "bool", "required": false }
   ],
   "secrets": [
-    { "key": "coolify/token", "label": "API [REDACTED]" }
+    { "key": "coolify/token", "label": "API token" }
   ]
 }

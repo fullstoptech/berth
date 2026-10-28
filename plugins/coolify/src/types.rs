@@ -273,3 +273,146 @@ pub(crate) struct EnvVarWithValue {
     #[serde(default)]
     pub value: SecretString,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RESOURCES: &str = include_str!("../../../fixtures/coolify/resources.json");
+    const SERVERS: &str = include_str!("../../../fixtures/coolify/servers.json");
+    const APPLICATION: &str = include_str!("../../../fixtures/coolify/application.json");
+    const DEPLOYMENTS: &str = include_str!("../../../fixtures/coolify/deployments.json");
+    const APP_DEPLOYMENTS: &str = include_str!("../../../fixtures/coolify/app-deployments.json");
+    const ENVS: &str = include_str!("../../../fixtures/coolify/envs.json");
+    const LOGS: &str = include_str!("../../../fixtures/coolify/logs.json");
+
+    #[test]
+    fn types_resources_fixture_decodes_with_kinds_and_statuses() {
+        let resources: Vec<Resource> = serde_json::from_str(RESOURCES).expect("decodes");
+        assert_eq!(resources.len(), 3);
+        assert_eq!(resources[0].kind.as_deref(), Some("application"));
+        assert_eq!(resources[0].uuid.as_deref(), Some("app-uuid-0001"));
+        assert_eq!(resources[1].kind.as_deref(), Some("standalone-postgresql"));
+        assert_eq!(resources[2].status.as_deref(), Some("exited"));
+        assert_eq!(resources[2].fqdn, None);
+    }
+
+    #[test]
+    fn types_servers_fixture_reads_nested_settings() {
+        let servers: Vec<Server> = serde_json::from_str(SERVERS).expect("decodes");
+        assert_eq!(servers[0].name.as_deref(), Some("localhost"));
+        assert_eq!(servers[0].port, Some(22));
+        assert_eq!(
+            servers[0].description.as_deref(),
+            Some("This is the Coolify host.")
+        );
+        assert_eq!(servers[1].description, None, "null becomes None");
+        let reachable = |s: &Server| s.settings.as_ref().and_then(|x| x.is_reachable);
+        assert_eq!(reachable(&servers[0]), Some(true));
+        assert_eq!(reachable(&servers[1]), Some(false));
+    }
+
+    #[test]
+    fn types_application_fixture_carries_the_link_fields() {
+        let app: Application = serde_json::from_str(APPLICATION).expect("decodes");
+        assert_eq!(app.git_repository.as_deref(), Some("example/landing"));
+        assert_eq!(app.git_branch.as_deref(), Some("main"));
+        assert_eq!(app.status.as_deref(), Some("running:healthy"));
+        assert_eq!(app.ports_exposes.as_deref(), Some("3000"));
+    }
+
+    #[test]
+    fn types_deployment_fixtures_decode_both_listings() {
+        let running: Vec<Deployment> = serde_json::from_str(DEPLOYMENTS).expect("decodes");
+        assert_eq!(running[0].status.as_deref(), Some("in_progress"));
+        assert_eq!(running[0].server_name.as_deref(), Some("hetzner-1"));
+        let history: Vec<Deployment> = serde_json::from_str(APP_DEPLOYMENTS).expect("decodes");
+        let statuses: Vec<_> = history.iter().filter_map(|d| d.status.as_deref()).collect();
+        assert!(statuses.contains(&"finished") && statuses.contains(&"failed"));
+        let failed = history
+            .iter()
+            .find(|d| d.status.as_deref() == Some("failed"))
+            .expect("a failed deployment");
+        assert_eq!(failed.force_rebuild, Some(true));
+        assert_eq!(failed.is_webhook, Some(true));
+    }
+
+    #[test]
+    fn types_unknown_fields_are_ignored_and_missing_ones_default() {
+        let app: Application =
+            serde_json::from_str(r#"{"uuid":"u","brand_new_field":{"nested":[1,2]},"name":"x"}"#)
+                .expect("a newer Coolify's extra fields do not break decoding");
+        assert_eq!(app.uuid.as_deref(), Some("u"));
+        assert_eq!(app.git_branch, None);
+        let empty: Deployment = serde_json::from_str("{}").expect("all fields optional");
+        assert_eq!(empty.status, None);
+    }
+
+    #[test]
+    fn types_env_var_drops_the_value_at_decode_time() {
+        let envs: Vec<EnvVar> = serde_json::from_str(ENVS).expect("decodes");
+        assert_eq!(envs[0].key, "DATABASE_URL");
+        assert_eq!(envs[0].is_runtime, Some(true));
+        assert_eq!(envs[1].is_buildtime, Some(true));
+        let printed = format!("{envs:?}");
+        assert!(!printed.contains("fake-value-not-a-secret"), "{printed}");
+        assert!(!printed.contains("production"), "{printed}");
+    }
+
+    #[test]
+    fn types_revealed_env_keeps_the_value_secret_in_debug() {
+        let rows: Vec<EnvVarWithValue> = serde_json::from_str(ENVS).expect("decodes");
+        let revealed = RevealedEnvVar {
+            key: rows[0].key.clone(),
+            value: rows[0].value.clone(),
+        };
+        assert_eq!(revealed.value.expose_secret(), "fake-value-not-a-secret");
+        assert!(!format!("{revealed:?}").contains("fake-value-not-a-secret"));
+    }
+
+    #[test]
+    fn types_deploy_response_and_ack_decode() {
+        let deploy: DeployResponse = serde_json::from_str(
+            r#"{"deployments":[{"message":"queued.","resource_uuid":"app-uuid-0001","deployment_uuid":"dep-uuid-0002"}]}"#,
+        )
+        .expect("decodes");
+        assert_eq!(
+            deploy.deployments[0].deployment_uuid.as_deref(),
+            Some("dep-uuid-0002")
+        );
+        let ack: ActionAck =
+            serde_json::from_str(r#"{"message":"Restart request queued."}"#).expect("decodes");
+        assert_eq!(ack.message.as_deref(), Some("Restart request queued."));
+        assert_eq!(ActionAck::default().message, None);
+        assert!(DeployResponse::default().deployments.is_empty());
+    }
+
+    #[test]
+    fn types_app_logs_fixture_decodes_and_missing_logs_is_empty() {
+        let logs: AppLogs = serde_json::from_str(LOGS).expect("decodes");
+        assert_eq!(logs.logs.lines().count(), 3);
+        let none: AppLogs = serde_json::from_str("{}").expect("decodes");
+        assert_eq!(none.logs, "");
+    }
+
+    #[test]
+    fn types_resource_kind_parse_and_path_segments() {
+        assert_eq!(
+            ResourceKind::parse("application"),
+            Some(ResourceKind::Application)
+        );
+        assert_eq!(ResourceKind::parse("service"), Some(ResourceKind::Service));
+        assert_eq!(
+            ResourceKind::parse("database"),
+            Some(ResourceKind::Database)
+        );
+        assert_eq!(
+            ResourceKind::parse("standalone-postgresql"),
+            Some(ResourceKind::Database)
+        );
+        assert_eq!(ResourceKind::parse("server"), None);
+        assert_eq!(ResourceKind::Application.path_segment(), "applications");
+        assert_eq!(ResourceKind::Service.path_segment(), "services");
+        assert_eq!(ResourceKind::Database.path_segment(), "databases");
+    }
+}
