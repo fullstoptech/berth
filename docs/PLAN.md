@@ -825,6 +825,8 @@ pub struct UserEngine { pub id: berth_core::EngineId, pub name: String, pub kind
 pub struct EngineSnapshot { pub engine: berth_core::EngineId, pub taken: DateTime<Utc>, pub containers: Vec<berth_core::Container>, pub projects: Vec<berth_core::Project> }
 pub struct ActivityFilter { pub engine: Option<berth_core::EngineId>, pub project: Option<berth_core::ProjectId>, pub origin: Option<String>, pub failed_only: bool }
 pub struct SessionRecord { pub session: berth_core::AssistantSession, pub updated: DateTime<Utc> }
+/// AD45 (P8-T5): one folder cloned from Git: (folder, engine, ProjectSource::Git).
+pub type GitSourceRow = (std::path::PathBuf, berth_core::EngineId, berth_core::ProjectSource);
 
 pub struct Store { /* rusqlite::Connection behind std::sync::Mutex */ }
 impl Store {
@@ -856,10 +858,14 @@ impl Store {
     pub fn save_session(&self, s: &berth_core::AssistantSession) -> Result<(), StoreError>;
     pub fn plugin_config(&self, plugin: &str) -> Result<Option<serde_json::Value>, StoreError>;
     pub fn set_plugin_config(&self, plugin: &str, v: &serde_json::Value) -> Result<(), StoreError>;
+    // AD45 (P8-T5): per-folder Git source and the Auto-redeploy switch (both live in the stored ProjectSource::Git).
+    pub fn git_sources(&self) -> Result<Vec<GitSourceRow>, StoreError>;      // ordered by folder
+    pub fn set_git_source(&self, folder: &std::path::Path, engine: &berth_core::EngineId, source: &berth_core::ProjectSource) -> Result<(), StoreError>;   // upsert
+    pub fn remove_git_source(&self, folder: &std::path::Path) -> Result<(), StoreError>;   // the folder itself is not touched
 }
 ```
 
-Tables (migration `0001_init.sql`): `settings(key TEXT PK, json TEXT)`, `pins(folder TEXT PK, engine TEXT, added TEXT)`, `recent(folder TEXT PK, at TEXT)`, `snapshots(engine TEXT PK, taken TEXT, json TEXT)`, `activity(id TEXT PK, ts TEXT, engine TEXT, project TEXT NULL, origin TEXT, action TEXT, outcome TEXT, json TEXT)` with an index on `ts`, `engines(id TEXT PK, json TEXT)`, `templates(id TEXT PK, json TEXT)`, `registries(id TEXT PK, json TEXT)`, `sessions(id TEXT PK, project TEXT NULL, updated TEXT, json TEXT)`, `plugins(id TEXT PK, json TEXT)`, `schema_version(version INTEGER)`. No secret is ever written to any table.
+Tables (migration `0001_init.sql`): `settings(key TEXT PK, json TEXT)`, `pins(folder TEXT PK, engine TEXT, added TEXT)`, `recent(folder TEXT PK, at TEXT)`, `snapshots(engine TEXT PK, taken TEXT, json TEXT)`, `activity(id TEXT PK, ts TEXT, engine TEXT, project TEXT NULL, origin TEXT, action TEXT, outcome TEXT, json TEXT)` with an index on `ts`, `engines(id TEXT PK, json TEXT)`, `templates(id TEXT PK, json TEXT)`, `registries(id TEXT PK, json TEXT)`, `sessions(id TEXT PK, project TEXT NULL, updated TEXT, json TEXT)`, `plugins(id TEXT PK, json TEXT)`, `schema_version(version INTEGER)`; migration `0002_git_sources.sql` (AD45, P8-T5) adds `git_sources(folder TEXT PK, engine TEXT NOT NULL, json TEXT NOT NULL)`. No secret is ever written to any table.
 
 ### 6.5 Engines (`berth-engine`)
 
@@ -994,6 +1000,25 @@ pub mod projects {  // pure
                  pins: &[berth_core::PinnedFolder], remote: bool) -> Vec<berth_core::Project>;
     pub fn status(services: &[berth_core::ServiceSummary]) -> berth_core::ProjectStatus;
     pub fn parse_git_status(porcelain_v2: &str) -> berth_core::GitInfo;
+}
+
+/// AD45 (P8-T5): `berth_engine::git` — the git CLI (binary from `berth_sys::SearchPath`; every call takes a CancellationToken and kills on drop).
+/// Pure arg builders: `status_args, remote_args, ssh_command(key), clone_args, fetch_args, pull_args, incoming_args, head_args`;
+/// pure parsers: `parse_clone_progress(line) -> Option<CloneProgress { phase, percent }>`, `parse_incoming(oneline_log) -> Vec<IncomingCommit { hash, subject }>`.
+/// SSH key = `git clone -c core.sshCommand="ssh -i <key> -o IdentitiesOnly=yes -o BatchMode=yes"` (kept in the repo's own git config; Berth never reads the key).
+pub struct GitCli { /* SearchPath */ }
+impl GitCli {
+    pub fn new(search: berth_sys::SearchPath) -> Self;
+    pub fn binary(&self) -> Option<std::path::PathBuf>;
+    pub async fn status(&self, dir: &Path, cancel: CancellationToken) -> Result<berth_core::GitInfo, EngineError>;
+    pub async fn remote_url(&self, dir: &Path, cancel: CancellationToken) -> Result<Option<String>, EngineError>;
+    pub async fn git_info(&self, dir: &Path, cancel: CancellationToken) -> Result<Option<berth_core::GitInfo>, EngineError>;   // None = not a repository
+    pub async fn clone_repo(&self, url: &str, dir: &Path, branch: Option<&str>, ssh_key: Option<&Path>, cancel: CancellationToken,
+                            on_progress: impl FnMut(CloneProgress) + Send) -> Result<(), EngineError>;   // removes dir only if this call created it and the clone did not finish
+    pub async fn fetch(&self, dir: &Path, cancel: CancellationToken) -> Result<(), EngineError>;
+    pub async fn pull_ff_only(&self, dir: &Path, cancel: CancellationToken) -> Result<(), EngineError>;   // never merges
+    pub async fn incoming(&self, dir: &Path, cancel: CancellationToken) -> Result<Vec<IncomingCommit>, EngineError>;   // HEAD..@{u}; no upstream = empty
+    pub async fn current_commit(&self, dir: &Path, cancel: CancellationToken) -> Result<Option<String>, EngineError>;
 }
 
 #[async_trait::async_trait]
