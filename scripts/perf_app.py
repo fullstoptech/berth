@@ -101,6 +101,23 @@ def parse_lstart(text):
     return time.mktime(time.strptime(text, "%a %b %d %H:%M:%S %Y"))
 
 
+NOT_FRONTMOST = (
+    "perf: Berth window not frontmost - a covered window has no animation frames, so "
+    "projects_painted cannot fire; close or move other windows and rerun"
+)
+PAINT_GRACE = 1.0  # seconds after the snapshot/live mark before a missing paint mark is checked
+
+
+def frontmost_pid():
+    """Unix id of the frontmost process, or None when System Events will not say."""
+    script = 'tell application "System Events" to get unix id of first process whose frontmost is true'
+    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        return None
+
+
 class Run:
     """One launch of the app."""
 
@@ -132,11 +149,18 @@ class Run:
         return found
 
     def wait_mark(self, name, timeout=60.0):
+        """The (ms, epoch) of a log mark. For projects_painted, None when the window is covered."""
         end = time.time() + timeout
+        stalled_since = None
         while time.time() < end:
             marks = self.marks()
             if name in marks:
                 return marks[name]
+            if name == "projects_painted" and ("projects_snapshot" in marks or "projects_live" in marks):
+                # The paint mark needs two animation frames, which a covered window never gets.
+                stalled_since = stalled_since or time.time()
+                if time.time() - stalled_since > PAINT_GRACE and not self.is_frontmost():
+                    return None
             if self.proc.poll() is not None:
                 sys.exit(f"perf: the app exited before mark {name}; see {self.log_path}")
             time.sleep(0.05)
@@ -151,8 +175,11 @@ class Run:
                 mine.append((pid, comm.rsplit("/", 1)[-1].replace("com.apple.WebKit.", "")))
         return sorted(mine)
 
+    def is_frontmost(self):
+        return frontmost_pid() == self.pid
+
     def activate(self):
-        """Bring the app to the front once its process is known to System Events."""
+        """Bring the app to the front and confirm it got there, or end the run."""
         script = (
             'tell application "System Events"\n'
             f"  set frontmost of (first process whose unix id is {self.pid}) to true\n"
@@ -160,8 +187,15 @@ class Run:
         )
         for _ in range(20):
             if subprocess.run(["osascript", "-e", script], capture_output=True).returncode == 0:
-                return
+                break
             time.sleep(0.05)
+        end = time.time() + 2
+        while time.time() < end:
+            if self.is_frontmost():
+                return
+            time.sleep(0.1)
+        self.stop(graceful=False)
+        sys.exit(NOT_FRONTMOST)
 
     def key(self, letter):
         script = (
@@ -252,6 +286,10 @@ def cold_start(data_dir, runs):
         run = Run(data_dir, f"cold{attempts}")
         run.activate()
         painted = run.wait_mark("projects_painted")
+        if painted is None:
+            run.stop(graceful=False)
+            print(f"   attempt {attempts}: window covered (not frontmost), no paint mark; retrying")
+            continue
         run.wait_mark("projects_live")
         marks = run.marks()
         run.stop(graceful=False)
