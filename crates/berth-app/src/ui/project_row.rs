@@ -141,6 +141,8 @@ fn group_reason(
 pub struct ProjectRowModel {
     pub id: berth_core::ProjectId,
     pub name: String,
+    /// The project's folder on this Mac, when it has one (the Git commit is found by it).
+    pub folder: Option<std::path::PathBuf>,
     pub kind: RowKind,
     pub path_short: String,
     /// The whole `~/…` path, or "—" when the project has no folder.
@@ -496,6 +498,7 @@ pub fn row_model(
     ProjectRowModel {
         id: project.id.clone(),
         name: project.name.clone(),
+        folder: project.folder.clone(),
         kind,
         path_short: project.folder.as_deref().map_or_else(
             || "—".to_string(),
@@ -707,6 +710,16 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
 
     let menu_entries = menu_entries(&model);
 
+    // A project Berth cloned from Git shows its commit, and its new commits once a check found them.
+    let git = model.folder.as_ref().and_then(|folder| {
+        try_use_context::<crate::services::git_deploy::GitDeployView>()
+            .and_then(|view| view.status(folder))
+    });
+    let branch = model
+        .branch
+        .clone()
+        .or_else(|| git.as_ref().map(|g| g.project.branch.clone()));
+
     let open_project = {
         let id = id.clone();
         move || {
@@ -750,11 +763,19 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                 }
                 div { class: "project-cell project-cell-engine", role: "cell", "{model.engine_name}" }
                 div { class: "project-cell project-cell-branch", role: "cell",
-                    if let Some(branch) = &model.branch {
+                    if let Some(branch) = &branch {
                         Icon { name: "git-branch", size: IconSize::Md }
                         span { class: "project-branch-text", title: "{branch}", "{branch}" }
                     } else {
                         span { class: "cell-dash", "\u{2014}" }
+                    }
+                    if let Some(commit) = git.as_ref().and_then(|g| g.project.commit.clone()) {
+                        span { class: "project-commit", title: "Deployed commit", "{commit}" }
+                    }
+                    if let Some(git) = git.as_ref().filter(|g| !g.incoming.is_empty()) {
+                        span { class: "project-new-commits",
+                            {crate::services::git_deploy::new_commits_label(git.incoming.len())}
+                        }
                     }
                 }
                 div { class: "project-cell project-cell-services", role: "cell",

@@ -23,6 +23,15 @@ use crate::services::actions::spawn_io;
 use crate::services::{activity, Services};
 use crate::state::{AppState, PendingKey, PendingState};
 
+mod build;
+mod commit;
+
+pub use build::{
+    check_build_spec, BuildKey, BuildLine, BuildLineKind, BuildPhase, BuildState, PushKey,
+    PushPhase, PushState, BUILD_ACTION, EXPORT_ACTION, IMPORT_ACTION, PUSH_ACTION,
+};
+pub use commit::{commit_reference, default_reference, COMMIT_ACTION};
+
 /// The action id of a pull: the activity entry's and the pending key's.
 pub const PULL_ACTION: &str = "image.pull";
 
@@ -495,6 +504,10 @@ pub struct ImageStore {
     pub details: Signal<HashMap<(EngineId, String), ImageEntry>>,
     /// Pulls, newest last; finished ones stay until dismissed.
     pub pulls: Signal<Vec<PullState>>,
+    /// Builds (P8-T3), newest last; finished ones stay until dismissed.
+    pub builds: Signal<Vec<BuildState>>,
+    /// Pushes (P8-T3), newest last; finished ones stay until dismissed.
+    pub pushes: Signal<Vec<PushState>>,
     pub tab: Signal<ImagesTab>,
     pub query: Signal<String>,
     pub query_rev: Signal<u32>,
@@ -504,6 +517,9 @@ pub struct ImageStore {
     pub pull_open: Signal<bool>,
     requested: Signal<HashSet<(EngineId, String)>>,
     cancels: Signal<HashMap<PullKey, CancellationToken>>,
+    /// The tokens of builds, pushes, exports and imports, by (engine,
+    /// action, name).
+    op_cancels: Signal<HashMap<build::OpKey, CancellationToken>>,
 }
 
 impl ImageStore {
@@ -513,6 +529,8 @@ impl ImageStore {
             by_engine: Signal::new(BTreeMap::new()),
             details: Signal::new(HashMap::new()),
             pulls: Signal::new(Vec::new()),
+            builds: Signal::new(Vec::new()),
+            pushes: Signal::new(Vec::new()),
             tab: Signal::new(ImagesTab::default()),
             query: Signal::new(String::new()),
             query_rev: Signal::new(0),
@@ -521,6 +539,7 @@ impl ImageStore {
             pull_open: Signal::new(false),
             requested: Signal::new(HashSet::new()),
             cancels: Signal::new(HashMap::new()),
+            op_cancels: Signal::new(HashMap::new()),
         }
     }
 
@@ -662,12 +681,19 @@ impl ImageStore {
         let mut cancels = self.cancels;
         cancels.write().insert(key.clone(), cancel.clone());
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<PullMessage>();
+        // Credentials for this reference's registry, when logged in
+        // (P8-T2); read from the Keychain here, never stored in state.
+        let wanted_credentials = credentials_for_reference(&reference);
         let wanted = reference.clone();
         let wanted_platform = platform.map(str::to_string);
         let stream_cancel = cancel.clone();
         spawn_io(async move {
-            let mut stream =
-                client.pull(&wanted, wanted_platform.as_deref(), stream_cancel.clone());
+            let mut stream = client.pull(
+                &wanted,
+                wanted_platform.as_deref(),
+                wanted_credentials.as_ref(),
+                stream_cancel.clone(),
+            );
             let mut failure = None;
             while let Some(item) = stream.next().await {
                 match item {
@@ -865,6 +891,18 @@ impl Default for ImageStore {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// The logged-in registry's credentials for `reference`, read from the
+/// Keychain now and never kept in state (P8-T2). `None` outside the app
+/// (no registries service in context) or when no registry serves it.
+fn credentials_for_reference(reference: &str) -> Option<berth_engine::client::RegistryAuth> {
+    let registries =
+        try_consume_context::<Option<crate::services::registries::RegistriesService>>()
+            .flatten()?;
+    let app = try_consume_context::<AppState>()?;
+    let rows = app.registries.peek().clone();
+    registries.credentials_for(&rows, reference)
 }
 
 enum PullMessage {

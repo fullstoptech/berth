@@ -788,3 +788,22 @@ fn project_detail_the_project_section_draws_the_selected_project_and_nothing_els
         "the Projects table is not drawn"
     );
 }
+
+#[test]
+fn custom_templates_a_service_row_menu_offers_save_as_template_before_copy_id() {
+    use crate::ui::MenuEntry;
+    let base = vec![
+        MenuEntry::new("pause", "Pause"),
+        MenuEntry::new("copy-id", "Copy container ID").separator_before(),
+    ];
+    let ids = |menu: &[MenuEntry]| menu.iter().map(|e| e.id.clone()).collect::<Vec<_>>();
+    let with = super::services_tab::service_menu(base.clone(), true);
+    assert_eq!(ids(&with), ["pause", "save-template", "copy-id"]);
+    assert_eq!(with[1].label, "Save as template\u{2026}");
+    assert!(with[1].disabled_reason.is_none());
+    // A container with no service name is not a service of the project.
+    assert_eq!(
+        ids(&super::services_tab::service_menu(base, false)),
+        ["pause", "copy-id"]
+    );
+}

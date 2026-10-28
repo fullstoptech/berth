@@ -13,14 +13,14 @@ use bollard::models::{
     RestartPolicy as BollardRestart, RestartPolicyNameEnum, VolumeCreateRequest,
 };
 use bollard::query_parameters::{
-    CreateContainerOptionsBuilder, CreateImageOptionsBuilder, DataUsageOptions,
-    DownloadFromContainerOptionsBuilder, InspectContainerOptionsBuilder,
-    KillContainerOptionsBuilder, ListContainersOptionsBuilder, ListImagesOptionsBuilder,
-    LogsOptionsBuilder, PruneBuildOptions, RemoveContainerOptionsBuilder,
-    RemoveImageOptionsBuilder, RemoveVolumeOptions, RenameContainerOptionsBuilder,
-    RestartContainerOptionsBuilder, SearchImagesOptionsBuilder, StartContainerOptions,
-    StatsOptionsBuilder, StopContainerOptionsBuilder, TagImageOptionsBuilder,
-    UploadToContainerOptionsBuilder,
+    BuildImageOptionsBuilder, CommitContainerOptionsBuilder, CreateContainerOptionsBuilder,
+    CreateImageOptionsBuilder, DataUsageOptions, DownloadFromContainerOptionsBuilder,
+    ImportImageOptionsBuilder, InspectContainerOptionsBuilder, KillContainerOptionsBuilder,
+    ListContainersOptionsBuilder, ListImagesOptionsBuilder, LogsOptionsBuilder, PruneBuildOptions,
+    PushImageOptionsBuilder, RemoveContainerOptionsBuilder, RemoveImageOptionsBuilder,
+    RemoveVolumeOptions, RenameContainerOptionsBuilder, RestartContainerOptionsBuilder,
+    SearchImagesOptionsBuilder, StartContainerOptions, StatsOptionsBuilder,
+    StopContainerOptionsBuilder, TagImageOptionsBuilder, UploadToContainerOptionsBuilder,
 };
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
@@ -69,21 +69,33 @@ impl BollardEngine {
                 berth_core::EngineKind::Socket { path, .. } => {
                     Some(format!("unix://{}", path.display()))
                 }
+                berth_core::EngineKind::Remote { transport } => {
+                    Some(crate::remote::docker_host(transport))
+                }
                 _ => None,
             })
             .ok_or_else(|| EngineError::Unreachable {
                 engine: engine.name.clone(),
                 reason: "engine has no docker host".to_string(),
             })?;
-        let Some(socket) = host.strip_prefix("unix://") else {
-            // ssh/tcp engines arrive in P8-T1.
+        let timeout = LIST_INSPECT.as_secs();
+        let version = bollard::API_DEFAULT_VERSION;
+        let docker = if let Some(socket) = host.strip_prefix("unix://") {
+            bollard::Docker::connect_with_unix(socket, timeout, version)
+        } else if host.starts_with("ssh://") {
+            // The system ssh honours ~/.ssh/config and the agent (D47);
+            // no keypair path means exactly that.
+            bollard::Docker::connect_with_ssh(&host, timeout, version, None)
+        } else if let berth_core::EngineKind::Remote {
+            transport: berth_core::RemoteTransport::Tcp { tls: Some(tls), .. },
+        } = &engine.kind
+        {
+            bollard::Docker::connect_with_ssl(&host, &tls.key, &tls.cert, &tls.ca, timeout, version)
+        } else if host.starts_with("tcp://") || host.starts_with("http://") {
+            bollard::Docker::connect_with_http(&host, timeout, version)
+        } else {
             return Err(EngineError::Unsupported(format!("connect to {host}")));
-        };
-        let docker = bollard::Docker::connect_with_unix(
-            socket,
-            LIST_INSPECT.as_secs(),
-            bollard::API_DEFAULT_VERSION,
-        )
+        }
         .map_err(|e| map_err(&engine.name, e))?;
         Ok(Self {
             docker,
@@ -1046,6 +1058,7 @@ impl EngineClient for BollardEngine {
         &self,
         reference: &str,
         platform: Option<&str>,
+        credentials: Option<&crate::client::RegistryAuth>,
         cancel: Cancel,
     ) -> Bs<berth_core::PullProgress> {
         let (from_image, tag) = split_image_ref(reference);
@@ -1056,9 +1069,15 @@ impl EngineClient for BollardEngine {
         if let Some(platform) = platform {
             builder = builder.platform(platform);
         }
+        let credentials = credentials.map(|c| bollard::auth::DockerCredentials {
+            username: Some(c.username.clone()),
+            password: Some(secrecy::ExposeSecret::expose_secret(&c.password).to_string()),
+            serveraddress: Some(c.server.clone()),
+            ..Default::default()
+        });
         let stream =
             self.docker_for(CallKind::Pull)
-                .create_image(Some(builder.build()), None, None);
+                .create_image(Some(builder.build()), None, credentials);
         cancellable(
             stream,
             cancel,
@@ -1095,6 +1114,89 @@ impl EngineClient for BollardEngine {
             .tag_image(id, Some(options))
             .await
             .map_err(|e| self.err(e))
+    }
+
+    fn push(
+        &self,
+        reference: &str,
+        auth: Option<&crate::client::RegistryAuth>,
+        cancel: Cancel,
+    ) -> Bs<berth_core::PullProgress> {
+        // `docker push repo` pushes `latest`; the API without a tag would
+        // push every local tag of the repository.
+        let (name, tag) = split_image_ref(reference);
+        let options = PushImageOptionsBuilder::new()
+            .tag(tag.as_deref().unwrap_or("latest"))
+            .build();
+        let stream = self.docker_for(CallKind::Pull).push_image(
+            &name,
+            Some(options),
+            auth.map(docker_credentials),
+        );
+        cancellable(stream, cancel, push_progress, self.engine_name.clone())
+    }
+
+    fn build_image(
+        &self,
+        spec: &berth_core::BuildSpec,
+        credentials: Option<&crate::client::RegistryAuth>,
+        cancel: Cancel,
+    ) -> Bs<berth_core::BuildEvent> {
+        // Never trace `spec`: build args may be secrets.
+        let docker = self.docker_for(CallKind::Build);
+        let engine_name = self.engine_name.clone();
+        let spec = spec.clone();
+        let registries: HashMap<String, bollard::auth::DockerCredentials> = credentials
+            .map(|c| (c.server.clone(), docker_credentials(c)))
+            .into_iter()
+            .collect();
+        let (tx, rx) =
+            tokio::sync::mpsc::channel::<Result<berth_core::BuildEvent, EngineError>>(256);
+        tokio::spawn(async move {
+            let run = run_build(&docker, &engine_name, spec, registries, cancel, &tx).await;
+            if let Err(e) = run {
+                let _ = tx.send(Err(e)).await;
+            }
+        });
+        channel_stream(rx)
+    }
+
+    fn export_image(&self, id: &str, cancel: Cancel) -> Bs<bytes::Bytes> {
+        let stream = self.docker_for(CallKind::Export).export_image(id);
+        cancellable(stream, cancel, |chunk| chunk, self.engine_name.clone())
+    }
+
+    async fn import_image(&self, tar: bytes::Bytes) -> Result<Vec<String>, EngineError> {
+        let docker = self.docker_for(CallKind::Upload);
+        let options = ImportImageOptionsBuilder::new().build();
+        let mut stream = Box::pin(docker.import_image(options, bollard::body_full(tar), None));
+        let mut texts = Vec::new();
+        while let Some(item) = stream.next().await {
+            let info = item.map_err(|e| self.err_for(CallKind::Upload, e))?;
+            texts.extend(info.stream);
+        }
+        Ok(crate::build_parse::loaded_image_names(
+            texts.iter().map(String::as_str),
+        ))
+    }
+
+    async fn commit(
+        &self,
+        id: &berth_core::ContainerId,
+        repo: &str,
+        tag: &str,
+    ) -> Result<String, EngineError> {
+        let options = CommitContainerOptionsBuilder::new()
+            .container(&id.0)
+            .repo(repo)
+            .tag(tag)
+            .pause(true)
+            .build();
+        self.docker_for(CallKind::Export)
+            .commit_container(options, bollard::models::ContainerConfig::default())
+            .await
+            .map(|created| created.id)
+            .map_err(|e| self.err_for(CallKind::Export, e))
     }
 
     async fn search_images(
@@ -1448,6 +1550,143 @@ fn split_image_ref(reference: &str) -> (String, Option<String>) {
     }
 }
 
+fn docker_credentials(auth: &crate::client::RegistryAuth) -> bollard::auth::DockerCredentials {
+    bollard::auth::DockerCredentials {
+        username: Some(auth.username.clone()),
+        password: Some(secrecy::ExposeSecret::expose_secret(&auth.password).to_string()),
+        serveraddress: Some(auth.server.clone()),
+        ..Default::default()
+    }
+}
+
+fn push_progress(info: bollard::models::PushImageInfo) -> berth_core::PullProgress {
+    let detail = |pick: fn(&bollard::models::ProgressDetail) -> Option<i64>| {
+        info.progress_detail
+            .as_ref()
+            .and_then(pick)
+            .map(|n| u64::try_from(n).unwrap_or(0))
+    };
+    berth_core::PullProgress {
+        // bollard's push model carries no layer id.
+        layer: None,
+        status: info.status.clone().unwrap_or_default(),
+        current: detail(|p| p.current),
+        total: detail(|p| p.total),
+    }
+}
+
+/// Sends `events` to the consumer; `false` when it has gone away.
+async fn send_events(
+    tx: &tokio::sync::mpsc::Sender<Result<berth_core::BuildEvent, EngineError>>,
+    events: Vec<berth_core::BuildEvent>,
+) -> bool {
+    for event in events {
+        if tx.send(Ok(event)).await.is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+/// One build (AD43): tar the context, stream `POST /build`, turn its
+/// `stream` text into events, then tag the extra names from the first.
+async fn run_build(
+    docker: &bollard::Docker,
+    engine_name: &str,
+    spec: berth_core::BuildSpec,
+    registries: HashMap<String, bollard::auth::DockerCredentials>,
+    cancel: Cancel,
+    tx: &tokio::sync::mpsc::Sender<Result<berth_core::BuildEvent, EngineError>>,
+) -> Result<(), EngineError> {
+    let (dockerfile, tar) = match &spec.context {
+        berth_core::BuildContext::Folder(folder) => {
+            let dockerfile = spec
+                .dockerfile
+                .clone()
+                .unwrap_or_else(|| "Dockerfile".to_string());
+            let folder = folder.clone();
+            let name = dockerfile.clone();
+            let tar = tokio::task::spawn_blocking(move || {
+                crate::build_context::tar_folder(&folder, &name)
+            })
+            .await
+            .map_err(|e| EngineError::Docker(format!("build context: {e}")))??;
+            (dockerfile, tar)
+        }
+        berth_core::BuildContext::Inline(text) => (
+            "Dockerfile".to_string(),
+            crate::build_context::tar_inline(text)?,
+        ),
+    };
+    let mut options = BuildImageOptionsBuilder::new()
+        .dockerfile(&dockerfile)
+        .rm(true);
+    if let Some(first) = spec.tags.first() {
+        options = options.t(first);
+    }
+    if let Some(platform) = &spec.platform {
+        options = options.platform(platform);
+    }
+    if !spec.build_args.is_empty() {
+        let args: HashMap<String, String> = spec.build_args.iter().cloned().collect();
+        options = options.buildargs(&args);
+    }
+    let registries = Some(registries).filter(|r| !r.is_empty());
+    let mut stream =
+        Box::pin(docker.build_image(options.build(), registries, Some(bollard::body_full(tar))));
+    let mut lines = crate::build_parse::BuildLines::default();
+    loop {
+        let item = tokio::select! {
+            biased;
+            () = cancel.cancelled() => return Ok(()),
+            item = stream.next() => item,
+        };
+        match item {
+            Some(Ok(info)) => {
+                if let Some(text) = info.stream {
+                    if !send_events(tx, lines.push(&text)).await {
+                        return Ok(());
+                    }
+                }
+            }
+            Some(Err(e)) => {
+                if !send_events(tx, lines.finish()).await {
+                    return Ok(());
+                }
+                // The failing step's own message is an event, so the UI
+                // can mark the step; the error then ends the stream.
+                if let bollard::errors::Error::DockerStreamError { error } = &e {
+                    let failed = berth_core::BuildEvent::Failed {
+                        text: error.clone(),
+                    };
+                    if !send_events(tx, vec![failed]).await {
+                        return Ok(());
+                    }
+                }
+                return Err(map_err(engine_name, e));
+            }
+            None => break,
+        }
+    }
+    if !send_events(tx, lines.finish()).await {
+        return Ok(());
+    }
+    if let Some((first, extra)) = spec.tags.split_first() {
+        for name in extra {
+            let (repo, tag) = split_image_ref(name);
+            let options = TagImageOptionsBuilder::new()
+                .repo(&repo)
+                .tag(tag.as_deref().unwrap_or("latest"))
+                .build();
+            docker
+                .tag_image(first, Some(options))
+                .await
+                .map_err(|e| map_err(engine_name, e))?;
+        }
+    }
+    Ok(())
+}
+
 fn channel_stream<T: Send + 'static>(
     rx: tokio::sync::mpsc::Receiver<T>,
 ) -> futures::stream::BoxStream<'static, T> {
@@ -1608,6 +1847,9 @@ where
     });
     channel_stream(rx)
 }
+
+#[cfg(test)]
+mod build_tests;
 
 #[cfg(test)]
 mod tests {

@@ -156,9 +156,13 @@ fn containers_scene_selected_1440_renders_the_grouped_table_with_the_selected_ro
     // One selected row, its buttons present, tooltips from the key table.
     assert_eq!(count(&html, "ct-row ct-selected"), 1, "{html}");
     assert!(html.contains("data-container=\"shop-api-worker-1\""));
-    assert!(html.contains("data-tooltip=\"Restart · ⌘R\""), "{html}");
-    assert!(html.contains("data-tooltip=\"Stop · ⌘.\""));
-    assert!(html.contains("data-tooltip=\"Logs · ⌘L\""));
+    let m = crate::actions::mod_label();
+    assert!(
+        html.contains(&format!("data-tooltip=\"Restart · {m}R\"")),
+        "{html}"
+    );
+    assert!(html.contains(&format!("data-tooltip=\"Stop · {m}.\"")));
+    assert!(html.contains(&format!("data-tooltip=\"Logs · {m}L\"")));
     // Ports are links to localhost; stats show a bar, a dash where absent.
     assert!(html.contains("href=\"http://localhost:3000\""));
     assert!(html.contains("3.2%"));
@@ -1184,16 +1188,20 @@ fn containers_row_buttons_carry_tooltips_toggle_and_disabled_reasons() {
             .map(|b| (b.tooltip.clone(), b.disabled, b.icon))
             .expect("button")
     };
+    let m = crate::actions::mod_label();
     assert_eq!(
         tooltip(&running, RowAction::StartStop),
-        ("Stop · ⌘.".to_string(), false, "square")
+        (format!("Stop · {m}."), false, "square")
     );
-    assert_eq!(tooltip(&running, RowAction::Restart).0, "Restart · ⌘R");
-    assert_eq!(tooltip(&running, RowAction::Logs).0, "Logs · ⌘L");
+    assert_eq!(
+        tooltip(&running, RowAction::Restart).0,
+        format!("Restart · {m}R")
+    );
+    assert_eq!(tooltip(&running, RowAction::Logs).0, format!("Logs · {m}L"));
     // Terminal opens a shell (P3-T6); Delete asks first (P2-T8).
     let terminal = tooltip(&running, RowAction::Terminal);
     assert!(!terminal.1);
-    assert_eq!(terminal.0, "Terminal · ⌘T");
+    assert_eq!(terminal.0, format!("Terminal · {m}T"));
     let delete = tooltip(&running, RowAction::Delete);
     assert!(!delete.1);
     assert_eq!(delete.0, "Delete \u{00b7} \u{232b}");
@@ -1207,7 +1215,7 @@ fn containers_row_buttons_carry_tooltips_toggle_and_disabled_reasons() {
     );
     assert_eq!(
         tooltip(&exited, RowAction::StartStop),
-        ("Start · ⌘.".to_string(), false, "play")
+        (format!("Start · {m}."), false, "play")
     );
     assert_eq!(exited.status_text, "Exited (1)");
     assert!(
@@ -1309,7 +1317,10 @@ fn containers_row_menu_offers_pause_or_resume_and_copy_id() {
 
 #[test]
 fn containers_tooltip_for_uses_the_action_table_shortcuts() {
-    assert_eq!(tooltip_for("Restart", "container.restart"), "Restart · ⌘R");
+    assert_eq!(
+        tooltip_for("Restart", "container.restart"),
+        format!("Restart · {}R", crate::actions::mod_label())
+    );
     assert_eq!(tooltip_for("Delete", "container.delete"), "Delete · ⌫");
     assert_eq!(tooltip_for("More", "no.such.action"), "More");
 }

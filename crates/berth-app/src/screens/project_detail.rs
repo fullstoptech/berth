@@ -25,6 +25,7 @@ use berth_core::{Project, ProjectId, ProjectStatus};
 
 mod activity_tab;
 mod files;
+mod git_panel;
 mod services_tab;
 pub(crate) mod tree;
 
@@ -603,6 +604,9 @@ pub fn ProjectDetailScreen(id: ProjectId) -> Element {
                         }
                     }
                     span { class: "pd-subline", "{model.subline}" }
+                }
+                if let Some(folder) = project.folder.clone() {
+                    git_panel::GitPanel { folder }
                 }
                 if let Some(failure) = &row.failure {
                     div { class: "pd-failure",

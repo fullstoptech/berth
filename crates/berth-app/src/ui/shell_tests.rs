@@ -331,7 +331,15 @@ fn shell_title_bar_has_switcher_palette_trigger_and_problems() {
         "switcher dot: {bar}"
     );
     assert!(bar.contains("Search or run a command\u{2026}"));
-    assert!(bar.contains("aria-label=\"Command \u{2318}\""), "Kbd cmd");
+    let mod_name = if crate::actions::mod_label() == "\u{2318}" {
+        "Command \u{2318}"
+    } else {
+        "Control \u{2303}"
+    };
+    assert!(
+        bar.contains(&format!("aria-label=\"{mod_name}\"")),
+        "Kbd mod"
+    );
     assert!(bar.contains(">K<"));
     assert!(bar.contains("3 problems"));
 }
@@ -917,7 +925,12 @@ fn shell_palette_trigger_is_a_button_with_the_cmd_k_hint() {
     });
     assert!(html.contains("<button class=\"palette-trigger\""), "{html}");
     assert!(html.contains("Search or run a command\u{2026}"));
-    assert!(html.contains("data-symbol=\"cmd\""));
+    let symbol = if crate::actions::mod_label() == "\u{2318}" {
+        "cmd"
+    } else {
+        "ctrl"
+    };
+    assert!(html.contains(&format!("data-symbol=\"{symbol}\"")));
     assert!(html.contains(">K<"));
 }
 
