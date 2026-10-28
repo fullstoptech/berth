@@ -72,6 +72,7 @@ scene_modules! {
     networks,
     open_folder,
     palette,
+    plugins,
     problems,
     project_detail,
     projects,

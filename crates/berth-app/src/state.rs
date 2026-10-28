@@ -51,6 +51,10 @@ pub enum Overlay {
     AddService(AddServiceSeed),
     /// Two checkboxes: delete the folder's containers, remove the project's volumes (AD33).
     DeleteProject(berth_core::ProjectId),
+    /// The permission request sheet of one plugin (plugin id; AD48, 2026-10-28).
+    PluginEnable(String),
+    /// The Configure form of one plugin (plugin id; AD48, 2026-10-28).
+    PluginConfigure(String),
 }
 /// What the Add service sheet starts from: the project it adds to (none when opened from Templates or Find
 /// images), a built-in or custom template id, or an image reference (AD33).

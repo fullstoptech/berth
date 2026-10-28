@@ -196,6 +196,7 @@ pub fn Sidebar() -> Element {
             }
             SectionItem { icon: "cloud", label: "Registries", target: Section::Registries }
             SectionItem { icon: "activity", label: "Activity", target: Section::Activity }
+            SectionItem { icon: "zap", label: "Plugins", target: Section::Plugins }
         }
     }
 }

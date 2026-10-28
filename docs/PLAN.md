@@ -1406,6 +1406,7 @@ pub enum Overlay {          // stacked; Esc closes the top one
     OpenFolder, DropFolder(Vec<std::path::PathBuf>), NewProject, EditRecreate(berth_core::ContainerId), Run(String),
     CleanUp(berth_core::EngineId), CreateVolume, CreateNetwork, EditResources(String), AddEngine, AddRegistry,
     BuildImage, AddService(AddServiceSeed), DeleteProject(berth_core::ProjectId),   // AD33 (2026-10-25): AddService opens from Templates/Find images without a project; DeleteProject has two checkboxes
+    PluginEnable(String), PluginConfigure(String),   // AD48 (2026-10-28): plugin id; the permission request sheet and the Configure form
 }
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AddServiceSeed { pub project: Option<berth_core::ProjectId>, pub template: Option<String>, pub image: Option<String> }

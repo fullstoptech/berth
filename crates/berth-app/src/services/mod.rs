@@ -27,6 +27,7 @@ pub mod logs;
 pub mod menubar;
 pub mod networks;
 pub mod plans;
+pub mod plugins;
 pub mod ports;
 pub mod problems;
 pub mod project_files;
