@@ -1133,6 +1133,9 @@ pub mod templates {
     pub fn generate_password() -> String;                                            // 24 chars, [A-Za-z0-9]
     pub fn add_service_plan(root: &std::path::Path, compose_rel: &std::path::Path, compose_text: &str, env_text: Option<&str>, t: &berth_core::Template,   // compose_rel: the file may be docker-compose.yml
                             service: &str, inputs: &std::collections::BTreeMap<String, String>) -> Result<berth_core::GenerationPlan, RulesError>;   // service: the name to add (user may rename to avoid ServiceExists), AD33
+    /// Save as template (AD46, P8-T4): one image-based service of a compose file becomes a custom template (id, name, source = project label); project-bound keys dropped, host ports and named volumes become inputs, password-like env values become `${KEY:?set in .env}` plus a Password input. `Yaml` when the service has no `image` or the file does not parse; `NoService` when absent.
+    pub fn from_service(compose_text: &str, service: &str, id: &str, name: &str, source: &str) -> Result<berth_core::Template, RulesError>;   // AD46, P8-T4
+    pub const CUSTOM_CATEGORY: &str = "Custom";                                      // AD46, P8-T4
 }
 pub mod compose_edit {   // D32: text edits that keep comments
     pub fn add_service(text: &str, name: &str, block_yaml: &str) -> Result<String, RulesError>;
