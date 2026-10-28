@@ -12,6 +12,7 @@ pub mod client;
 pub mod logs;
 pub mod mcp;
 pub mod plugin;
+pub mod probe;
 pub mod types;
 pub mod views;
 

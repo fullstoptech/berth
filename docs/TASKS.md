@@ -358,7 +358,7 @@ Done when: `codesign -dvv --entitlements - Berth.app` shows the Developer ID aut
 Done when: STATUS.md records each step of the walk as passed; `git tag --list v1.0.0` prints `v1.0.0`; `cargo pkgid -p berth-app` ends with `1.0.0`.
 
 **Follow-ups from the Mac acceptance (2026-10-28, second run).** Findings that fit no single task above; the architect places them.
-- **Coolify version handling (1.x, or P10-T4 if the owner pulls it in).** The version is read only when the plugin starts, so a newer-major banner ("Coolify 5.0.0 — Built for Coolify 4.x; some actions may fail") appears only after a plugin restart. Re-check the version on each view load and after API errors, and probe features per endpoint instead of trusting the major. Related: the client also decodes a `{count, deployments}` page for `/deployments`, unverified against a real instance (Q8).
+- **Coolify version handling (1.x, or P10-T4 if the owner pulls it in).** The version is read only when the plugin starts, so a newer-major banner ("Coolify 5.0.0 — Built for Coolify 4.x; some actions may fail") appears only after a plugin restart. Re-check the version on each view load and after API errors, and probe features per endpoint instead of trusting the major. Related: the client also decodes a `{count, deployments}` page for `/deployments`, unverified against a real instance (Q8). **Done 2026-10-28 as P10-F (AD64, branch `claude/clever-williams-8c828b`, not merged): re-check on view load and after an error run, per-endpoint feature probing; Q8 still open.**
 
 ---
 
