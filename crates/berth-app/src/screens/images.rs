@@ -25,8 +25,9 @@ use crate::state::{AppState, EngineScope, Overlay, Selection};
 use crate::ui::progress_bar::{ProgressBar, PROGRESS_BAR_CSS};
 use crate::ui::{
     scope_includes, Badge, BadgeKind, Button, ButtonVariant, CellAlign, ControlSize, EmptyState,
-    IconButton, IconButtonTone, InlineMessage, InlineTone, SearchField, SegmentedControl,
-    SegmentedItem, Select, SelectOption, SkeletonRows, TabItem, TableHeaderCell, Tabs, TextField,
+    IconButton, IconButtonTone, InlineMessage, InlineTone, InspectorToggle, SearchField,
+    SegmentedControl, SegmentedItem, Select, SelectOption, SkeletonRows, TabItem, TableHeaderCell,
+    Tabs, TextField,
 };
 
 /// The screen's CSS: the hand-written rules, the generated column tiers and
@@ -514,6 +515,7 @@ fn Controls(
                     disabled_reason: (!can_pull).then(|| "No running engine to pull to".to_string()),
                     onclick: move |_| pull_open.set(!pull_pressed),
                 }
+                InspectorToggle {}
             }
         }
     }

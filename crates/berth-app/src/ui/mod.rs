@@ -84,7 +84,7 @@ pub use harness_picker::{harness_label, HarnessPicker, ModelPicker};
 pub use icon::{Icon, IconSize};
 pub use icon_button::{IconButton, IconButtonTone};
 pub use inline_message::{InlineMessage, InlineTone};
-pub use inspector::{inspector_visible, Inspector, InspectorFrame};
+pub use inspector::{inspector_visible, Inspector, InspectorFrame, InspectorToggle};
 pub use inspector_header::{HeaderButton, HeaderTone, InspectorHeader};
 pub use json_tree::JsonTree;
 pub use kbd::{Kbd, KbdShortcut, KbdSymbol};

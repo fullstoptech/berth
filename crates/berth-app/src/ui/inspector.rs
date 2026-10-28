@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
-use crate::state::{Section, Selection};
+use crate::state::{AppState, Section, Selection};
+use crate::ui::{Button, ButtonVariant, ControlSize};
 
 /// Does the current section show an inspector for the current selection?
 /// A container selection inspects in Containers, an image in Images, and
@@ -63,6 +64,29 @@ pub fn Inspector(
             "aria-label": "Inspector",
             {handle}
             div { class: "inspector-body", {children} }
+        }
+    }
+}
+
+/// The header button that opens the inspector as an overlay where the window
+/// is too narrow to dock it (D8, AD21). Every screen with an inspector
+/// (Containers, Images, Volumes, Networks) puts it last in its controls
+/// row; it is hidden by the stylesheet while the inspector is docked, and
+/// it runs the same action as Space and the View menu.
+#[component]
+pub fn InspectorToggle() -> Element {
+    let mut state = use_context::<AppState>();
+    let overlay = crate::ui::dock::inspector_is_overlay();
+    rsx! {
+        div {
+            class: if overlay { "toggle-inspector toggle-inspector-on" } else { "toggle-inspector" },
+            Button {
+                label: "Inspector".to_string(),
+                icon: "file-text",
+                variant: ButtonVariant::Secondary,
+                size: ControlSize::Md,
+                onclick: move |_| crate::keys::dispatch(&mut state, "global.toggle_inspector"),
+            }
         }
     }
 }

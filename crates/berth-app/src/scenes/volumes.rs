@@ -78,6 +78,7 @@ fn volumes_confirm_delete(state: &mut AppState) {
 pub(super) const SCENES: &[Scene] = &[
     Scene::dev("Volumes / list / 1440", volumes_list),
     Scene::dev("Volumes / selected / 1440", volumes_selected),
+    Scene::dev("Volumes / selected / 1024", volumes_selected),
     Scene::dev("Volumes / browser / 1440", volumes_browser),
     Scene::dev("Volumes / helper / 1440", volumes_helper),
     Scene::dev("Volumes / create / 1440", volumes_create),

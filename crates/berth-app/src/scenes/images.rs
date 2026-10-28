@@ -180,6 +180,7 @@ pub fn seed_images(state: &AppState, store: crate::services::images::ImageStore)
 pub(super) const SCENES: &[Scene] = &[
     Scene::dev("Images / on this engine / 1440", images_on_engine),
     Scene::dev("Images / selected / 1440", images_selected),
+    Scene::dev("Images / selected / 1024", images_selected),
     Scene::dev("Images / pulling / 1440", images_pulling),
     Scene::dev("Images / run / 1440", images_run_sheet),
     Scene::dev("Images / confirm delete / 1440", images_confirm_delete),
