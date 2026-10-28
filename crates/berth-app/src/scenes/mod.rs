@@ -57,6 +57,7 @@ scene_modules! {
     activity,
     add_service,
     assistant,
+    build_image,
     clean_up,
     containers,
     detected,

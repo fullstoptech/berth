@@ -13,8 +13,11 @@ use dioxus::prelude::*;
 use berth_core::{ContainerId, Engine, EngineId, Image, ImageDetail};
 
 use crate::screens::images::{delete_reason, open_delete, open_run, short_id, ImageRow};
-use crate::services::images::{check_reference, check_tag, ImageEntry, ImageStore};
+use crate::services::images::{
+    check_reference, check_tag, with_default_tag, ImageEntry, ImageStore, PushState,
+};
 use crate::services::Services;
+use crate::sheets::build_image::PushCard;
 use crate::state::{AppState, Section, Selection, Toast, ToastTone};
 use crate::ui::{
     copy_to_clipboard, Badge, BadgeKind, Button, ButtonVariant, ControlSize, IconButton,
@@ -26,6 +29,8 @@ use crate::ui::{
 pub const IMAGE_DETAIL_CSS: &str = concat!(
     include_str!("../../assets/css/container_detail.css"),
     include_str!("../../assets/css/images.css"),
+    include_str!("../../assets/css/progress_bar.css"),
+    include_str!("../../assets/css/build_image.css"),
 );
 
 // ---------------------------------------------------------------------
@@ -408,6 +413,32 @@ pub fn ImageDetailPanel(id: String, #[props(default)] initial_tab: ImageTab) -> 
     let pull_reason = first_tag
         .is_none()
         .then(|| "An image with no tag has nothing to pull again".to_string());
+    let push_reason = first_tag
+        .is_none()
+        .then(|| "An image with no tag has no name to push to".to_string());
+    let push_engine = engine_id.clone();
+    let push_services = services.clone();
+    let push_ref = first_tag.clone();
+    // An untagged image is exported by its id.
+    let export_name = first_tag.clone().unwrap_or_else(|| image.id.clone());
+    let export_engine = engine_id.clone();
+    let export_services = services.clone();
+    let exporting_now = crate::sheets::build_image::exporting(&state, &export_name);
+    let cancel_export_name = export_name.clone();
+    let cancel_export_engine = engine_id.clone();
+    let pushes: Vec<PushState> = store
+        .pushes
+        .read()
+        .iter()
+        .filter(|p| {
+            p.engine == engine_id
+                && image
+                    .repo_tags
+                    .iter()
+                    .any(|t| with_default_tag(t) == p.reference)
+        })
+        .cloned()
+        .collect();
 
     rsx! {
         style { "{IMAGE_DETAIL_CSS}" }
@@ -466,12 +497,49 @@ pub fn ImageDetailPanel(id: String, #[props(default)] initial_tab: ImageTab) -> 
                     }
                     span { class: "ih-btn",
                         Button {
+                            label: "Push\u{2026}".to_string(),
+                            variant: ButtonVariant::Secondary,
+                            size: ControlSize::Sm,
+                            icon: "arrow-up",
+                            disabled: push_reason.is_some(),
+                            disabled_reason: push_reason,
+                            onclick: move |_| {
+                                let (Some(reference), Some(services)) = (push_ref.as_ref(), push_services.as_ref()) else {
+                                    return;
+                                };
+                                if let Err(message) = store.push(services, &push_engine, reference) {
+                                    toast(&mut state, message, ToastTone::Danger);
+                                }
+                            },
+                        }
+                    }
+                    span { class: "ih-btn",
+                        Button {
                             label: "Tag".to_string(),
                             variant: ButtonVariant::Secondary,
                             size: ControlSize::Sm,
                             onclick: move |_| {
                                 let open = *tagging.peek();
                                 tagging.set(!open);
+                            },
+                        }
+                    }
+                    span { class: "ih-btn",
+                        Button {
+                            label: "Export\u{2026}".to_string(),
+                            variant: ButtonVariant::Secondary,
+                            size: ControlSize::Sm,
+                            loading: exporting_now,
+                            onclick: move |_| {
+                                if let Some(services) = export_services.clone() {
+                                    crate::sheets::build_image::export_with_panel(
+                                        state,
+                                        store,
+                                        services,
+                                        export_engine.clone(),
+                                        export_name.clone(),
+                                    );
+                                }
                             },
                         }
                     }
@@ -487,6 +555,28 @@ pub fn ImageDetailPanel(id: String, #[props(default)] initial_tab: ImageTab) -> 
                         }
                     }
                 }
+            }
+            if exporting_now {
+                div { class: "bi-push",
+                    div { class: "bi-push-title", "Exporting {cancel_export_name}\u{2026}" }
+                    div { class: "bi-push-buttons",
+                        Button {
+                            label: "Cancel export".to_string(),
+                            variant: ButtonVariant::Secondary,
+                            size: ControlSize::Sm,
+                            onclick: move |_| {
+                                store.cancel_transfer(
+                                    &cancel_export_engine,
+                                    crate::services::images::EXPORT_ACTION,
+                                    &cancel_export_name,
+                                );
+                            },
+                        }
+                    }
+                }
+            }
+            for push in pushes {
+                PushCard { key: "{push.reference}", push }
             }
             if *tagging.read() {
                 TagBar {

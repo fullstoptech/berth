@@ -120,6 +120,7 @@ pub fn overlay(overlay: &Overlay) -> Element {
                 seed: seed.clone(),
             }
         },
+        Overlay::BuildImage => rsx! { crate::sheets::build_image::BuildImageSheet {} },
         Overlay::CleanUp(engine) => rsx! {
             crate::sheets::clean_up::CleanUpSheet { key: "{engine.0}", engine: engine.clone() }
         },

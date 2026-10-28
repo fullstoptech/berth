@@ -3,6 +3,7 @@
 
 pub mod add_engine;
 pub mod add_service;
+pub mod build_image;
 pub mod clean_up;
 pub mod create_network;
 pub mod create_volume;
