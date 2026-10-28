@@ -316,16 +316,3 @@
   line-height: var(--text-label-line);
 }
 .bottom-head-actions { display: inline-flex; align-items: center; gap: var(--space-2); }
-
-/* `.bottom-panel button` (shell.css) resets every button inside the panel:
-   restate the shared Button's looks one level up, as terminal.css does. */
-.assistant .btn, .bottom-head .harness-picker .btn { padding: 0 var(--space-12); border-radius: var(--radius-md); }
-.assistant .btn-primary { background: var(--color-accent-fill); color: var(--color-on-accent-fill); }
-.assistant .btn-primary:hover:not(:disabled) { background: var(--color-accent-fill-hover); }
-.assistant .btn-primary:active:not(:disabled) { background: var(--color-accent-fill-pressed); }
-.assistant .btn-secondary { background: var(--color-surface); border-color: var(--color-line-strong); }
-.assistant .btn-secondary:hover:not(:disabled) { background: var(--color-surface-hover); }
-.assistant .btn-secondary:active:not(:disabled) { background: var(--color-surface-pressed); }
-.assistant .btn-ghost:hover:not(:disabled), .assistant .btn-ghost:active:not(:disabled) { background: var(--color-surface-hover); }
-.assistant .btn:disabled { color: var(--color-ink-disabled); cursor: default; }
-.assistant .btn-primary:disabled { background: var(--color-surface-hover); }

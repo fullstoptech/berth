@@ -56,7 +56,10 @@ html, body {
   user-select: none;
   -webkit-user-select: none;
 }
-.titlebar button, .statusbar button, .sidebar button, .bottom-panel button, .engine-menu button {
+/* The panel's own chrome buttons (tabs, close, icon buttons) are reset here; a
+   shared Button (`.btn`) inside the panel's content, or in the inspector docked
+   at the bottom, keeps the look ui.css gives it. */
+.titlebar button, .statusbar button, .sidebar button, .bottom-panel button:not(.btn), .engine-menu button {
   font-family: var(--font-text);
   color: var(--color-ink);
   background: transparent;
@@ -67,9 +70,20 @@ html, body {
   margin: 0;
 }
 .titlebar button:focus-visible, .statusbar button:focus-visible, .sidebar button:focus-visible,
-.bottom-panel button:focus-visible, .engine-menu button:focus-visible {
+.bottom-panel button:not(.btn):focus-visible, .engine-menu button:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 1px;
+}
+
+/* InspectorToggle: when the window cannot dock the inspector (under 1200 px,
+   or the main area would drop under 640 px) it is an overlay, and this
+   button in the screen's controls row opens it. */
+.toggle-inspector {
+  display: none;
+  flex: none;
+}
+.toggle-inspector.toggle-inspector-on {
+  display: block;
 }
 
 /* EngineSwitcher */

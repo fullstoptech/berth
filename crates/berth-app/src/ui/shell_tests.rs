@@ -988,3 +988,116 @@ fn shell_sidebar_projects_badge_does_not_count_the_unassigned_row() {
     // Neither does its list.
     assert_eq!(model.projects.len(), 8);
 }
+
+// ---------- P10-T3: the Inspector toggle and the bottom panel's buttons ----------
+
+/// Every screen that opens an inspector, at a window too narrow to dock it:
+/// the controls row has the Inspector button, shown.
+#[test]
+fn shell_every_inspector_screen_offers_the_inspector_button_below_1200() {
+    for frame in [
+        "Containers / selected / 1024",
+        "Images / selected / 1024",
+        "Volumes / selected / 1024",
+        "Networks / selected / 1024",
+    ] {
+        let html = scenes::render_scene_html(frame).expect("the frame has a scene");
+        assert!(
+            html.contains("toggle-inspector toggle-inspector-on"),
+            "{frame}: the toggle is shown at 1024 px"
+        );
+        assert!(html.contains(">Inspector<"), "{frame}: its label");
+    }
+}
+
+/// Docked (1440 px) the same buttons are in the markup but not shown: the
+/// "on" class is the stylesheet's only switch.
+#[test]
+fn shell_inspector_button_is_not_shown_while_the_inspector_is_docked() {
+    for frame in [
+        "Containers / selected / 1440",
+        "Images / selected / 1440",
+        "Volumes / selected / 1440",
+        "Networks / selected / 1440",
+    ] {
+        let html = scenes::render_scene_html(frame).expect("the frame has a scene");
+        assert!(html.contains("class=\"toggle-inspector\""), "{frame}");
+        assert!(!html.contains("toggle-inspector-on"), "{frame}");
+    }
+    let css = include_str!("../../assets/css/shell.css");
+    let block = crate::screens::css_tracks::block;
+    assert!(block(css, "\n.toggle-inspector {").contains("display: none;"));
+    assert!(block(css, "\n.toggle-inspector.toggle-inspector-on {").contains("display: block;"));
+}
+
+thread_local! {
+    static TOGGLE_VIEW: std::cell::RefCell<Option<crate::screens::containers::ContainersView>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[component]
+fn ToggleHarness() -> Element {
+    let state = use_app_state();
+    use_context_provider(|| state);
+    let view = use_hook(|| provide_context(crate::screens::containers::ContainersView::new()));
+    use_hook(move || TOGGLE_VIEW.with(|slot| *slot.borrow_mut() = Some(view)));
+    rsx! { InspectorToggle {} }
+}
+
+/// Clicking the button runs the action Space and the View menu run: the
+/// shell's one inspector flag flips, whichever screen the button is on.
+#[test]
+fn shell_inspector_button_click_flips_the_inspector_flag() {
+    use dioxus::core::Mutation;
+    dioxus::html::set_event_converter(Box::new(dioxus::html::SerializedHtmlEventConverter));
+    let mut dom = VirtualDom::new(ToggleHarness);
+    let edits = dom.rebuild_to_vec().edits;
+    let click = edits
+        .iter()
+        .find_map(|edit| match edit {
+            Mutation::NewEventListener { name, id } if *name == "click" => Some(*id),
+            _ => None,
+        })
+        .expect("the button listens for clicks");
+    let view = TOGGLE_VIEW
+        .with(|slot| slot.borrow_mut().take())
+        .expect("harness captured the view");
+    let flag = |dom: &VirtualDom| dom.in_scope(ScopeId::APP, || *view.inspector_toggled.peek());
+    assert!(!flag(&dom));
+    for expected in [true, false] {
+        let data = std::rc::Rc::new(dioxus::html::PlatformEventData::new(Box::new(
+            dioxus::html::SerializedMouseData::default(),
+        )));
+        let event = Event::new(data as std::rc::Rc<dyn std::any::Any>, true);
+        dom.runtime().handle_event("click", event, click);
+        let _ = dom.render_immediate_to_vec();
+        assert_eq!(flag(&dom), expected);
+    }
+}
+
+/// `.bottom-panel button` used to strip the border, fill and padding from
+/// every button in the panel, so the Stop/Restart buttons of an inspector
+/// docked at the bottom looked flat. The reset now spares the shared Button.
+#[test]
+fn shell_bottom_panel_reset_spares_the_shared_button() {
+    let css = include_str!("../../assets/css/shell.css");
+    let mut resets = 0;
+    for selector in css
+        .split('{')
+        .map(|head| head.rsplit('}').next().unwrap_or(head))
+        .flat_map(|head| head.split(','))
+        .map(str::trim)
+        .filter(|s| s.contains(".bottom-panel button"))
+    {
+        resets += 1;
+        assert!(
+            selector.contains(":not(.btn)"),
+            "`{selector}` would restyle a `.btn` in the panel"
+        );
+    }
+    assert!(resets >= 2, "the reset and its focus ring: {resets}");
+    // The shared Button is what renders in the bottom-docked inspector.
+    let html = scenes::render_scene_html("Containers / inspector bottom / 1440").expect("a scene");
+    let bottom = &html[html.find("bottom-panel").expect("the panel")..];
+    assert!(bottom.contains("class=\"btn btn-"), "{bottom}");
+}

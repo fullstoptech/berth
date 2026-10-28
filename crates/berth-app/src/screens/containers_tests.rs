@@ -221,7 +221,7 @@ fn containers_scene_selected_1024_drops_uptime_and_engine_below_1200() {
     assert!(html.contains("shop-api-worker-1"));
     assert!(html.contains(">Inspector<"), "overlay toggle button");
     assert!(
-        html.contains("ct-inspector-toggle ct-inspector-toggle-on"),
+        html.contains("toggle-inspector toggle-inspector-on"),
         "shown, because 1024 px cannot dock the inspector: {html}"
     );
     let css = CONTAINERS_CSS;

@@ -28,8 +28,9 @@ use crate::services::Services;
 use crate::state::{AppState, Overlay, PendingKey, PendingState, Section, Selection};
 use crate::ui::{
     scope_includes, Badge, BadgeKind, Banner, BannerTone, Button, ButtonVariant, CellAlign,
-    ControlSize, EmptyState, Icon, IconButton, IconButtonTone, IconSize, SearchField,
-    SegmentedControl, SegmentedItem, SkeletonRows, SortDirection, TableHeaderCell, VirtualTable,
+    ControlSize, EmptyState, Icon, IconButton, IconButtonTone, IconSize, InspectorToggle,
+    SearchField, SegmentedControl, SegmentedItem, SkeletonRows, SortDirection, TableHeaderCell,
+    VirtualTable,
 };
 
 /// The screen's CSS, rendered with it (tokens only): the hand-written
@@ -452,6 +453,7 @@ pub fn VolumesScreen() -> Element {
                         onclick: move |_| open_create(&mut state),
                     }
                 }
+                InspectorToggle {}
             }
             if !banners.is_empty() {
                 div { class: "vl-banners",
