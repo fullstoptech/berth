@@ -105,6 +105,7 @@ fn overlay_title(overlay: &Overlay) -> &'static str {
         Overlay::BuildImage => "Build image",
         Overlay::AddService(_) => "Add service",
         Overlay::DeleteProject(_) => "Delete project",
+        Overlay::RemovePin(_) => "Remove from Berth",
         Overlay::PluginEnable(_) => "Enable plugin",
         Overlay::PluginConfigure(_) => "Configure plugin",
         Overlay::PluginAction(_) => "Plugin action",
@@ -165,6 +166,9 @@ pub fn overlay(overlay: &Overlay) -> Element {
         },
         Overlay::PluginEnable(id) => rsx! {
             crate::sheets::plugin_enable::PluginEnableSheet { key: "{id}", id: id.clone() }
+        },
+        Overlay::RemovePin(id) => rsx! {
+            crate::sheets::remove_pin::RemovePinSheet { key: "{id.0}", id: id.clone() }
         },
         Overlay::OpenFolder => rsx! { crate::sheets::open_folder::OpenFolderSheet {} },
         Overlay::AddEngine => rsx! { crate::sheets::add_engine::AddEngineSheet {} },

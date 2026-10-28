@@ -8,12 +8,13 @@ use dioxus::prelude::*;
 
 use super::projects_order::FrozenOrder;
 use crate::services::actions::{ActionsService, StateView};
-use crate::state::{AppState, Section, Selection};
+use crate::state::{AppState, PendingKey, PendingState, Section, Selection};
 use crate::ui::project_row::{row_model, ProjectRow};
 use crate::ui::CellAlign;
 use crate::ui::{
     Badge, BadgeKind, Banner, BannerTone, Button, ButtonVariant, ControlSize, EmptyState, Icon,
-    IconSize, SearchField, SegmentedControl, SegmentedItem, SkeletonRows, TableHeaderCell,
+    IconSize, InlineMessage, SearchField, SegmentedControl, SegmentedItem, SkeletonRows,
+    TableHeaderCell,
 };
 
 pub(crate) const PROJECTS_CSS: &str = concat!(
@@ -266,6 +267,8 @@ pub enum ScreenState {
     Empty,
     /// Nothing is running and a Colima engine is stopped: offer Start.
     EngineStopped(Box<berth_core::Engine>),
+    /// Nothing is running and an engine is starting: say so, with its progress (P10-T3).
+    EngineStarting(Box<berth_core::Engine>),
     /// Nothing is running and no engine can be reached.
     Unreachable,
     Rows,
@@ -291,10 +294,10 @@ pub fn screen_state(
             ScreenState::Empty
         };
     }
-    if engines
-        .iter()
-        .any(|e| matches!(e.state, E::Starting | E::Stopping))
-    {
+    if let Some(engine) = engines.iter().find(|e| e.state == E::Starting) {
+        return ScreenState::EngineStarting(Box::new(engine.clone()));
+    }
+    if engines.iter().any(|e| e.state == E::Stopping) {
         return ScreenState::Loading;
     }
     match engines.iter().find(|e| e.state == E::Stopped) {
@@ -442,7 +445,53 @@ fn start_engine(
     let Some(service) = service else { return };
     if let Err(reason) = service.engine(state, engine, berth_core::ColimaOp::Start) {
         tracing::warn!(%reason, engine = %engine.name, "start engine refused");
+        // The empty state says why and offers Retry, as for a start that failed while running.
+        state.pending.write().insert(
+            PendingKey {
+                subject: berth_core::Subject::Engine(engine.id.clone()),
+                action: "engine.start",
+            },
+            PendingState::Failed { message: reason },
+        );
     }
+}
+
+/// What the "Start the engine" empty state shows about starting the engine (P10-T3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StartStatus {
+    /// Nothing is happening: offer Start engine.
+    Idle,
+    /// A Colima command is running, or the engine reports it is starting: show progress.
+    Starting,
+    /// The last start failed: show the message and offer Retry.
+    Failed(String),
+}
+
+/// Whether `engine` is starting, from the engine's own state and the pending actions on it
+/// (the click is pending before the engine reports `Starting`).
+#[must_use]
+pub fn start_status(
+    engine: &berth_core::Engine,
+    pending: &std::collections::BTreeMap<PendingKey, PendingState>,
+) -> StartStatus {
+    let subject = berth_core::Subject::Engine(engine.id.clone());
+    let mut failed = None;
+    for (key, value) in pending {
+        if key.subject != subject {
+            continue;
+        }
+        match value {
+            PendingState::Running { .. } => return StartStatus::Starting,
+            PendingState::Failed { message } if key.action == "engine.start" => {
+                failed = Some(message.clone());
+            }
+            PendingState::Failed { .. } => {}
+        }
+    }
+    if engine.state == berth_core::EngineState::Starting {
+        return StartStatus::Starting;
+    }
+    failed.map_or(StartStatus::Idle, StartStatus::Failed)
 }
 
 #[component]
@@ -504,22 +553,87 @@ fn EmptyBody(#[props(default)] first_run: Option<Element>) -> Element {
     }
 }
 
+/// The empty body of a Colima engine that is stopped or starting. Idle it offers Start engine;
+/// from the click until the engine answers it says "Starting Colima <name>" with the run's
+/// progress and a disabled button; a failed start shows the message and Retry (P10-T3).
 #[component]
 fn EngineStoppedBody(engine: berth_core::Engine) -> Element {
     let mut state = use_context::<AppState>();
     let service = try_use_context::<ActionsService>();
-    let target = engine.clone();
-    rsx! {
-        div { class: "projects-empty",
-            EmptyState {
-                title: "Start the engine to see its projects".to_string(),
-                body: format!("Colima {} is stopped.", engine.name),
-                icon: "server",
-                action_label: Some(format!("Start engine {}", engine.name)),
-                onaction: move |()| start_engine(&mut state, service.as_ref(), &target),
+    let visibility = try_use_context::<crate::services::visibility::Visibility>();
+    // Elapsed seconds move while the command runs; the clock parks while the window is hidden.
+    let mut tick = use_signal(|| 0_u32);
+    use_future(move || {
+        let mut pacer = crate::services::visibility::Pacer::of(
+            visibility.as_ref(),
+            std::time::Duration::from_millis(500),
+        );
+        async move {
+            while pacer.tick().await {
+                if crate::screens::engines::any_running(&state.pending.peek()) {
+                    tick += 1;
+                }
             }
         }
+    });
+    let _ = tick.read();
+
+    let status = start_status(&engine, &state.pending.read());
+    let run = service
+        .as_ref()
+        .and_then(|service| service.engine_run(&engine.id));
+    let target = engine.clone();
+    let onaction = move |()| start_engine(&mut state, service.as_ref(), &target);
+    match status {
+        StartStatus::Starting => rsx! {
+            div { class: "projects-empty projects-starting",
+                style { "{crate::screens::engines::ENGINES_CSS}" }
+                div { class: "projects-starting-column", role: "status",
+                    EmptyState {
+                        title: starting_title(&engine.name),
+                        body: "Projects appear once Docker answers.".to_string(),
+                        icon: "server",
+                        action_label: Some("Starting\u{2026}".to_string()),
+                        action_disabled: true,
+                    }
+                    if let Some(run) = run.filter(|r| r.failure.is_none()) {
+                        crate::screens::engines::RunMeter { run, compact: true }
+                    }
+                }
+            }
+        },
+        StartStatus::Failed(message) => rsx! {
+            div { class: "projects-empty projects-starting",
+                div { class: "projects-starting-column",
+                    InlineMessage { message }
+                    EmptyState {
+                        title: "Start the engine to see its projects".to_string(),
+                        body: format!("Colima {} did not start.", engine.name),
+                        icon: "server",
+                        action_label: Some("Retry".to_string()),
+                        onaction,
+                    }
+                }
+            }
+        },
+        StartStatus::Idle => rsx! {
+            div { class: "projects-empty",
+                EmptyState {
+                    title: "Start the engine to see its projects".to_string(),
+                    body: format!("Colima {} is stopped.", engine.name),
+                    icon: "server",
+                    action_label: Some(format!("Start engine {}", engine.name)),
+                    onaction,
+                }
+            }
+        },
     }
+}
+
+/// "Starting Colima default" with an ellipsis: the empty state's title while the engine starts.
+#[must_use]
+pub fn starting_title(name: &str) -> String {
+    format!("Starting Colima {name}\u{2026}")
 }
 
 #[component]
@@ -670,7 +784,9 @@ pub fn ProjectsScreen() -> Element {
                 ScreenState::Empty => rsx! {
                     EmptyBody { first_run: Some(rsx! { crate::screens::first_run::FirstRunCard {} }) }
                 },
-                ScreenState::EngineStopped(engine) => rsx! { EngineStoppedBody { engine: *engine } },
+                ScreenState::EngineStopped(engine) | ScreenState::EngineStarting(engine) => rsx! {
+                    EngineStoppedBody { engine: *engine }
+                },
                 ScreenState::Unreachable => rsx! {
                     div { class: "projects-empty",
                         EmptyState {

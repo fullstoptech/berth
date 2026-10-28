@@ -12,7 +12,7 @@
 
 @media (max-width: 1199px) {
   /* text size 0.85 */
-  @container projects (max-width: 971px) {
+  @container projects (max-width: 1031px) {
     :root[data-text-scale="0.85"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -71,7 +71,7 @@
     }
   }
   /* text size 0.9 */
-  @container projects (max-width: 1022px) {
+  @container projects (max-width: 1085px) {
     :root[data-text-scale="0.9"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -130,7 +130,7 @@
     }
   }
   /* text size 1 */
-  @container projects (max-width: 1124px) {
+  @container projects (max-width: 1194px) {
     :root:not([data-text-scale]) .projects-table,
     :root[data-text-scale="1"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
@@ -210,7 +210,7 @@
     }
   }
   /* text size 1.1 */
-  @container projects (max-width: 1227px) {
+  @container projects (max-width: 1304px) {
     :root[data-text-scale="1.1"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -269,7 +269,7 @@
     }
   }
   /* text size 1.2 */
-  @container projects (max-width: 1329px) {
+  @container projects (max-width: 1413px) {
     :root[data-text-scale="1.2"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -328,7 +328,7 @@
     }
   }
   /* text size 1.3 */
-  @container projects (max-width: 1431px) {
+  @container projects (max-width: 1522px) {
     :root[data-text-scale="1.3"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -387,7 +387,7 @@
     }
   }
   /* text size 1.5 */
-  @container projects (max-width: 1635px) {
+  @container projects (max-width: 1740px) {
     :root[data-text-scale="1.5"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -449,7 +449,7 @@
 
 @media (min-width: 1200px) {
   /* text size 0.85 */
-  @container projects (max-width: 991px) {
+  @container projects (max-width: 1051px) {
     :root[data-text-scale="0.85"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -508,7 +508,7 @@
     }
   }
   /* text size 0.9 */
-  @container projects (max-width: 1042px) {
+  @container projects (max-width: 1105px) {
     :root[data-text-scale="0.9"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -567,7 +567,7 @@
     }
   }
   /* text size 1 */
-  @container projects (max-width: 1144px) {
+  @container projects (max-width: 1214px) {
     :root:not([data-text-scale]) .projects-table,
     :root[data-text-scale="1"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
@@ -647,7 +647,7 @@
     }
   }
   /* text size 1.1 */
-  @container projects (max-width: 1247px) {
+  @container projects (max-width: 1324px) {
     :root[data-text-scale="1.1"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -706,7 +706,7 @@
     }
   }
   /* text size 1.2 */
-  @container projects (max-width: 1349px) {
+  @container projects (max-width: 1433px) {
     :root[data-text-scale="1.2"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -765,7 +765,7 @@
     }
   }
   /* text size 1.3 */
-  @container projects (max-width: 1451px) {
+  @container projects (max-width: 1542px) {
     :root[data-text-scale="1.3"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }
@@ -824,7 +824,7 @@
     }
   }
   /* text size 1.5 */
-  @container projects (max-width: 1655px) {
+  @container projects (max-width: 1760px) {
     :root[data-text-scale="1.5"] .projects-table {
       --projects-cols: calc(116px * var(--text-scale, 1)) minmax(0, 104fr) minmax(0, 112fr) calc(104px * var(--text-scale, 1)) calc(48px * var(--text-scale, 1)) calc(56px * var(--text-scale, 1)) calc(160px * var(--text-scale, 1) + var(--projects-actions-w));
     }

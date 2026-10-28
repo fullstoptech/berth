@@ -51,6 +51,8 @@ pub enum Overlay {
     AddService(AddServiceSeed),
     /// Two checkboxes: delete the folder's containers, remove the project's volumes (AD33).
     DeleteProject(berth_core::ProjectId),
+    /// Remove a pinned folder that nothing runs from (P10-T3): unpins only.
+    RemovePin(berth_core::ProjectId),
     /// The permission request sheet of one plugin (plugin id; AD48, 2026-10-28).
     PluginEnable(String),
     /// The Configure form of one plugin (plugin id; AD48, 2026-10-28).

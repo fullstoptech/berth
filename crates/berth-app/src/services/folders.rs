@@ -642,6 +642,20 @@ pub fn record_open(
     Ok(OpenOutcome::Pinned)
 }
 
+/// Remove the pin of `folder` (Remove from Berth, P10-T3). Only the store's row goes: the folder,
+/// its files and every Docker resource are left alone. Says whether there was a pin to remove.
+///
+/// # Errors
+/// The store's error when the pin cannot be read or deleted.
+pub fn remove_pin(
+    store: &berth_store::Store,
+    folder: &Path,
+) -> Result<bool, berth_store::StoreError> {
+    let pinned = store.pins()?.iter().any(|p| p.folder == folder);
+    store.unpin(folder)?;
+    Ok(pinned)
+}
+
 // ---------------------------------------------------------------------------------------------
 // Preview of the highlighted folder
 

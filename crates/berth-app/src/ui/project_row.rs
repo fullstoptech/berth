@@ -177,8 +177,22 @@ pub struct ProjectRowModel {
     pub delete_reason: Option<String>,
     /// Why "Open terminals for all services" is unavailable (P3-T6).
     pub terminals_reason: Option<String>,
+    /// Whether the row's menu offers "Remove from Berth…": the project is a pinned folder and
+    /// nothing was ever created from it (no containers, running or stopped).
+    pub can_remove_pin: bool,
     pub pending: Option<RowPending>,
     pub failure: Option<RowFailure>,
+}
+
+/// Whether a pinned folder can be removed from Berth: pinned, a folder on this Mac, not the
+/// Unassigned row, and no service has a container (running or stopped). Removing it only
+/// unpins the folder, so a project with containers keeps its way to Delete project instead.
+#[must_use]
+pub fn can_remove_pin(project: &berth_core::Project) -> bool {
+    project.pinned
+        && project.folder.is_some()
+        && !matches!(project.source, berth_core::ProjectSource::Loose)
+        && project.services.iter().all(|s| s.containers.is_empty())
 }
 
 /// `~/Dev/clients/acme/shop-api` becomes `~/Dev/…/shop-api`: the first two
@@ -532,9 +546,20 @@ pub fn row_model(
             project,
             view.backing,
         ),
+        can_remove_pin: can_remove_pin(project),
         pending,
         failure,
     }
+}
+
+/// "Set up project…": the Detected sheet for the row's folder, the same flow Open folder and a
+/// dropped folder end in. It shows what Berth found, writes nothing, and generates a Compose file
+/// only through Review changes.
+pub fn open_setup(state: &mut AppState, folder: &std::path::Path) {
+    state
+        .overlays
+        .write()
+        .push(crate::state::Overlay::Detected(folder.to_path_buf()));
 }
 
 /// Run a project action through the service: what a row button's click
@@ -654,7 +679,7 @@ pub fn menu_entries(model: &ProjectRowModel) -> Vec<MenuEntry> {
             entry("restart", "Restart", "rotate-cw", &ops.stop_reason),
         ];
     }
-    vec![
+    let mut entries = vec![
         open,
         entry("rebuild", "Rebuild", "rotate-cw", &model.rebuild_reason),
         entry(
@@ -679,7 +704,17 @@ pub fn menu_entries(model: &ProjectRowModel) -> Vec<MenuEntry> {
                 None => delete,
             }
         },
-    ]
+    ];
+    if model.can_remove_pin {
+        // A pin nothing runs from has no Delete project to run: this is how it leaves the list.
+        entries.push(
+            MenuEntry::new("remove-pin", "Remove from Berth\u{2026}")
+                .icon("x")
+                .danger()
+                .separator_before(),
+        );
+    }
+    entries
 }
 
 #[component]
@@ -709,6 +744,7 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
     });
 
     let menu_entries = menu_entries(&model);
+    let setup_folder = model.folder.clone();
 
     // A project Berth cloned from Git shows its commit, and its new commits once a check found them.
     let git = model.folder.as_ref().and_then(|folder| {
@@ -842,8 +878,18 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                         Button {
                             label: "Set up project\u{2026}",
                             size: ControlSize::Sm,
-                            disabled: true,
-                            disabled_reason: "Project setup is not built yet".to_string(),
+                            disabled: setup_folder.is_none(),
+                            disabled_reason: setup_folder
+                                .is_none()
+                                .then(|| "This project has no folder on this Mac".to_string()),
+                            onclick: {
+                                let setup_folder = setup_folder.clone();
+                                move |_| {
+                                    if let Some(folder) = &setup_folder {
+                                        open_setup(&mut state, folder);
+                                    }
+                                }
+                            },
                         }
                     } else {
                         Button {
@@ -955,6 +1001,12 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                                                     &id,
                                                     ProjectOp::PullImages,
                                                 ),
+                                                "remove-pin" => {
+                                                    state
+                                                        .overlays
+                                                        .write()
+                                                        .push(crate::state::Overlay::RemovePin(id.clone()));
+                                                }
                                                 "delete" => {
                                                     state
                                                         .overlays

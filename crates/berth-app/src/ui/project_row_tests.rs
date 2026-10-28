@@ -750,3 +750,95 @@ async fn projects_row_unassigned_button_with_nothing_to_act_on_starts_nothing() 
     });
     assert_eq!(rig.pending_keys(), vec![]);
 }
+
+// --- P10-T3: Set up project… and Remove from Berth… ---
+
+thread_local! {
+    static ROW: std::cell::RefCell<Option<ProjectRowModel>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[component]
+fn RowHarness() -> Element {
+    let state = crate::state::use_app_state();
+    use_context_provider(|| state);
+    let model = ROW.with(|slot| slot.borrow().clone()).expect("model");
+    rsx! { ProjectRow { model } }
+}
+
+/// Render one row inside a harness that provides the app state, as the Projects screen does.
+fn render_row(model: ProjectRowModel) -> String {
+    ROW.with(|slot| *slot.borrow_mut() = Some(model));
+    let mut dom = VirtualDom::new(RowHarness);
+    let _ = dom.rebuild_to_vec();
+    dioxus_ssr::render(&dom)
+}
+
+#[test]
+fn projects_row_set_up_project_is_an_enabled_button_for_a_folder() {
+    let w = world();
+    let model = model_of(&w, "docker-manger", &[]);
+    assert_eq!(model.kind, RowKind::NotSetUp);
+    let html = render_row(model);
+    let at = html.find("Set up project").expect("the button is drawn");
+    let button = &html[html[..at].rfind("<button").expect("a button")..at];
+    assert!(!button.contains("disabled"), "{button}");
+    assert!(!html.contains("not built yet"), "{html}");
+}
+
+#[test]
+fn projects_row_set_up_project_opens_the_detected_sheet_for_the_rows_folder() {
+    let w = world();
+    let model = model_of(&w, "docker-manger", &[]);
+    let folder = model.folder.clone().expect("a pinned folder");
+    let mut dom = VirtualDom::new(Harness);
+    let _ = dom.rebuild_to_vec();
+    let state = SLOT
+        .with(|slot| slot.borrow_mut().take())
+        .expect("harness captured AppState");
+    dom.in_runtime(|| {
+        let mut state = state;
+        open_setup(&mut state, &folder);
+        assert_eq!(
+            *state.overlays.peek(),
+            vec![crate::state::Overlay::Detected(folder.clone())]
+        );
+    });
+}
+
+#[test]
+fn projects_row_menu_offers_remove_from_berth_for_a_pin_with_no_containers() {
+    let w = world();
+    let model = model_of(&w, "docker-manger", &[]);
+    assert!(model.can_remove_pin);
+    let entries = menu_entries(&model);
+    let remove = entries
+        .iter()
+        .find(|e| e.id == "remove-pin")
+        .expect("Remove from Berth is offered");
+    assert_eq!(remove.label, "Remove from Berth\u{2026}");
+    assert_eq!(entries.last().map(|e| e.id.as_str()), Some("remove-pin"));
+}
+
+#[test]
+fn projects_row_menu_never_offers_remove_from_berth_when_containers_exist() {
+    let mut w = world();
+    // A pinned folder whose project has containers keeps Delete project instead: running ...
+    w.projects
+        .iter_mut()
+        .find(|p| p.name == "berth-site")
+        .expect("project")
+        .pinned = true;
+    let model = model_of(&w, "berth-site", &[]);
+    assert!(!model.can_remove_pin);
+    assert!(menu_entries(&model).iter().all(|e| e.id != "remove-pin"));
+    // ... or stopped.
+    w.projects
+        .iter_mut()
+        .find(|p| p.name == "docs-site")
+        .expect("project")
+        .pinned = true;
+    assert!(!model_of(&w, "docs-site", &[]).can_remove_pin);
+    // The Unassigned row has no folder to unpin.
+    assert!(!unassigned_model(&world_with_unassigned()).can_remove_pin);
+}

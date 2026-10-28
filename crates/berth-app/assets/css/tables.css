@@ -356,8 +356,13 @@
   font-weight: var(--text-label-weight);
   cursor: pointer;
 }
-.empty-state-action:hover {
+.empty-state-action:hover:not(:disabled) {
   background: var(--color-accent-fill-hover);
+}
+.empty-state-action:disabled {
+  background: var(--color-surface-hover);
+  color: var(--color-ink-disabled);
+  cursor: default;
 }
 .empty-state-action:focus-visible {
   outline: 2px solid var(--color-focus);
