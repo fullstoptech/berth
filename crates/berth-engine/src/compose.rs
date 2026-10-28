@@ -38,6 +38,12 @@ pub trait ComposeRunner: Send + Sync {
     ) -> Result<(), EngineError>;
 }
 
+/// Pushes `compose --project-directory <folder> [-f <file>]... [-p <name>]`.
+///
+/// Compose resolves `-f` against the process's working directory, not `--project-directory`, and an app
+/// launched from Finder has `/` as its working directory. A relative file (a name from detection, such
+/// as `compose.yaml`) is therefore joined to `folder` here, so every command names its files by
+/// absolute path. `-` (stdin) and absolute paths pass through unchanged.
 fn push_base(
     args: &mut Vec<String>,
     folder: &std::path::Path,
@@ -48,6 +54,11 @@ fn push_base(
     args.push("--project-directory".to_string());
     args.push(folder.to_string_lossy().into_owned());
     for file in files {
+        let file = if file.as_os_str() == "-" {
+            file.clone()
+        } else {
+            folder.join(file)
+        };
         args.push("-f".to_string());
         args.push(file.to_string_lossy().into_owned());
     }
@@ -533,6 +544,92 @@ mod tests {
                 "json",
                 "pull",
             ])
+        );
+    }
+
+    #[test]
+    fn compose_args_name_relative_files_by_absolute_path() {
+        let mut target = target();
+        target.files = vec![
+            std::path::PathBuf::from("compose.yaml"),
+            std::path::PathBuf::from("/work/shop/compose.override.yaml"),
+        ];
+        let args = compose_args(
+            &target,
+            &berth_core::ComposeCommand::Pull { services: vec![] },
+        );
+        let files: Vec<&str> = args
+            .windows(2)
+            .filter(|w| w[0] == "-f")
+            .map(|w| w[1].as_str())
+            .collect();
+        assert_eq!(
+            files,
+            [
+                "/work/shop/compose.yaml",
+                "/work/shop/compose.override.yaml"
+            ]
+        );
+    }
+
+    /// A `docker` that behaves like Compose about `-f`: a relative file is opened from the process's
+    /// working directory, so it fails unless the file is there. The tests run with the repo as their
+    /// working directory, which is how the Finder launch (cwd `/`) went unnoticed.
+    #[cfg(unix)]
+    fn stub_docker_that_opens_files_from_cwd() -> (tempfile::TempDir, CliCompose) {
+        use std::os::unix::fs::PermissionsExt;
+        let bin = tempfile::tempdir().expect("bin dir");
+        let script = bin.path().join("docker");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\n\
+             while [ $# -gt 0 ]; do\n\
+               if [ \"$1\" = \"-f\" ]; then\n\
+                 [ \"$2\" = \"-\" ] || [ -f \"$2\" ] || { echo \"open $2: no such file or directory\" >&2; exit 1; }\n\
+               fi\n\
+               shift\n\
+             done\n",
+        )
+        .expect("write stub");
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod stub");
+        let cli = CliCompose::new(berth_sys::SearchPath::from_dirs(vec![bin
+            .path()
+            .to_path_buf()]));
+        (bin, cli)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn validate_finds_a_relative_compose_file_in_the_project_folder_not_the_process_cwd() {
+        let (_bin, cli) = stub_docker_that_opens_files_from_cwd();
+        let folder = tempfile::tempdir().expect("project folder");
+        let name = "berth-cwd-test-compose.yaml";
+        std::fs::write(folder.path().join(name), "services: {}\n").expect("compose file");
+        assert!(
+            !std::path::Path::new(name).exists(),
+            "the process cwd must not hold the file"
+        );
+        cli.validate(folder.path(), &[std::path::PathBuf::from(name)])
+            .await
+            .expect("a relative name resolves against the project folder");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn config_finds_a_relative_compose_file_in_the_project_folder_not_the_process_cwd() {
+        let (_bin, cli) = stub_docker_that_opens_files_from_cwd();
+        let folder = tempfile::tempdir().expect("project folder");
+        let name = "berth-cwd-test-compose.yaml";
+        std::fs::write(folder.path().join(name), "services: {}\n").expect("compose file");
+        let mut target = target();
+        target.folder = folder.path().to_path_buf();
+        target.files = vec![std::path::PathBuf::from(name)];
+        // The stub prints nothing, so only the exit code matters: a parse error is the success path.
+        let result = cli.config(&target).await;
+        assert!(
+            matches!(result, Err(EngineError::Parse { .. })),
+            "docker was asked for a file it could not open: {result:?}"
         );
     }
 
