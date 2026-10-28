@@ -28,8 +28,10 @@ are deferred, not dropped — see "Deferred to the Mac" below.
 
 ## Current state (verified on the Mac, 2026-10-28)
 
-- Phases 0–7 closed; workspace version `0.7.0`, tags `v0.0`–`v0.7`
-  local only. **Nothing has ever been pushed.**
+- Phases 0–7 closed; workspace version `0.7.0`. All branches were
+  pushed to `origin` on 2026-10-28 at the owner's request for this
+  handoff (the project's first push). The phase tags (`v0.2`–`v0.7`)
+  stay local to the Mac.
 - Phase 8: P8-T1 remote engines (`7a64c58`), P8-T2 registries
   (`ed7444f`) done. P8-T3 is part done, committed as a checkpoint:
   `a7a559c P8-T3: AD43 build contracts, step parser, context tar
@@ -39,6 +41,21 @@ are deferred, not dropped — see "Deferred to the Mac" below.
 - The working tree is clean except `.audit/`, the owner's untracked
   notes. They are not needed by the code and were left uncommitted on
   purpose.
+- **Early slices on `work/*` branches (unmerged, pushed with the
+  repo):** disjoint crate-only pieces built ahead of their phase, to
+  be cherry-picked in phase order when their task comes — not to be
+  merged wholesale. `work/p8-t5-git` (`8f8cdd0`, P8-T5 git fixture +
+  engine git helpers), `work/p9-t1-protocol` (`a1f51a1`, P9-T1),
+  `work/p9-t2-host` (`43c79ff`, P9-T2 host), `work/p9-t3-coolify`
+  (`79e13dc`, P9-T3/T4 + the P9-T5 renderer slice).
+  `work/p8-t1-remote` (`7f3f3e1`) is the early P8-T1 slice; P8-T1
+  itself already landed on `phase/8-parity` (`7a64c58`), so treat
+  that branch as superseded and check before reusing anything. The
+  slice briefs live in the owner's `.audit/handoff-*.md` on the Mac
+  only; in the repo, the branch commit messages plus the TASKS
+  entries are the record. On the Mac these branches are checked out
+  in sibling worktrees (`../berth-p8t1`, `../berth-p8t5`,
+  `../berth-p9t1`, `../berth-p9t2`, `../berth-p9t3`).
 
 ### P8-T3: done in the checkpoint
 
@@ -249,9 +266,9 @@ Do these before starting P8-T3's remainder, and record the results in
 - No refactors outside the task's files; note wishes in STATUS.
 - Git: stay on `phase/8-parity` until the phase closes; commits
   `P<N>-T<M>: <what>`. **Never push, tag remotely, or release
-  without the owner's explicit approval** (nothing in this repo has
-  ever been pushed; moving the work between machines is the owner's
-  transfer to arrange).
+  without the owner's explicit approval.** The 2026-10-28 push of
+  all branches was that approval, for that push; it does not extend
+  to later pushes, tags, or releases.
 - End of session: `scripts/check.sh` exit 0, run the task's
   done-when, update STATUS, commit. If a §6 type must change, a §5
   crate is needed, a done-when fails twice honestly, a rule would
@@ -289,8 +306,10 @@ Do these before starting P8-T3's remainder, and record the results in
 ## Transfer checklist (Mac side, done 2026-10-28)
 
 - [x] P8-T3 checkpoint committed (`a7a559c`); tree clean except
-      `.audit/` (owner's untracked notes — travel separately, if at
-      all; the code does not need them).
+      `.audit/` (owner's untracked notes — judged not necessary for
+      the pickup and left uncommitted on the Mac).
+- [x] All branches pushed to `origin` at the owner's request
+      (2026-10-28); phase tags not pushed.
 - [x] `scripts/check.sh` exit 0 quoted above (includes the secret
       scan; no credentials in the repo).
 - [x] Keychain items and `~/Library/Application Support/dev.berth.Berth/berth.db`
