@@ -264,13 +264,16 @@ dependencies = [
 name = "berth-coolify"
 version = "0.8.0"
 dependencies = [
+ "berth-plugin-host",
  "berth-plugin-protocol",
+ "berth-store",
  "reqwest",
  "rustls",
  "secrecy",
  "semver",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",

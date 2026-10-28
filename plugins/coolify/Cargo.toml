@@ -27,6 +27,10 @@ tokio.workspace = true
 tokio-util.workspace = true
 
 [dev-dependencies]
+# The real host drives the real plugin binary in tests/with_host.rs.
+berth-plugin-host.workspace = true
+berth-store.workspace = true
+tempfile.workspace = true
 wiremock.workspace = true
 
 [lints]
