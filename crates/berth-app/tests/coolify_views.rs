@@ -199,7 +199,7 @@ async fn coolify_views_the_bundled_plugin_is_found_next_to_the_app_binary() {
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].title, "Coolify");
     let titles: Vec<&str> = groups[0].items.iter().map(|i| i.title.as_str()).collect();
-    assert_eq!(titles, ["Resources", "Deployments", "Servers"]);
+    assert_eq!(titles, ["Resources", "Servers", "Deployments"]);
     let commands = palette_commands(&rig.service.entries());
     assert!(commands.iter().any(|c| c.title == "Coolify: Deployments"
         && c.kind

@@ -493,7 +493,32 @@
   padding: var(--space-24) 0;
 }
 
-/* The project row: the deployed commit and the new-commit tag. */
+/* The project row: the deployed commit (Branch cell) and the new-commit tag
+   (Name cell, beside the problem tag, since the 98 px Branch track cannot hold it).
+   Neither track holds its full content on one line at 1.0, so a cell that has
+   one of them wraps onto a second line (two lines of 16 + 18 px fit the row)
+   instead of squeezing the project or branch name to nothing. */
+.project-cell-name:has(.project-new-commits),
+.project-cell-branch:has(.project-commit) {
+  flex-wrap: wrap;
+  align-content: center;
+  row-gap: 0;
+}
+.project-cell-name:has(.project-new-commits) .project-name {
+  height: var(--text-label-line);
+}
+.project-cell-name:has(.project-new-commits) .project-problem-tag,
+.project-cell-name:has(.project-new-commits) .project-new-commits {
+  line-height: var(--text-label-line);
+}
+.project-cell-branch:has(.project-commit) .project-branch-text {
+  flex: 1 1 0;
+}
+.project-cell-branch:has(.project-commit) .project-commit {
+  flex: none;
+  flex-basis: 100%;
+  margin-left: 0;
+}
 .project-commit {
   margin-left: var(--space-6);
   font-family: var(--font-mono);
@@ -501,7 +526,7 @@
   color: var(--color-ink-muted);
 }
 .project-new-commits {
-  margin-left: var(--space-6);
+  flex: none;
   padding: 0 var(--space-6);
   border-radius: var(--radius-full);
   background: var(--color-info-subtle);

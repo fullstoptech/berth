@@ -71,7 +71,7 @@
           "kind": "badge",
           "value": {
             "text": "In progress",
-            "tone": "info"
+            "tone": "warning"
           }
         },
         "trigger": {

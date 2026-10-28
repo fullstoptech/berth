@@ -22,14 +22,15 @@ use berth_plugin_protocol::{ActionSpec, Cell, Column, ConfigField, FieldKind, Ro
 
 use super::plugin_action::{request_action, select_row, FixWithHarness};
 use super::plugin_view_model::{
-    banner_tone, facets, failing_seq, filter_rows, grid_template, log_rows, row_context,
-    row_summary, status_banner, time_text, tone_class, LogRow, RowSummary,
+    badge_in_flight, banner_tone, facets, failing_seq, filter_rows, grid_template, log_rows,
+    row_context, row_summary, status_banner, time_text, tone_class, LogRow, RowSummary,
 };
 use crate::services::plugin_views::{PluginViewStore, RowContext, ViewState, STATUS_VIEW};
 use crate::services::plugins::{PluginsService, PluginsView};
 use crate::state::AppState;
 use crate::ui::confirm_dialog::CONFIRM_DIALOG_CSS;
 use crate::ui::log_line::{LogLine, RowOpts};
+use crate::ui::status_dot::RingArcs;
 use crate::ui::{
     Badge, BadgeKind, Banner, Button, ButtonVariant, ControlSize, EmptyState, Icon, IconSize,
     InlineMessage, InlineTone, Inspector, InspectorFrame, KeyValue, KeyValueList, SearchField,
@@ -304,9 +305,14 @@ fn CellView(cell: Cell) -> Element {
         }
         Cell::Badge(badge) => {
             let class = format!("status-badge {}", tone_class(&badge.tone));
+            let ring = badge_in_flight(&badge);
             rsx! {
                 span { class,
-                    span { class: "status-dot" }
+                    span { class: if ring { "status-dot status-dot-ring" } else { "status-dot" },
+                        if ring {
+                            RingArcs {}
+                        }
+                    }
                     span { "{badge.text}" }
                 }
             }

@@ -352,7 +352,8 @@
   background: var(--color-accent-fill-hover);
 }
 .pv-fix-chevron:disabled {
-  opacity: 0.6;
+  background: var(--color-surface-hover);
+  color: var(--color-ink-disabled);
   cursor: default;
 }
 .pv-fix-chevron:focus-visible {

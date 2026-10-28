@@ -46,6 +46,9 @@
   margin: 0;
   min-width: 0;
 }
+.confirm-row-text.pv-mono {
+  color: var(--color-ink);
+}
 .confirm-option {
   margin-top: var(--space-20);
   padding: 0 var(--space-4);

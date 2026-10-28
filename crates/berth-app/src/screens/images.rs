@@ -459,7 +459,7 @@ fn Controls(
     ];
     let pull_pressed = *pull_open.read();
     rsx! {
-        div { class: "im-controls",
+        div { class: "im-controls im-controls-wrap",
             div { class: "im-filter",
                 for key in [rev_key] {
                     SearchField {
@@ -485,34 +485,35 @@ fn Controls(
                     filter.set(if id == "dangling" { ImageFilter::Dangling } else { ImageFilter::All });
                 },
             }
-            span { class: "im-spacer" }
-            Button {
-                label: "Import image\u{2026}".to_string(),
-                variant: ButtonVariant::Secondary,
-                icon: "arrow-down-to-line",
-                disabled: !can_pull,
-                disabled_reason: (!can_pull).then(|| "No running engine to import to".to_string()),
-                onclick: move |_| {
-                    if let (Some(engine), Some(services)) = (engine.clone(), services.clone()) {
-                        crate::sheets::build_image::import_with_panel(state, store, services, engine);
-                    }
-                },
-            }
-            Button {
-                label: "Build image\u{2026}".to_string(),
-                variant: ButtonVariant::Secondary,
-                icon: "box",
-                disabled: !can_pull,
-                disabled_reason: (!can_pull).then(|| "No running engine to build on".to_string()),
-                onclick: move |_| crate::sheets::build_image::open(&mut state),
-            }
-            Button {
-                label: "Pull image".to_string(),
-                variant: ButtonVariant::Primary,
-                icon: "arrow-down-to-line",
-                disabled: !can_pull,
-                disabled_reason: (!can_pull).then(|| "No running engine to pull to".to_string()),
-                onclick: move |_| pull_open.set(!pull_pressed),
+            div { class: "im-toolbar",
+                Button {
+                    label: "Import image\u{2026}".to_string(),
+                    variant: ButtonVariant::Secondary,
+                    icon: "arrow-down-to-line",
+                    disabled: !can_pull,
+                    disabled_reason: (!can_pull).then(|| "No running engine to import to".to_string()),
+                    onclick: move |_| {
+                        if let (Some(engine), Some(services)) = (engine.clone(), services.clone()) {
+                            crate::sheets::build_image::import_with_panel(state, store, services, engine);
+                        }
+                    },
+                }
+                Button {
+                    label: "Build image\u{2026}".to_string(),
+                    variant: ButtonVariant::Secondary,
+                    icon: "box",
+                    disabled: !can_pull,
+                    disabled_reason: (!can_pull).then(|| "No running engine to build on".to_string()),
+                    onclick: move |_| crate::sheets::build_image::open(&mut state),
+                }
+                Button {
+                    label: "Pull image".to_string(),
+                    variant: ButtonVariant::Primary,
+                    icon: "arrow-down-to-line",
+                    disabled: !can_pull,
+                    disabled_reason: (!can_pull).then(|| "No running engine to pull to".to_string()),
+                    onclick: move |_| pull_open.set(!pull_pressed),
+                }
             }
         }
     }

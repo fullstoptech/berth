@@ -16,8 +16,8 @@
       "title": "Coolify",
       "items": [
         { "id": "resources", "title": "Resources", "view": "resources" },
-        { "id": "deployments", "title": "Deployments", "view": "deployments" },
-        { "id": "servers", "title": "Servers", "view": "servers" }
+        { "id": "servers", "title": "Servers", "view": "servers" },
+        { "id": "deployments", "title": "Deployments", "view": "deployments" }
       ]
     },
     { "kind": "project_badge", "id": "coolify-deployed" }
