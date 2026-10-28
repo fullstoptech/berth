@@ -11,7 +11,9 @@ pub mod discover;
 pub mod dispatch;
 pub mod process;
 
-pub use discover::{discover, load_manifest, validate_manifest, MANIFEST_FILE};
+pub use discover::{
+    bundle_macos_dir, bundle_plugins_dir, discover, load_manifest, validate_manifest, MANIFEST_FILE,
+};
 pub use process::{Backoff, PluginHandle, INIT_TIMEOUT};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

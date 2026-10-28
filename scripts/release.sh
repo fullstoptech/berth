@@ -79,8 +79,14 @@ say "building berth-coolify (release)"
 cargo build --release -p berth-coolify
 coolify="$target_dir/release/berth-coolify"
 [ -x "$coolify" ] || die "$coolify was not built"
-# The plugin host finds plugins next to the app binary (AD48).
+# The plugin binary lives in Contents/MacOS, where code signing wants executables (AD48, AD70).
 cp "$coolify" "$app/Contents/MacOS/berth-coolify"
+# Its manifest ships as a sealed resource; the host resolves the executable in Contents/MacOS and
+# never runs anything from Resources (AD70). Copied before signing so the app signature seals it.
+manifest="$root/plugins/coolify/berth-plugin.json"
+[ -f "$manifest" ] || die "$manifest is missing; the app would ship without discovering the Coolify plugin (AD70)"
+mkdir -p "$app/Contents/Resources/plugins/coolify"
+cp "$manifest" "$app/Contents/Resources/plugins/coolify/berth-plugin.json"
 
 sign_one() { # sign_one <path> [extra codesign args...]
   local path="$1"; shift

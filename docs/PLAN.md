@@ -1378,7 +1378,10 @@ pub enum PluginError { #[error("manifest: {0}")] Manifest(String), #[error("{0} 
     #[error("plugin exited: {0}")] Exited(String), #[error("timed out")] Timeout, #[error("{0}")] Rpc(String) }
 pub enum PluginState { Enabled, Disabled, Error { reason: String } }
 pub struct InstalledPlugin { pub manifest: berth_plugin_protocol::Manifest, pub dir: std::path::PathBuf, pub state: PluginState, pub granted: Vec<berth_plugin_protocol::Permission> }
-/// Plugins live in <data dir>/plugins/<id>/ and, for the bundled Coolify plugin, next to the app binary.
+/// Plugins live in <data dir>/plugins/<id>/ and, for the bundled Coolify plugin, in the app bundle (AD70, 2026-10-28): the binary stays in
+/// Contents/MacOS, the manifest is a sealed resource in Contents/Resources/plugins/<id>/. Roots in order: BERTH_PLUGIN_DIRS, the exe dir, exe dir/plugins,
+/// <exe dir>/../Resources/plugins (only when the exe dir is <bundle>/Contents/MacOS), <data dir>/plugins. A manifest found under a bundle's
+/// Resources/plugins resolves `executable` in that bundle's Contents/MacOS; nothing is ever executed from Resources.
 pub fn discover(dirs: &[std::path::PathBuf]) -> Vec<InstalledPlugin>;
 pub struct PluginHandle { /* child, pending requests, notification broadcast */ }
 impl PluginHandle {

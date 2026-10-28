@@ -233,8 +233,10 @@ fn write_saved(store: &Store, id: &str, saved: &Saved) -> Result<(), String> {
 // ---------------------------------------------------------------------
 
 /// The directories to scan, first match wins (PLAN §6.10): the development
-/// override, the app binary's directory (the bundled Coolify plugin) and its
-/// `plugins/` child, then `<data dir>/plugins`.
+/// override, the app binary's directory and its `plugins/` child, the app
+/// bundle's `Contents/Resources/plugins` (the bundled Coolify manifest, only
+/// when the binary runs from `…/Contents/MacOS`; AD70), then
+/// `<data dir>/plugins`.
 #[must_use]
 pub fn plugin_dirs_from(
     extra: Option<&OsStr>,
@@ -247,6 +249,7 @@ pub fn plugin_dirs_from(
     if let Some(exe_dir) = exe_dir {
         dirs.push(exe_dir.to_path_buf());
         dirs.push(exe_dir.join("plugins"));
+        dirs.extend(berth_plugin_host::bundle_plugins_dir(exe_dir));
     }
     dirs.push(data_dir.join("plugins"));
     let mut seen = Vec::new();
@@ -422,6 +425,8 @@ impl PluginsService {
         })
         .await
         .unwrap_or_default();
+        let ids: Vec<&str> = found.iter().map(PluginEntry::id).collect();
+        tracing::info!(plugins = ?ids, "plugins discovered");
         *lock(&self.inner.entries) = found;
         self.publish();
     }

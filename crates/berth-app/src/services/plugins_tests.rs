@@ -201,6 +201,25 @@ fn plugins_dirs_put_the_override_first_then_the_app_then_the_data_dir() {
 }
 
 #[test]
+fn plugins_dirs_add_the_bundle_resources_root_only_inside_a_bundle() {
+    let in_bundle = plugin_dirs_from(
+        None,
+        Path::new("/data"),
+        Some(Path::new("/Apps/Berth.app/Contents/MacOS")),
+    );
+    assert_eq!(
+        in_bundle,
+        [
+            "/Apps/Berth.app/Contents/MacOS",
+            "/Apps/Berth.app/Contents/MacOS/plugins",
+            "/Apps/Berth.app/Contents/Resources/plugins",
+            "/data/plugins"
+        ]
+        .map(PathBuf::from)
+    );
+}
+
+#[test]
 fn plugins_permission_sentences_name_hosts_and_keys() {
     let any = Permission::Network {
         hosts: vec!["*".into()],
