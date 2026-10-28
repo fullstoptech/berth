@@ -7,3 +7,6 @@
 # Third-party app icons fetched for the icon category study (sources in design/icon/research/category.md)
 design/icon/research/src/
 design/icon/research/local/
+
+# Release output (scripts/release.sh)
+/dist/
