@@ -414,8 +414,11 @@ fn review_changes_only_the_sheet_and_its_service_call_commit_or_write_plan() {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let lives_here =
-            name == "plans.rs" || name == "review_changes.rs" || name.contains("tests");
+        // images/commit.rs calls the engine's `docker commit` (Save as image, P8-T4): an image, not a plan.
+        let lives_here = name == "plans.rs"
+            || name == "review_changes.rs"
+            || name == "commit.rs"
+            || name.contains("tests");
         if lives_here {
             continue;
         }

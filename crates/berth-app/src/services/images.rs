@@ -24,11 +24,13 @@ use crate::services::{activity, Services};
 use crate::state::{AppState, PendingKey, PendingState};
 
 mod build;
+mod commit;
 
 pub use build::{
     check_build_spec, BuildKey, BuildLine, BuildLineKind, BuildPhase, BuildState, PushKey,
     PushPhase, PushState, BUILD_ACTION, EXPORT_ACTION, IMPORT_ACTION, PUSH_ACTION,
 };
+pub use commit::{commit_reference, default_reference, COMMIT_ACTION};
 
 /// The action id of a pull: the activity entry's and the pending key's.
 pub const PULL_ACTION: &str = "image.pull";

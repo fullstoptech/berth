@@ -77,6 +77,7 @@ scene_modules! {
     projects,
     registries,
     review_changes,
+    save_image,
     templates,
     terminal,
     volumes,

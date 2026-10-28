@@ -322,7 +322,7 @@ fn pump<T: Send + 'static>(
     rx
 }
 
-fn outcome_of(result: &Result<(), String>) -> Outcome {
+pub(super) fn outcome_of(result: &Result<(), String>) -> Outcome {
     match result {
         Ok(()) => Outcome::Ok,
         Err(reason) => Outcome::Failed {
@@ -334,7 +334,7 @@ fn outcome_of(result: &Result<(), String>) -> Outcome {
 impl ImageStore {
     /// The token of a new operation, filed under `(engine, action, name)`,
     /// and its pending entry on the image (D23).
-    fn begin_op(
+    pub(super) fn begin_op(
         &self,
         services: &Services,
         engine: &EngineId,
@@ -362,7 +362,13 @@ impl ImageStore {
     /// Forget the token and the pending entry of a finished operation.
     /// `app` is the `AppState` captured when it began (the spawned task has
     /// no context of its own).
-    fn end_op(&self, app: Option<AppState>, engine: &EngineId, action: &'static str, name: &str) {
+    pub(super) fn end_op(
+        &self,
+        app: Option<AppState>,
+        engine: &EngineId,
+        action: &'static str,
+        name: &str,
+    ) {
         let mut cancels = self.op_cancels;
         cancels
             .write()
@@ -375,7 +381,13 @@ impl ImageStore {
         }
     }
 
-    fn record(services: &Services, engine: &EngineId, action: &str, name: &str, outcome: Outcome) {
+    pub(super) fn record(
+        services: &Services,
+        engine: &EngineId,
+        action: &str,
+        name: &str,
+        outcome: Outcome,
+    ) {
         activity::record(
             &services.store,
             &activity::entry_for_action(

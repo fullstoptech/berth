@@ -18,3 +18,4 @@ pub mod open_folder;
 pub mod registry_login;
 pub mod review_changes;
 pub mod run;
+pub mod save_image;

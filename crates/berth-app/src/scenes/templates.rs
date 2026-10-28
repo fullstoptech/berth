@@ -5,7 +5,7 @@ use super::*;
 
 use berth_core::{Template, TemplateKind};
 
-use crate::screens::templates::SeedTemplates;
+use crate::screens::templates::{DevConfirmDelete, SeedTemplates};
 
 fn templates_world(state: &mut AppState, theme: berth_store::Theme) {
     load_mock_world(state);
@@ -13,7 +13,7 @@ fn templates_world(state: &mut AppState, theme: berth_store::Theme) {
     state.section.set(Section::Templates);
 }
 
-/// The templates a user saved from a service (what P8-T4 will write): Postgres with another image.
+/// The templates a user saved from a service (what P8-T4 writes): Postgres with another image.
 fn custom_templates() -> Vec<Template> {
     berth_rules::templates::built_in()
         .into_iter()
@@ -49,8 +49,15 @@ fn list_light(state: &mut AppState) {
     provide_context(SeedTemplates(all));
 }
 
+/// Delete on the custom row was clicked: the dialog asks, from one `EffectSummary`.
+fn delete_confirm(state: &mut AppState) {
+    list(state);
+    provide_context(DevConfirmDelete("custom-pg-pgvector".to_string()));
+}
+
 pub(super) const SCENES: &[Scene] = &[
     Scene::dev("Templates / custom empty / 1440", custom_empty),
+    Scene::dev("Templates / delete confirm / 1440", delete_confirm),
     Scene::dev("Templates / light / 1440", list_light),
     Scene::dev("Templates / list / 1440", list),
 ];

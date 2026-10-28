@@ -154,6 +154,9 @@ pub fn ContainerDetailPanel(
     let mut tab = use_signal(move || initial_tab);
     let mut menu_open = use_signal(|| false);
     let mut renaming = use_signal(|| false);
+    // Scenes open the bar already (`DevSaveImage`); a click on the ⋯ item opens it otherwise.
+    let mut saving_image =
+        use_signal(|| try_consume_context::<crate::sheets::save_image::DevSaveImage>().is_some());
     let mut more_tabs_open = use_signal(|| false);
 
     // The list row without its live stats: a stats tick must not redraw
@@ -271,6 +274,9 @@ pub fn ContainerDetailPanel(
                     menu_open.set(false);
                     if item == "copy-id" {
                         copy_to_clipboard(&menu_id.0);
+                    } else if item == "save-image" {
+                        renaming.set(false);
+                        saving_image.set(true);
                     } else if menu_click(&mut state, menu_actions.as_ref(), store, &menu_container, &item) {
                         renaming.set(true);
                     }
@@ -281,6 +287,13 @@ pub fn ContainerDetailPanel(
                     key: "{id.0}",
                     container: c.clone(),
                     onclose: move |()| renaming.set(false),
+                }
+            }
+            if *saving_image.read() {
+                crate::sheets::save_image::SaveImageBar {
+                    key: "{id.0}",
+                    container: c.clone(),
+                    onclose: move |()| saving_image.set(false),
                 }
             }
             if let Some((key, message)) = failure {
