@@ -6,34 +6,36 @@ Scope (owner, must-fix only): each shot is `scripts/shot.sh <name> --scene "<fra
 
 Shots live in `target/shots/` (git-ignored). Two retakes: `a03` was taken at the default 1440 window (the scene does not resize; `BERTH_WINDOW=1024x700` is needed), so `b03` replaces it; `a17` missed the 5 s toast because the machine was at load ~300, so `b17` replaces it.
 
-## Summary
+## Summary (final verdicts after the re-shoot, 2026-10-28, HEAD 4a2c0de)
 
-| Frame | Verdict | Must-fix |
+Verdict key: matches = no must-fix, nothing changed since the first pass; fixed = the first-pass must-fix is closed; deviation = differs from the frame on purpose. The two regressions the re-shoot found are fixed (section "Regressions fixed" at the end). 22 frames, 22 verdicts; no open must-fix.
+
+| Frame | Final verdict | Note |
 |---|---|---|
-| Containers / selected / 1440 | no must-fix | 0 |
-| Containers / selected / 1440 / light | no must-fix | 0 |
-| Containers / selected / 1024 | no must-fix | 0 |
-| Containers / bulk / 1440 | no must-fix | 0 |
-| Containers / confirm delete / 1440 | no must-fix | 0 |
-| Containers / engine stopped / 1440 | no must-fix | 0 |
-| Containers / loading / 1440 | no must-fix | 0 |
-| Palette / open / 1440 | no must-fix | 0 |
-| Projects / default / 1440 | 2 must-fix | 2 |
-| Projects / default / 1440 / dark | 2 must-fix (same as default) | 2 |
-| Projects / empty / 1440 | no must-fix | 0 |
-| Container / terminal / 1440 | no must-fix | 0 |
-| Container / terminal / no shell / 1440 | 1 must-fix | 1 |
-| Logs / errors / 1440 | no must-fix | 0 |
-| Logs / paused / 1440 | no must-fix | 0 |
-| Clean up / sheet / 1440 | no must-fix | 0 |
-| Clean up / done / 1440 | no must-fix | 0 |
-| Engines / dashboard / 1440 | no must-fix | 0 |
-| Engines / starting / 1440 | no must-fix | 0 |
-| Images / find / 1440 | no must-fix | 0 |
-| Images / find / pulling / 1440 | no must-fix | 0 |
-| Images / find / rate limited / 1440 | no must-fix | 0 |
+| Containers / selected / 1440 | matches | not re-shot; unchanged areas |
+| Containers / selected / 1440 / light | matches | not re-shot |
+| Containers / selected / 1024 | fixed | Inspector toggle present, overlay reachable (c08, c12); was already in the frame, now also on the other three screens |
+| Containers / bulk / 1440 | matches | not re-shot |
+| Containers / confirm delete / 1440 | matches | not re-shot; copy note only |
+| Containers / engine stopped / 1440 | matches | re-shot c05; Start engine default, banner, command line unchanged |
+| Containers / loading / 1440 | matches | not re-shot |
+| Palette / open / 1440 | matches | not re-shot |
+| Projects / default / 1440 | deviation | Set up project... live (fixed); Branch track is 168 px where the frame draws 98 px (deviation: branch names were unreadable at 98); Restart, Stop/Start, the list and ... buttons all visible (d01) |
+| Projects / default / 1440 / dark | deviation | same as light (d02) |
+| Projects / empty / 1440 | matches | re-shot c04; unchanged |
+| Container / terminal / 1440 | matches | bottom-panel tab strip and session tabs have padding, Terminal has the active underline (d03) |
+| Container / terminal / no shell / 1440 | fixed | debug-shell button and note gone; tab strip has padding and underline (d04) |
+| Logs / errors / 1440 | matches | re-shot d05; full-page screen, no bottom panel, unaffected |
+| Logs / paused / 1440 | matches | not re-shot; same screen |
+| Clean up / sheet / 1440 | matches | not re-shot |
+| Clean up / done / 1440 | matches | not re-shot |
+| Engines / dashboard / 1440 | matches | not re-shot |
+| Engines / starting / 1440 | matches | not re-shot |
+| Images / find / 1440 | matches | not re-shot |
+| Images / find / pulling / 1440 | matches | not re-shot |
+| Images / find / rate limited / 1440 | matches | not re-shot |
 
-Must-fix items (3 distinct, 5 frame-hits):
+Original must-fix items (3 distinct, 5 frame-hits; all closed, see "Re-shoot after fixes"):
 
 1. **Projects Branch track clips the branch name** (`feat/che…`; the row wraps in some tiers). Projects default + dark. Known as AD58 item 6; the projects-row worker owns it. Fix: widen the track in `screens/table_tiers.rs` / `projects_tiers.css`, regenerate tests.
 2. **"Set up project…" is shown disabled/greyed on the `docker-manger` row** (the frame draws it live; the row menu entry also does nothing, `ui/project_row.rs:841`). Projects default + dark. Fix: build it or hide it (projects-row worker).
@@ -161,3 +163,51 @@ Must-fix items (3 distinct, 5 frame-hits):
 - Shot: `target/shots/a22-images-find-rate-limited-1x.png`
 - Frame: `design/shots/figcraft/screens/Images _ find _ rate limited _ 1440.png`
 - Verdict: no must-fix. Banner, Keychain line, "5 results · cached 6 min ago" and "Pulls may also be limited" match.
+
+
+## Re-shoot after fixes (2026-10-28, HEAD 4a2c0de, BERTH_MOCK=1)
+
+Shots in `target/shots/c01`..`c15` (`-1x.png` copies). 1024 shots used `BERTH_WINDOW=1024x700`. The bottom-docked Images shot (c13) was taken by seeding `inspector_dock: Bottom` and theme Dark into a scratch `berth.db` (no Images scene docks at the bottom), launching `Images / selected / 1440` against it and capturing with `BERTH_SHOT_ATTACH=1`. No code was changed.
+
+| Item | Result | Evidence |
+|---|---|---|
+| Original 1: Branch clip | closed | c01/c02: `feat/checkout-v2` shows in full, row stays one line, nothing else in the row clips, Path/Engine/Services unchanged. Deviates from the frame on purpose (168 px, no ellipsis). |
+| Original 2: greyed "Set up project..." | closed | c01/c02: docker-manger row shows a live bordered "Set up project..." button. Click behaviour (opens the Detected sheet) is covered by tests, not exercised in a shot. |
+| Original 3: debug-shell button and note | closed | c03: only "Files" remains under "This image has no shell"; text reads "...Browse its files instead." |
+| Inspector toggle below 1200 px | closed | c08 Containers, c09 Images, c10 Volumes, c11 Networks: a bordered "Inspector" button, same look and the last item of each controls row (on Images it sits on the buttons row because the header wraps at 1024). c12: overlay opens with the full inspector. |
+| Inspector docked at the bottom, buttons | closed | c06/c07 Containers (scenes "inspector bottom" and "inspector bottom / alone"): Stop, Restart, Pause (disabled), Kill and Delete... have border and fill. c13 Images: Run, Pull latest, Push..., Tag, Export... and the header Import image.../Build image.../Pull image are bordered or filled. |
+| Starting state (Start default) | not shot | no scene reaches it and clicking "Start engine" would run `colima start`; covered by `projects_tests.rs` (`projects_state_starting_engine_shows_the_starting_copy_and_a_disabled_button`, `..._click_on_start_engine_shows_starting_before_the_engine_reports_it`). |
+| Projects / empty / 1440 | no regression | c04: empty block, Open folder, drop zone and first-run checks as in a11. |
+| Containers / engine stopped / 1440 | no regression | c05: banner, empty state, "Start engine default", command line as in a06. |
+
+### NEW must-fix 1: bottom-panel tabs and sub-tabs lost their styling (regression from a337bab)
+
+Seen in c03, c06, c07, c13, c14 (every screen with the bottom panel open). `.bottom-panel button:not(.btn)` (shell.css:62) has specificity 0,2,1, which beats `.tab` rules such as `.bottom-head .tab` (shell.css:365), `.cd-tabs .tab` (container_detail.css:134) and `.im-tabs .tab` (images.css:52) at 0,2,0. Before the change the reset was 0,1,1 and lost to them. Effect: the Logs / Terminal / Problems / Assistant strip has no padding and no active-tab underline (compare a13, where Terminal is underlined), the terminal session tabs (`api-1 · bash x`, `+`) are crammed together, and the docked inspector's Overview / Logs / Stats... strip is bare text with no active marker. Still clickable, but the selected tab cannot be told apart. Proposed fix: write the reset as `.bottom-panel :where(button:not(.btn))` (specificity 0,1,0) or add `.tab`, `.tab-close` and `.icon-btn` to the `:not()` list.
+
+### NEW must-fix 2: Projects row menu clipped off the right edge at 1440 (regression from e172166)
+
+Seen in c01 and c02. On every row that has Restart plus Stop/Start project, the row-menu buttons (the list icon and the ... button) are pushed past the window edge: the list icon is cut in half and the ... button is not visible, so "Remove from Berth..." and the other row actions cannot be reached at 1440. The docker-manger row (one button) still shows both. Cause: the Branch track grew 98 -> 168 px (`--projects-cols` in projects.css:12) while the last track is `1fr`; the fixed tracks leave less than the actions need and the row overflows (a09 had them at x 1370 and 1398). Proposed fix: take the 70 px from tracks that have slack (Path 138, Services min/max 140-218, Ports 138) or give the actions track a `minmax(var(--projects-actions-w), 1fr)`, and regenerate the tier CSS and tests. Also check 1280 and 1100 widths.
+
+## Regressions fixed (2026-10-28)
+
+Both fixes are in `phase/10-ship` (commit "P10-T3: keep Projects row actions on screen; bottom-panel reset yields to tabs"). Shots `d01`..`d06` (`target/shots/`, `-1x.png` copies), BERTH_MOCK=1.
+
+### 1. Projects row buttons clipped at 1440: closed
+
+Cause, found by solving the grid by hand: Services is `minmax(140, 218)` and a grid shares free space out to such a track before a plain `1fr` track gets any. At 1440 (main 1220 px) the `1fr` buttons track got 155 px of the 228 px it needs; the tier maths had assumed Services stayed at its minimum. At the old 98 px Branch there were 70 px more to give, which hid it.
+
+Fix: the last track of the full list is now `minmax(calc(160px * var(--text-scale, 1) + var(--projects-actions-w)), 1fr)` (`projects.css`), so Services cannot take the buttons' room; `table_tiers/projects.rs` counts the buttons in the minimums instead of as a reserve (the generated `projects_tiers.css` is byte-identical; thresholds did not move). Branch stays 168 px: 172 px is the most the 1440 frame can hold before the full list drops to the next tier (zero slack), 168 leaves 4 px and still holds `feat/checkout-flow`; longer names ellipsise. Projects has no inspector, so there is no second width to check. The tiers at their own minimum widths are covered by the new test (every tier, both views, every text size).
+
+Evidence d01 / d02: Restart, Stop project / Start project, the list icon and the ... button all visible on every row; docker-manger shows Set up project... plus both icons.
+
+### 2. Bottom-panel tabs lost padding and underline: closed
+
+Fix: the reset in `shell.css` is `:where(.bottom-panel button:not(.btn))` and `:where(.bottom-panel button:not(.btn):focus-visible)`, specificity 0,0,0, so any component class (`.tab`, `.tab-close`, `.icon-btn`, `.bottom-head .tab`) wins in any order; bare buttons in the panel chrome still get the reset and `.btn` keeps its look. Nothing else relied on the old specificity (shots below).
+
+Evidence: d03 Terminal tab underlined, Logs / Problems / Assistant padded, session tabs spaced with their close buttons; d04 same strip; d06 (Containers / inspector bottom) tab strip, Overview underline in the docked inspector, and Stop, Restart, Pause, Kill, Delete... still bordered and filled like buttons.
+
+### Tests
+
+- `projects_row_buttons_keep_their_whole_track_in_every_tier_down_to_its_minimum_width`, `projects_at_1440_show_the_branch_and_all_four_row_buttons`, `projects_table_wide_tracks_grow_with_the_text` (a small grid solver in the test resolves the tracks). Break-check: with the last track back to `1fr` they fail ("the buttons get 155 px of 228").
+- `shell_bottom_panel_reset_has_zero_specificity_so_tabs_keep_their_rules`, `shell_specificity_helper_reads_where_not_and_classes`. Break-check: with the old selector the first fails ("`.bottom-panel button:not(.btn)` must not outrank a component class").
+- `scripts/check.sh`: exit 0, 2745 tests run, 2745 passed, 70 skipped.
