@@ -1,0 +1,50 @@
+[
+  {
+    "id": 299,
+    "application_id": 11,
+    "deployment_uuid": "dep-uuid-00ff",
+    "commit": "c2a7e940123456789abcdef0123456789abcdef0",
+    "commit_message": "fix caddy upstream",
+    "status": "failed",
+    "is_webhook": true,
+    "is_api": false,
+    "force_rebuild": false,
+    "application_name": "landing",
+    "server_name": "hetzner-1",
+    "server_id": 1,
+    "created_at": "2026-10-24T14:24:00.000000Z",
+    "updated_at": "2026-10-24T14:24:54.000000Z"
+  },
+  {
+    "id": 294,
+    "application_id": 11,
+    "deployment_uuid": "dep-uuid-0105",
+    "commit": "91ab4e70123456789abcdef0123456789abcdef0",
+    "commit_message": "Add security headers",
+    "status": "finished",
+    "is_webhook": true,
+    "is_api": false,
+    "force_rebuild": false,
+    "application_name": "landing",
+    "server_name": "hetzner-1",
+    "server_id": 1,
+    "created_at": "2026-10-24T13:49:00.000000Z",
+    "updated_at": "2026-10-24T13:49:47.000000Z"
+  },
+  {
+    "id": 290,
+    "application_id": 11,
+    "deployment_uuid": "dep-uuid-0109",
+    "commit": "2b7f6d30123456789abcdef0123456789abcdef0",
+    "commit_message": "Update hero copy",
+    "status": "finished",
+    "is_webhook": true,
+    "is_api": false,
+    "force_rebuild": false,
+    "application_name": "landing",
+    "server_name": "hetzner-1",
+    "server_id": 1,
+    "created_at": "2026-10-24T13:21:00.000000Z",
+    "updated_at": "2026-10-24T13:21:44.000000Z"
+  }
+]

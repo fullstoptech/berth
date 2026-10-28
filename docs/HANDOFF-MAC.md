@@ -13,6 +13,26 @@ order below, then start **Phase 10** (Mac-only). One task per session and the
 CLAUDE.md rules still apply; its "Environment (this Mac…)" section is valid
 again.
 
+## Status after the Mac runs of 2026-10-28
+
+Second run (Claude Code harness, owner present; AD61-AD63): items 3 (GUI leg),
+4 and 6 passed, item 7 is a deviation (AD61), item 8 follows AD62, and nothing
+is owed; Phase 10 (item 9) starts with P10-T1. Five fix-forward commits
+(`f839d38`, `15991b9`, `dafcd5d`, `8dabf54`, `e051502`); `scripts/check.sh`
+exit 0, 2723 passed, 70 skipped (after `26d5ca6`). Evidence: "Mac acceptance, second run" in
+`docs/STATUS.md`. The paragraph below describes the first run.
+
+This file was corrected and its checklist re-marked after the first Mac
+acceptance run (branch `phase/9-acceptance`; evidence and AD54-AD60 in
+`docs/STATUS.md`, "Mac acceptance" under "What works"). Items 1, 2 and 5 are
+done, item 3 is half done (terminal legs only), items 4, 6, 7 and 8 are still
+owed, and Phase 10 (item 9) has not started. Three instructions in the first
+version were wrong and are fixed below: the bare git fixture does not exist
+until `scripts/fx-git.sh` runs; the copy under `$HOME` is needed because the
+test pushes a third commit into it, not because of where the repo lives; and
+`fake-coolify` needs cargo's `--` separator before `--version`. The three
+Colima-CLI tests live in `berth-engine`, and there are 28 scenes, not ~27.
+
 ## Read first, in this order
 
 1. `CLAUDE.md` — the rules, including the Mac environment section and the
@@ -52,6 +72,10 @@ again.
 
 ## Step 0 — sync the Mac with `origin`
 
+*Done 2026-10-28:* local `main` = `origin/main` = `0df42c9` (PR #3), nothing to
+fast-forward; `phase/9-plugins` is merged and not local, so acceptance ran on
+`phase/9-acceptance` off `main`. The text below is the original instruction.
+
 The Linux work is on GitHub (PRs #1 and #2, merged 2026-10-28). On the Mac:
 
 1. `git fetch origin`, then fast-forward each local branch:
@@ -81,12 +105,23 @@ The Linux work is on GitHub (PRs #1 and #2, merged 2026-10-28). On the Mac:
 
 ## Owed on the Mac, in order
 
+State legend: `[x]` done with evidence in STATUS, `[ ]` still owed. A line
+starting "State" says what the 2026-10-28 run actually did.
+
 Record each result in `docs/STATUS.md` (command and output pasted) as you go.
 Fix failures forward as `P8-HC: <fix>` or `P9-HC: <fix>` commits on
 `phase/9-plugins`, the P2-HC pattern; do not move or create tags until all of
 1–7 pass.
 
-- [ ] **1. Gate on the Mac.** `. "$HOME/.cargo/env"`, then
+- [x] **1. Gate on the Mac.** *State: `scripts/check.sh` exit 0, 2705 passed,
+      70 skipped (2704 / 70 at the first green; the first run failed on a
+      Mac-only timezone assertion, fixed as P9-HC). Full `scripts/it.sh`: 2768
+      passed, 6 skipped, run before the UI fixes and not repeated. Cleanup
+      checked: no fixture-labelled container left and `docker images | grep
+      berthfx` empty after `fx-down.sh` (two test-built `berthfx-gen-*` images
+      were removed by hand). The owner's `server-db-1`, `ferry-pg` and
+      `ferry-mysql` were not on the engine at session start, so none was
+      touched.* `. "$HOME/.cargo/env"`, then
       `scripts/check.sh` exits 0, then the full `scripts/it.sh` (macOS engine
       `colima:default`, fixtures up, retries `fx-up.sh` itself). Many
       berth-app live tests hard-code `colima:default`; they were written on
@@ -94,11 +129,15 @@ Fix failures forward as `P8-HC: <fix>` or `P9-HC: <fix>` commits on
       `scripts/fx-down.sh` and `docker ps --filter label=dev.berth.fixture=1`
       show nothing left; `docker images | grep berthfx` is empty; the owner's
       `server-db-1`, `ferry-pg`, `ferry-mysql` are untouched.
-- [ ] **2. The three Colima-CLI tests that fail on Linux only (AD44)** must
-      pass here: `colima_it_default_profile`,
+- [x] **2. The three Colima-CLI tests that fail on Linux only (AD44)** must
+      pass here (*State: all three pass 1/1; all three live in
+      `berth-engine`, not `berth-app`; AD44 is inert on the Mac: the profile
+      line printed `profile=default vm_type=Some(Vz) rosetta=Some(false)
+      socket=Some("/Users/emmanuel/.colima/default/docker.sock")`*): `colima_it_default_profile`,
       `compose_it_a_failed_build_leaves_no_stopped_container`,
       `compose_it_restart_stop_start_config_validate`. Run each by name,
-      for example `scripts/it.sh -p berth-engine colima_it_default_profile`.
+      all three with `-p berth-engine`, for example
+      `scripts/it.sh -p berth-engine colima_it_default_profile`.
       Also check that AD44's discovery fallback (commit `9871bc2`, in
       `crates/berth-engine/src/discovery.rs`: a *running* profile whose
       `colima status` gave no socket falls back to
@@ -108,7 +147,31 @@ Fix failures forward as `P8-HC: <fix>` or `P9-HC: <fix>` commits on
       `…/.colima/default/docker.sock`, as in the Phase 1 acceptance
       (`vm_type=Some(Vz) rosetta=Some(false)`). If `colima status` answers,
       the fallback never runs.
-- [ ] **3. Keychain and PLAN §9 row 8 by hand.**
+- [x] **3. Keychain and PLAN §9 row 8 by hand.** *State: PASS. First run, terminal legs: the
+      keyring test passed against the real login keychain and
+      `security find-generic-password -s dev.berth -a test/roundtrip` exits 44
+      afterwards; `scripts/fx-git.sh` built the bare repo (`d544a3d`, 2 commits)
+      and its working copy is at `/Users/emmanuel/berth-git-fixture/berthfx-app.git`;
+      `scripts/fx-up.sh --registry` is up on 127.0.0.1:56500 (401
+      unauthenticated, 200 authenticated; it also starts the base `berthfx`
+      stack). NOT done: every step that needs a click in the app (registry
+      login and the Keychain-versus-`berth.db` check, Build / Push / Export /
+      Import, From Git clone and deploy, third commit, Check, Pull and
+      redeploy, scratch project down): not done then, because the cmux Computer Use
+      onboarding was unfinished (AD60). Second run, GUI leg: PASS. Registry
+      login in the real app put `registry/127.0.0.1:56500/password` in the
+      Keychain (service `dev.berth`) and the password count is 0 in `berth.db`
+      (`.dump` and raw `strings`) and in the log. A bare `127.0.0.1:56500`
+      fails "offline" (the sheet assumes `https://`); use
+      `http://127.0.0.1:56500`. Build, Push (registry lists
+      `{"tags":["v1"]}`), Export (21.8 MB OCI tar) and Import (id
+      `98ba437bf8ea`) work after `f839d38`. From Git: clone, Start project
+      (healthy on :56091), third commit `42f6fe9`, Check "1 new commit", Pull
+      and redeploy work after `15991b9` and `8dabf54`; the scratch project
+      was taken down with `compose down -v`. The four native file panels were
+      used for real, which supersedes AD58 (7) ("panel opens" only). Each
+      rebuild of the unsigned dev binary re-prompts the Keychain; check again
+      on the signed build (P10-T5).*
       - `BERTH_KEYRING_TEST=1 cargo nextest run -p berth-store --run-ignored
         only keyring` passes, and
         `security find-generic-password -s dev.berth -a test/roundtrip`
@@ -122,11 +185,17 @@ Fix failures forward as `P8-HC: <fix>` or `P9-HC: <fix>` commits on
         <password>` prints 0). Then Build image (fixture
         `fixtures/folders/dockerfile-only`), tag, Push, Export, Import, as
         in `build_it`.
-      - Deploy `fixtures/git/berthfx-app.git`: run `scripts/fx-git.sh` if the
-        bare repo is missing, **copy it under `$HOME`** (the Colima VM shares
-        only the home directory; `/tmp` mounts empty, AD45 item 8), clone it
-        in New project → From Git (a `file://` or plain path), Deploy, push a
-        third commit to the copy from another clone, Check in the Git panel
+      - Deploy `fixtures/git/berthfx-app.git`: run `scripts/fx-git.sh` first;
+        the bare repo is gitignored and does **not** exist until it runs. Then
+        **copy it** (for example to `$HOME/berth-git-fixture/berthfx-app.git`)
+        and work only on the copy, because this step pushes a third commit
+        into the repository it clones from and that must not touch
+        `fixtures/git/`. (The copy is not needed to get under `$HOME`: this
+        checkout already lives under `/Users/emmanuel`. Scratch folders that
+        are mounted into containers must still be under `$HOME`, the Colima VM
+        shares only the home directory and `/tmp` mounts empty, AD45 item 8.)
+        Clone the copy in New project → From Git (a `file://` or plain path),
+        Deploy, push a third commit to the copy from another clone, Check in the Git panel
         shows one incoming commit, Pull and redeploy runs `pull --ff-only`
         then `up --build`. Bring the scratch project down with
         `compose down -v`; its name must start `berthfx-` (CLAUDE.md Docker
@@ -138,7 +207,21 @@ Fix failures forward as `P8-HC: <fix>` or `P9-HC: <fix>` commits on
       - Delete the Keychain items your run created; list what is there with
         `security find-generic-password -s dev.berth` and tell the owner what
         remains.
-- [ ] **4. PLAN §9 row 9 by hand.** In one terminal,
+- [x] **4. PLAN §9 row 9 by hand.** *State: PASS in the second run, against
+      `fake-coolify` (port 18080) with `BERTH_PLUGIN_DIRS=$PWD/plugins/coolify`
+      and `berth-coolify` symlinked next to the app binary. Enable sheet,
+      Configure, Keychain account `plugin/coolify/coolify/token` (0 in
+      `berth.db` and the log), Resources, Deploy confirm and toast, the
+      failed row's log and the newer-major banner all checked. Defects found
+      and fixed: the Deployments view listed running ones only and the
+      inspector table clipped the row actions (`dafcd5d`). The newer-major
+      banner appears only after a plugin restart (finding, TASKS Coolify
+      version item). Corrections to the expectations below: the fake serves 3
+      deployment rows, not 12 (12 come from the test fixtures), and its
+      failing log shows `npm ERR! Missing script: "build"`; the
+      `Caddyfile:14` line exists only in the wiremock scene data. Fix with
+      Claude Code is greyed because `landing` has no linked folder.* In one
+      terminal,
       `cargo run -p berth-coolify --example fake-coolify` (port 18080, any
       bearer token accepted, no header gives 401). In another, build the
       plugin next to the app (`cargo build -p berth-coolify`; the app puts
@@ -151,13 +234,22 @@ Fix failures forward as `P8-HC: <fix>` or `P9-HC: <fix>` commits on
       (account `plugin/coolify/coolify/token` by AD48's `plugin/<id>/<key>`;
       confirm with `security find-generic-password -s dev.berth`) and **not**
       in `berth.db`; the Coolify section renders resources and the
-      deployments table (12 rows); Deploy's confirm names the application,
+      deployments table (3 rows against the fake; 12 only in the test fixtures); Deploy's confirm names the application,
       server and branch (App landing, Server hetzner-1, Branch main); the
-      failed deployment's log opens scrolled to the failing step (the
-      `Caddyfile:14: unknown directive` line); `--version 5.0.0` on the fake
-      shows the newer-major warning banner. A real instance only if the
+      failed deployment's log opens scrolled to the failing step (against the fake, the
+      `npm ERR! Missing script: "build"` line; `Caddyfile:14` is scene data only); the fake with a newer major, started as
+      `cargo run -p berth-coolify --example fake-coolify -- --version 5.0.0`
+      (cargo needs the `--` before the example's own flags), shows the
+      newer-major warning banner. A real instance only if the
       owner supplies one (Q8).
-- [ ] **5. Every `shot pending Mac return`.** For each scene:
+- [x] **5. Every `shot pending Mac return`.** *State: DONE. All 28 scenes
+      captured and read (not ~27: P8-T3 6, P8-T4 6, P8-T5 7, P9-T2 7, P9-T5 2),
+      plus 17 extra risk shots and four of the Dockerfile editor typed into by
+      hand. 41 findings: 2 fixed by the shot worker, 13 already known, 19 not
+      defects, 7 ruled by the architect. Ten UI fixes were made and seven
+      deviations accepted (AD55-AD58; the deviations are named audit items
+      under TASKS P10-T3/P10-T4). Shots are in `target/shots/` (ignored by
+      git).* For each scene:
       `scripts/shot.sh <name> --scene "<frame>"`, read
       `target/shots/<name>.png` beside the frame PNG in
       `design/shots/figcraft/screens/` where one exists, list each difference
@@ -189,9 +281,10 @@ Fix failures forward as `P8-HC: <fix>` or `P9-HC: <fix>` commits on
         `New project / from git / invalid compose / 1440`,
         `New project / from git / wrong address / 1440`,
         `Project / git / 1440`, `Projects / git / 1440`. Risk: From Git is the
-        third stage of the 520 px New project sheet.
+        third stage of the New project sheet, 640 px wide (`new_project.css:9`;
+        the 520 px in earlier notes was wrong).
       - P9-T2 (`scenes/plugins.rs`; each `Dev / plugins / <variant>`, no
-        `/ 1440` suffix): `empty`, `installed`, `enable sheet`,
+        `/ 1440` suffix; seven scenes): `empty`, `installed`, `enable sheet`,
         `configure new`, `configure saved`, `enabled`, `error`. Risks: card
         header row (name, version, state, two buttons) at the narrowest
         window; the crash log capped at 160 px.
@@ -216,7 +309,19 @@ Fix failures forward as `P8-HC: <fix>` or `P9-HC: <fix>` commits on
         serving the current version" where the frame names c0ffee1; Fix with
         is greyed in a scene. These need data the Coolify API lacks; close
         them as deviations accepted by the architect or ask.
-- [ ] **6. Batched owner checks** (STATUS, fix-forward): real first-run
+- [x] **6. Batched owner checks** *(State: first run NOT RUN, by design; second
+      run PASS with the owner present: `BERTH_COLIMA_RESTART=1 BERTH_IT=1
+      cargo nextest run -p berth-app --run-ignored only
+      engines_it_restart_default_profile_owner_present_only` -> 1 passed
+      (37.886 s). Start default: from a stopped profile the app showed "Start
+      engine default", Colima Running after the click, `projects_live` 23.6 s
+      after launch (finding: no progress feedback for about 20 s). Cold start
+      after `sudo purge`, release binary, load 5.5: `app` 1005 ms,
+      `projects_snapshot` 1309 ms, `projects_live` 3465 ms; `projects_painted`
+      was not logged (finding). Menu-bar icon present, not hidden, a template
+      image; its colour follows the wallpaper on this macOS, so light/dark
+      appearance makes no difference. Only `berthfx` containers were on the
+      engine; the owner's three were absent and untouched.)* Original text: (STATUS, fix-forward): real first-run
       "Start default" (stops the running profile's containers; the owner must
       be watching); true cold start after `sudo purge`; the menu-bar icon in
       light and dark and whether macOS hides the extra; the Colima restart
@@ -227,17 +332,32 @@ Fix failures forward as `P8-HC: <fix>` or `P9-HC: <fix>` commits on
       The `~/Documents` permission prompt for ⌘O needs the bundled app and is
       a P10 check. (No VoiceOver check: the owner decided there is no voice
       in the app.)
-- [ ] **7. Performance spot-check.** `scripts/perf.sh --app` on a quiet
+- [x] **7. Performance spot-check.** *State: DEVIATION AD61. First run:
+      three attempts, no number. Second run: `scripts/perf.sh --app` with 51
+      fixture containers at 1-minute load 3.4 to 4.2 (a non-Berth
+      `figcraft-cli` at about 98 % CPU): stage 1 6/6 pass; cold start
+      636/619/616 ms (target < 600) FAIL; idle CPU 0.29 % ok; memory 107 MB
+      (app 36, GPU 16, WebContent 47, Networking 7) ok. Not valid evidence
+      either way; the retake (three runs, 1-minute load < 1.5, after
+      `e051502`) is in P10-T2's done-when and the 600 ms budget blocks
+      P10-T5.*
+      `scripts/perf.sh --app` on a quiet
       machine, fixtures per its header; report ranges, not one number. The
       last Mac numbers (Phase 6): cold start to a populated Projects table
       580 ms median (budget 600), idle CPU 0.10 %, footprint 97 MB.
-- [ ] **8. Tags, locally.** Only after 1–7 pass:
-      `git tag v0.8 6b6152d` and `git tag v0.9 9de9ace` (the PR merge
-      commits; check `git rev-parse v0.7` is the Phase 7 merge `35257b9` and
-      follow the same pattern). If acceptance needed fix commits and you want
-      the tags to include them, ask the owner where they point. Never push a
-      tag.
-- [ ] **9. Then Phase 10** (below).
+      The retake now belongs to P10-T2.
+- [ ] **8. Tags, locally.** *State: decided (AD62); still to be created by the
+      architect at the merge (this run did not tag); `git tag --list 'v*'` listed `v0.2` to
+      `v0.7` when the run ended.* `v0.8` at `6b6152d` (the Phase 8 merge).
+      `v0.9` at the new `--no-ff` merge of `phase/9-acceptance` into `main`
+      ("Merge phase/9-acceptance: Mac acceptance of Phases 8 and 9 (v0.9)"),
+      not at `9de9ace`: every earlier tag sits on a phase merge that already
+      held its acceptance fixes and `9de9ace` never passed acceptance, so the
+      P8-HC fixes ship inside `v0.9`. Check that `git rev-parse v0.7` is the
+      Phase 7 merge `35257b9` and follow the same pattern. Never push a tag.
+- [ ] **9. Then Phase 10** (below). *State: not started. Next task id
+      P10-T1 on `phase/10-ship`, cut from the new `main` after the merge and
+      the tags of item 8; nothing else is owed.*
 
 ## Decisions that bind
 
@@ -272,6 +392,13 @@ Numbered ADn in `docs/STATUS.md` "Decisions made"; PLAN owns D1–D84.
   on existing fields (an `open`-only action is opened by Berth; a
   `repository` cell links a local project by git remote; a `Warning:` confirm
   line is the amber box); Fix with on a plugin log never attaches `.env`.
+- **AD54-AD60** (Mac acceptance, 2026-10-28): branch `phase/9-acceptance`
+  and the P9-HC timezone test fix (a rendered-time test never hard-codes a
+  wall clock); the ten UI fixes; the seven accepted deviations, two of them
+  shell-wide and deferred to P10-T3/T4 (Inspector toggle on every screen with
+  an inspector; `.bottom-panel button` flattening); `secret-scan.sh` stays
+  limited to shipped code; no unattended pixel-clicking, tags wait for items
+  1-7.
 - **Bundling (Phase 10):** `berth-coolify` must sit next to the app binary
   in the bundle (`Berth.app/Contents/MacOS/{berth, berth-coolify,
   berth-plugin.json}`; `scripts/release.sh` copies it). `BERTH_PLUGIN_DIRS`
@@ -285,8 +412,7 @@ Delete-template confirm onto overlays (AD46); a palette "Go to Plugins"
 action and Activity entries for plugin enable/disable (AD50); a protocol
 filter facet for the "Server: hetzner-1" chip, `Selection::Plugin` for
 docking plugin panes in the inspector, plugin Activity entries (AD51/AD52).
-`docs/QUESTIONS.md` still lists Q9 as open although STATUS records it settled
-before Phase 2 Wave A: the architect should move it to Answered.
+Q9 was moved to Answered in `docs/QUESTIONS.md` on 2026-10-28 (pick (a)).
 
 ## Constraints (unchanged, from CLAUDE.md)
 

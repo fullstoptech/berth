@@ -464,6 +464,63 @@ async fn images_store_pull_runs_to_done_adds_the_image_and_records_the_action() 
     );
 }
 
+thread_local! {
+    static UNMOUNT: std::cell::RefCell<Option<(ImageStore, Signal<bool>)>> =
+        const { std::cell::RefCell::new(None) };
+    static UNMOUNT_CALLER: std::cell::Cell<Option<ScopeId>> = const { std::cell::Cell::new(None) };
+}
+
+/// The App root's part, with a child that can be removed.
+#[component]
+fn UnmountHarness() -> Element {
+    let _state = use_app_state();
+    let store = ImageStore::new();
+    let shown = use_signal(|| true);
+    use_hook(move || UNMOUNT.with(|slot| *slot.borrow_mut() = Some((store, shown))));
+    rsx! {
+        div {}
+        if shown() {
+            UnmountCaller {}
+        }
+    }
+}
+
+#[component]
+fn UnmountCaller() -> Element {
+    use_hook(|| UNMOUNT_CALLER.with(|slot| slot.set(Some(dioxus::core::current_scope_id()))));
+    rsx! { div {} }
+}
+
+/// P8-HC: a pull started from a child that unmounts at once still ends.
+#[tokio::test]
+async fn images_store_pull_started_from_a_child_that_unmounts_still_reaches_done() {
+    let mut dom = VirtualDom::new(UnmountHarness);
+    let _ = dom.rebuild_to_vec();
+    let (store, mut shown) = UNMOUNT
+        .with(|slot| slot.borrow_mut().take())
+        .expect("harness captured the store");
+    let caller = UNMOUNT_CALLER
+        .with(std::cell::Cell::get)
+        .expect("caller mounted");
+    let (services, _engine) = services_with_mock();
+    let result = dom.in_scope(caller, || {
+        store.pull(&services, &default_engine(), "alpine:3", None)
+    });
+    assert_eq!(result, Ok(()));
+    dom.in_runtime(|| shown.set(false));
+    dom.render_immediate(&mut dioxus::core::NoOpMutations);
+    until(&mut dom, "the pull", |dom| {
+        dom.in_runtime(|| {
+            store
+                .pulls
+                .peek()
+                .iter()
+                .all(|p| p.phase == PullPhase::Done)
+        })
+    })
+    .await;
+}
+
 #[tokio::test]
 async fn images_store_pull_refuses_a_bad_reference_and_an_unconnected_engine() {
     let (dom, store) = captured();

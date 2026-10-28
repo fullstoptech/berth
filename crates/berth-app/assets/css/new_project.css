@@ -95,6 +95,17 @@
 .np-editor .berth-editor {
   height: 100%;
 }
+/* The focus ring goes round the whole box: the editor's own ring starts at
+   the text and skips the line-number gutter. */
+.np-editor:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.np-editor .cm-editor.cm-focused,
+.np-editor .cm-content:focus,
+.np-editor .cm-content:focus-visible {
+  outline: none;
+}
 .np-folder {
   display: flex;
   align-items: center;

@@ -62,6 +62,17 @@
 .bi-editor .berth-editor {
   height: 100%;
 }
+/* The focus ring goes round the whole box: the editor's own ring starts at
+   the text and skips the line-number gutter. */
+.bi-editor:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.bi-editor .cm-editor.cm-focused,
+.bi-editor .cm-content:focus,
+.bi-editor .cm-content:focus-visible {
+  outline: none;
+}
 .bi-two {
   display: grid;
   grid-template-columns: 1fr 1fr;

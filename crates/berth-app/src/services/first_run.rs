@@ -555,7 +555,7 @@ pub fn refresh(mut state: AppState, store: FirstRunStore, mock: bool, scan: Scan
         let harnesses = berth_assistant::detect(&search, &overrides).await;
         (found, harnesses)
     });
-    spawn(async move {
+    crate::services::actions::spawn_job(async move {
         let result = io.await;
         scanning.set(false);
         let Ok((found, harnesses)) = result else {

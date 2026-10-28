@@ -25,11 +25,18 @@ fn plugin_enable_lists_every_permission_and_the_hosts_it_names() {
         "Read these stored secrets: coolify/token",
         "Offer MCP servers to the Assistant",
         "Addresses it says it contacts",
+        ">Any address<",
         "does not block other addresses",
         "Cancel",
     ] {
         assert!(html.contains(needle), "missing {needle:?}: {html}");
     }
+}
+
+#[test]
+fn plugin_enable_never_shows_a_bare_star_as_an_address() {
+    let html = sheet("Dev / plugins / enable sheet");
+    assert!(!html.contains(">*<"), "{html}");
 }
 
 #[test]

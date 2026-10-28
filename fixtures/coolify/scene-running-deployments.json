@@ -1,0 +1,18 @@
+[
+  {
+    "id": 300,
+    "application_id": 13,
+    "deployment_uuid": "dep-uuid-0001",
+    "commit": "5e8d1f00123456789abcdef0123456789abcdef0",
+    "commit_message": "Add ingest health check",
+    "status": "in_progress",
+    "is_webhook": false,
+    "is_api": true,
+    "force_rebuild": false,
+    "application_name": "analytics-ingest",
+    "server_name": "hetzner-1",
+    "server_id": 1,
+    "created_at": "2026-10-24T14:31:00.000000Z",
+    "updated_at": "2026-10-24T14:31:38.000000Z"
+  }
+]

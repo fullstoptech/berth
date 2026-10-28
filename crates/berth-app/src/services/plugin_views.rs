@@ -683,7 +683,7 @@ impl PluginViewStore {
             );
             return;
         };
-        spawn(async move {
+        crate::services::actions::spawn_job(async move {
             let loaded = load_view(&service, &key.0, &key.1).await;
             views.write().insert(key, loaded);
         });
@@ -715,6 +715,7 @@ impl PluginViewStore {
         };
         let follow = follow_log(service, plugin, stream);
         let mut rx = follow.state.clone();
+        // Scoped on purpose: it follows a stream the `LogFollow` guard owns and ends with it.
         spawn(async move {
             while rx.changed().await.is_ok() {
                 let state = rx.borrow_and_update().clone();
@@ -742,7 +743,7 @@ impl PluginViewStore {
             return;
         };
         let store = *self;
-        spawn(async move {
+        crate::services::actions::spawn_job(async move {
             let plugin = pending.plugin.clone();
             match invoke_action(&service, &plugin, &pending.action, &chosen).await {
                 Ok(result) => {
@@ -818,6 +819,7 @@ pub fn run_command(state: &mut AppState, command: &PluginCommand) {
 /// Reload a plugin's views when it says `view/invalidate`. One task per
 /// running plugin, ending with the scope that started it.
 pub fn watch_invalidations(store: PluginViewStore, service: PluginsService, plugin: String) {
+    // Scoped on purpose: one task per mounted view, ending with it.
     spawn(async move {
         let Some(mut notes) = service.notifications(&plugin) else {
             return;

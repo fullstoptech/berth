@@ -51,7 +51,7 @@ fn status_badge(status: Option<&str>) -> Cell {
     } else if status.contains("fail") || status == "exited" || status == "cancelled" {
         Tone::Danger
     } else if status == "in_progress" || status == "queued" {
-        Tone::Info
+        Tone::Warning
     } else {
         Tone::Neutral
     };
@@ -531,7 +531,7 @@ mod tests {
             panic!("status is a badge");
         };
         assert_eq!(badge.text, "In progress");
-        assert_eq!(badge.tone, Tone::Info);
+        assert_eq!(badge.tone, Tone::Warning);
         // The server stays on the row for the pane's header, not as a column.
         assert_eq!(rows[0].cells["server"], Cell::Text("hetzner-1".to_owned()));
     }

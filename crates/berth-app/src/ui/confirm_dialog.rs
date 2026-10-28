@@ -109,7 +109,11 @@ pub fn ConfirmDialog(
                     for (index, (label, value)) in rows.iter().enumerate() {
                         div { key: "{index}", class: "confirm-row",
                             dt { class: "confirm-row-label", "{label}" }
-                            dd { class: "confirm-row-text", "{value}" }
+                            // A commit is a hash: monospace, as the plugin screens draw one.
+                            dd {
+                                class: if label == "Commit" { "confirm-row-text pv-mono" } else { "confirm-row-text" },
+                                "{value}"
+                            }
                         }
                     }
                 }

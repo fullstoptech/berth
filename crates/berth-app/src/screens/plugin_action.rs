@@ -163,8 +163,8 @@ pub fn FixWithHarness(
                 r#type: "button",
                 "aria-label": "Choose a tool",
                 "aria-expanded": "{menu}",
-                disabled: available.len() < 2,
-                "data-tooltip": if available.len() < 2 { Some("Only one assistant is installed".to_string()) } else { None },
+                disabled: reason.is_some() || available.len() < 2,
+                "data-tooltip": if reason.is_some() { reason.clone() } else if available.len() < 2 { Some("Only one assistant is installed".to_string()) } else { None },
                 onclick: move |e| {
                     e.stop_propagation();
                     let open = *menu.peek();

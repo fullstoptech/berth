@@ -758,6 +758,11 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                             {plural(model.problem_count, "problem", "problems")}
                         }
                     }
+                    if let Some(git) = git.as_ref().filter(|g| !g.incoming.is_empty()) {
+                        span { class: "project-new-commits",
+                            {crate::services::git_deploy::new_commits_label(git.incoming.len())}
+                        }
+                    }
                     if let Some(badge) = plugin_badge {
                         span {
                             class: "project-plugin-badge status-badge {crate::screens::plugin_view_model::tone_class(&badge.tone)}",
@@ -783,11 +788,6 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                     }
                     if let Some(commit) = git.as_ref().and_then(|g| g.project.commit.clone()) {
                         span { class: "project-commit", title: "Deployed commit", "{commit}" }
-                    }
-                    if let Some(git) = git.as_ref().filter(|g| !g.incoming.is_empty()) {
-                        span { class: "project-new-commits",
-                            {crate::services::git_deploy::new_commits_label(git.incoming.len())}
-                        }
                     }
                 }
                 div { class: "project-cell project-cell-services", role: "cell",

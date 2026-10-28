@@ -48,6 +48,12 @@ pub fn PluginEnableSheet(id: String) -> Element {
     let version = entry.plugin.manifest.version.clone();
     let lines = permission_lines(&entry);
     let hosts = entry.network_hosts();
+    // A bare `*` is the manifest's way to say any address; spell it out.
+    let shown_hosts = hosts
+        .iter()
+        .map(|h| if h == "*" { "Any address" } else { h.as_str() })
+        .collect::<Vec<_>>()
+        .join(", ");
     let secrets = entry.secret_fields();
     let needs_setup = !entry.missing_required().is_empty();
     let aria = format!("Enable {name}");
@@ -97,7 +103,7 @@ pub fn PluginEnableSheet(id: String) -> Element {
             if !hosts.is_empty() {
                 div { class: "pl-hosts",
                     span { class: "pl-label", "Addresses it says it contacts" }
-                    span { class: "pl-hosts-list", "{hosts.join(\", \")}" }
+                    span { class: "pl-hosts-list", "{shown_hosts}" }
                     span { class: "pl-label",
                         "Berth shows these but does not block other addresses in this version."
                     }

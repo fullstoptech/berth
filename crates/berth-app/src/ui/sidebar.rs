@@ -123,6 +123,26 @@ fn SectionItem(
     }
 }
 
+/// The action the Settings item runs: the one ⌘, and the palette run, so the
+/// sidebar adds no navigation logic of its own.
+pub const SETTINGS_ACTION: &str = "global.settings";
+
+/// The last item of the app group: Settings, for people who do not know ⌘,
+/// or the app menu.
+#[component]
+fn SettingsItem() -> Element {
+    let mut state = use_context::<AppState>();
+    let selected = *state.section.read() == Section::Settings;
+    rsx! {
+        SidebarItem {
+            label: "Settings".to_string(),
+            icon: "settings",
+            selected,
+            onclick: move |_| crate::keys::dispatch(&mut state, SETTINGS_ACTION),
+        }
+    }
+}
+
 /// The groups plugins contribute (P9-T5): a collapsible label and one item
 /// per view. Drawn only for enabled plugins; empty without the plugin views.
 #[component]
@@ -274,6 +294,7 @@ pub fn Sidebar() -> Element {
             SectionItem { icon: "cloud", label: "Registries", target: Section::Registries }
             SectionItem { icon: "activity", label: "Activity", target: Section::Activity }
             SectionItem { icon: "zap", label: "Plugins", target: Section::Plugins }
+            SettingsItem {}
             PluginGroups {}
         }
     }

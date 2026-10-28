@@ -170,6 +170,16 @@ fn Harness(content: View, log: Option<LogState>) -> Element {
     }
 }
 
+/// The wall clock a UTC instant shows in this machine's zone: the log rows
+/// print local time, so the expected text depends on where the tests run.
+fn local_clock(utc: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(utc)
+        .expect("a valid instant")
+        .with_timezone(&chrono::Local)
+        .format("%H:%M:%S")
+        .to_string()
+}
+
 fn draw(content: View, log: Option<LogState>) -> String {
     let mut dom = VirtualDom::new_with_props(Harness, HarnessProps { content, log });
     let _ = dom.rebuild_to_vec();
@@ -210,7 +220,13 @@ fn plugin_view_frame_deployments_lists_the_twelve_rows_in_the_section() {
     assert_eq!(count(&html, "Cancel deployment"), 1);
     // Ten finished, one in progress, one failed (its badge is also in the pane).
     assert_eq!(count(&html, "status-badge tone-success"), 10);
-    assert_eq!(count(&html, "status-badge tone-info"), 1);
+    assert_eq!(count(&html, "status-badge tone-warning"), 1);
+    assert_eq!(count(&html, "status-badge tone-info"), 0);
+    assert_eq!(
+        count(&html, "status-dot-ring"),
+        1,
+        "in progress draws the ring"
+    );
     assert_eq!(count(&html, "status-badge tone-danger"), 2);
 }
 
@@ -225,7 +241,7 @@ fn plugin_view_frame_deployments_selects_the_failed_row_and_opens_its_log_pane()
     );
     assert!(pane.contains("status-badge tone-danger"), "{pane}");
     assert!(
-        pane.contains("c2a7e94 \u{b7} fix caddy upstream \u{b7} webhook \u{b7} hetzner-1"),
+        pane.contains("c2a7e94 \u{b7} fix caddy upstream \u{b7} hetzner-1 \u{b7} webhook"),
         "{pane}"
     );
     // The recorded log, 10 lines, three of them the failure.
@@ -266,9 +282,14 @@ fn plugin_view_frame_confirm_reads_like_the_frame() {
         ("Branch", "main"),
         ("Commit", "c2a7e94 \u{b7} fix caddy upstream"),
     ] {
+        let class = if label == "Commit" {
+            "confirm-row-text pv-mono"
+        } else {
+            "confirm-row-text"
+        };
         assert!(
             dialog.contains(&format!(
-                "confirm-row-label\">{label}</dt><dd class=\"confirm-row-text\">{value}<"
+                "confirm-row-label\">{label}</dt><dd class=\"{class}\">{value}<"
             )),
             "{label} {value}: {dialog}"
         );
@@ -301,6 +322,11 @@ fn plugin_view_frame_confirm_reads_like_the_frame() {
         );
     }
     assert!(dialog.contains("pv-fix-chevron"), "{dialog}");
+    // The scene has no assistant service, so the label half is disabled and
+    // the chevron half must read disabled with it.
+    let chevron = &dialog[dialog.find("pv-fix-chevron").expect("the chevron")..];
+    let chevron = &chevron[..chevron.find("</button>").expect("it closes")];
+    assert!(chevron.contains("disabled"), "{chevron}");
     // It is an overlay now: the scrim of the stack holds it, and the screen
     // under it is still the Deployments table.
     assert!(html.contains("overlay-scrim"), "{html}");
@@ -358,8 +384,12 @@ fn plugin_view_frame_deployments_pane_links_the_folder_and_offers_fix_and_redepl
         pane.contains("<h3 class=\"pv-log-title\">Deployment log</h3>"),
         "{pane}"
     );
-    assert!(pane.contains(">14:30:41</span>"), "no milliseconds: {pane}");
-    assert!(!pane.contains(">14:30:41."), "{pane}");
+    let first = local_clock("2026-10-24T14:30:41Z");
+    assert!(
+        pane.contains(&format!(">{first}</span>")),
+        "no milliseconds: {pane}"
+    );
+    assert!(!pane.contains(&format!(">{first}.")), "{pane}");
 }
 
 #[test]
@@ -415,6 +445,69 @@ fn plugin_view_table_draws_columns_cells_row_buttons_and_the_count() {
         "{html}"
     );
     assert!(!html.contains("btn-danger"), "{html}");
+}
+
+/// `content` drawn as the inspector draws a tab's table (`in_pane`).
+#[component]
+fn PaneHarness(content: View) -> Element {
+    let state = use_app_state();
+    use_context_provider(|| state);
+    let _store = crate::services::plugin_views::provide_plugin_view_store();
+    rsx! {
+        ViewContent { plugin: "demo".to_string(), content, in_pane: true }
+    }
+}
+
+#[test]
+fn plugin_view_a_table_in_the_inspector_stacks_each_row_with_its_buttons() {
+    let View::Table {
+        title,
+        columns,
+        mut rows,
+        empty,
+        groups,
+    } = table()
+    else {
+        unreachable!()
+    };
+    rows[1].actions = vec![
+        action("deploy", "Redeploy\u{2026}", false, None),
+        action("logs", "Logs", false, None),
+    ];
+    rows[1].open = Some("deployment/u-2/logs".to_string());
+    let content = View::Table {
+        title,
+        columns,
+        rows,
+        empty,
+        groups,
+    };
+    let mut dom = VirtualDom::new_with_props(PaneHarness, PaneHarnessProps { content });
+    let _ = dom.rebuild_to_vec();
+    let html = strip_styles(dioxus_ssr::render(&dom));
+    // No grid whose columns run past the pane: stacked rows instead.
+    assert!(!html.contains("pv-grid"), "{html}");
+    assert!(!html.contains("columnheader"), "{html}");
+    assert_eq!(
+        count(&html, "class=\"pv-card\"") + count(&html, "class=\"pv-card pv-card-opens\""),
+        2,
+        "{html}"
+    );
+    // Every row's buttons are drawn, inside the row. A card is not a `.pv-row`,
+    // the only place the stylesheet hides a plain button until hover.
+    for label in ["Stop", "Redeploy\u{2026}", "Logs"] {
+        assert!(
+            html.contains(&format!("<span class=\"btn-label\">{label}</span>")),
+            "{label}: {html}"
+        );
+    }
+    assert!(!html.contains("class=\"pv-row\""), "{html}");
+    // The title, the status and the muted facts of the row.
+    assert!(html.contains("title=\"beta\">beta</span>"), "{html}");
+    assert!(html.contains("status-badge tone-danger"), "{html}");
+    assert!(html.contains("c2a7e94"), "{html}");
+    // Only a row that opens something is clickable.
+    assert_eq!(count(&html, "pv-card-opens"), 1, "{html}");
 }
 
 #[test]
@@ -486,7 +579,8 @@ fn plugin_view_log_stream_draws_rows_and_marks_the_failure() {
         !html.contains("pv-log-status"),
         "a finished log says nothing about itself: {html}"
     );
-    assert!(html.contains(">14:30:41</span>"), "{html}");
+    let first = local_clock("2026-10-24T14:30:41Z");
+    assert!(html.contains(&format!(">{first}</span>")), "{html}");
     assert!(html.contains("id=\"pv-log-demo-stream\""), "{html}");
 }
 

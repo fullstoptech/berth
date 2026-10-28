@@ -130,6 +130,14 @@ pub fn tone_class(tone: &Tone) -> &'static str {
     }
 }
 
+/// A badge for work that is still going (Coolify's "In progress", "Queued"):
+/// the app draws it like a Starting container, an amber dot as a two-arc ring.
+#[must_use]
+pub fn badge_in_flight(badge: &Badge) -> bool {
+    let text = badge.text.to_lowercase();
+    badge.tone == Tone::Warning && (text.starts_with("in progress") || text.starts_with("queued"))
+}
+
 /// The banner tone of a message view.
 #[must_use]
 pub fn banner_tone(tone: &Tone) -> BannerTone {
@@ -240,7 +248,9 @@ pub fn row_summary(columns: &[Column], row: &Row) -> RowSummary {
         }
     }
     // Cells that are not columns are the plugin's extra facts about the row
-    // (a deployment's server): they close the line.
+    // (a deployment's server). They come before the last column's text (a
+    // deployment's trigger), which closes the line: "... hetzner-1 · webhook".
+    let closing = parts.pop();
     for (key, cell) in &row.cells {
         if key != "repository"
             && columns.iter().all(|c| c.key != *key)
@@ -252,6 +262,7 @@ pub fn row_summary(columns: &[Column], row: &Row) -> RowSummary {
             }
         }
     }
+    parts.extend(closing);
     RowSummary {
         title,
         badge,

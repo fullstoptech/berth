@@ -168,7 +168,7 @@ pub fn save(
 ) {
     let store = services.store.clone();
     let mut state = *state;
-    dioxus::prelude::spawn(async move {
+    crate::services::actions::spawn_job(async move {
         let result =
             crate::services::plans::blocking(move || save_from_service(&store, &project, &service))
                 .await

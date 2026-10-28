@@ -607,3 +607,93 @@ async fn git_deploy_redeploy_runs_up_with_a_build_on_the_projects_engine() {
     );
     assert_eq!(redeploy_command(), ran[0].1);
 }
+
+// --- Work that outlives the component that started it ---
+
+type UnmountSlot = (AppState, GitDeployView, Signal<bool>);
+
+thread_local! {
+    static UNMOUNT: std::cell::RefCell<Option<UnmountSlot>> =
+        const { std::cell::RefCell::new(None) };
+    static UNMOUNT_CALLER: std::cell::Cell<Option<ScopeId>> = const { std::cell::Cell::new(None) };
+}
+
+/// The App root's part (the state and the Git view) with a child that can be removed.
+#[component]
+fn UnmountHarness() -> Element {
+    let state = use_app_state();
+    let view = GitDeployView {
+        cloning: use_signal(|| CloneState::Idle),
+        projects: use_signal(BTreeMap::new),
+    };
+    let shown = use_signal(|| true);
+    use_hook(move || UNMOUNT.with(|slot| *slot.borrow_mut() = Some((state, view, shown))));
+    rsx! {
+        div {}
+        if shown() {
+            UnmountCaller {}
+        }
+    }
+}
+
+#[component]
+fn UnmountCaller() -> Element {
+    use_hook(|| UNMOUNT_CALLER.with(|slot| slot.set(Some(dioxus::core::current_scope_id()))));
+    rsx! { div {} }
+}
+
+/// P8-HC: the From Git sheet starts the clone from its form and swaps that form out at once;
+/// the clone must still land its result.
+#[tokio::test]
+async fn git_deploy_clone_started_from_a_child_that_unmounts_still_lands() {
+    let mut dom = VirtualDom::new(UnmountHarness);
+    let _ = dom.rebuild_to_vec();
+    let (state, view, mut shown) = UNMOUNT
+        .with(|slot| slot.borrow_mut().take())
+        .expect("harness");
+    let caller = UNMOUNT_CALLER
+        .with(std::cell::Cell::get)
+        .expect("caller mounted");
+    let (actions, _finished) = ActionsService::new(
+        crate::services::engines::client_map(),
+        store(),
+        Arc::new(berth_engine::MockCompose::bundled()) as Arc<dyn berth_engine::ComposeRunner>,
+        Arc::new(berth_engine::MockColima::bundled()),
+        token(),
+    );
+    let handle = GitDeployHandle::new(
+        GitDeployService::new(
+            store(),
+            FakeGit::with_commits(&[("b09ecba", "initial commit")]),
+        ),
+        actions,
+        token(),
+        None,
+    );
+    let parent = tempfile::tempdir().expect("tempdir");
+    dom.in_scope(caller, || {
+        handle.clone_project(view, state, request(parent.path()));
+    });
+    assert!(matches!(
+        dom.in_runtime(|| view.cloning.peek().clone()),
+        CloneState::Cloning { .. }
+    ));
+    dom.in_runtime(|| shown.set(false));
+    dom.render_immediate(&mut dioxus::core::NoOpMutations);
+
+    let waited = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let landed = dom.in_runtime(|| {
+                !matches!(*view.cloning.peek(), CloneState::Cloning { .. })
+                    && !view.projects.peek().is_empty()
+            });
+            if landed {
+                return;
+            }
+            let _ = tokio::time::timeout(Duration::from_millis(50), dom.wait_for_work()).await;
+            dom.render_immediate(&mut dioxus::core::NoOpMutations);
+        }
+    })
+    .await;
+    assert!(waited.is_ok(), "the clone's result did not land");
+}

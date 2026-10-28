@@ -162,7 +162,7 @@ impl DashboardStore {
             let _ = tx.send(crate::services::colima::version(mock).await);
         });
         let mut slot = self.colima_version;
-        spawn(async move {
+        crate::services::actions::spawn_job(async move {
             if let Ok(version) = rx.await {
                 slot.set(version);
             }
