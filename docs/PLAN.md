@@ -1388,6 +1388,8 @@ impl PluginHandle {
     pub fn notifications(&self) -> tokio::sync::broadcast::Receiver<berth_plugin_protocol::Notification>;
     pub async fn stop(self);
 }
+// AD53 (2026-10-28): additive host surface beyond the above, as implemented: PluginHandle::{start_with_backoff, state, is_running, restarts,
+// init_result, stderr_tail}, Backoff (1 s, 5 s, 30 s then Error), load_manifest, validate_manifest, MANIFEST_FILE and the dispatch method constants.
 ```
 
 ### 6.11 App (`berth-app`)
