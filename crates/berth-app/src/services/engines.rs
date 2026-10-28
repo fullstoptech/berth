@@ -84,6 +84,56 @@ pub enum EngineUpdate {
     /// The set of pinned folders changed (a folder was opened or generated): every engine's
     /// projects are grouped again with these pins. Sent by [`EngineLink::pins_changed`].
     PinsChanged(Vec<berth_core::PinnedFolder>),
+    /// The Compose file found at the root of each pinned folder, read off the UI path. Sent
+    /// after [`EngineUpdate::PinsChanged`], so a pinned folder that nothing runs from still
+    /// has a file to start.
+    PinFilesDetected(PinFiles),
+}
+
+/// A pinned folder to the Compose files that start it.
+pub type PinFiles = std::collections::BTreeMap<std::path::PathBuf, Vec<std::path::PathBuf>>;
+
+/// Compose's own order: the first of these a folder holds is the one `docker compose` runs.
+const COMPOSE_NAMES: [&str; 4] = [
+    "compose.yaml",
+    "compose.yml",
+    "docker-compose.yaml",
+    "docker-compose.yml",
+];
+
+/// The Compose file at the root of `folder`, by absolute path like the config-files label.
+async fn root_compose_files(folder: &std::path::Path) -> Vec<std::path::PathBuf> {
+    for name in COMPOSE_NAMES {
+        let path = folder.join(name);
+        if tokio::fs::metadata(&path).await.is_ok_and(|m| m.is_file()) {
+            return vec![path];
+        }
+    }
+    Vec::new()
+}
+
+/// Look for a Compose file in each folder. A folder with none is left out.
+async fn detect_pin_files(folders: Vec<std::path::PathBuf>) -> PinFiles {
+    let mut found = PinFiles::new();
+    for folder in folders {
+        let files = root_compose_files(&folder).await;
+        if !files.is_empty() {
+            found.insert(folder, files);
+        }
+    }
+    found
+}
+
+/// Give every project that knows no Compose file and runs nothing the one found for its folder.
+fn fill_pin_files(projects: &mut [berth_core::Project], files: &PinFiles) {
+    for project in projects {
+        if !project.compose_files.is_empty() || !project.services.is_empty() {
+            continue;
+        }
+        if let Some(found) = project.folder.as_ref().and_then(|f| files.get(f)) {
+            project.compose_files.clone_from(found);
+        }
+    }
 }
 
 fn is_remote(kind: &berth_core::EngineKind) -> bool {
@@ -96,7 +146,15 @@ async fn full_refresh(
     remote: bool,
 ) -> Result<EngineUpdate, berth_engine::EngineError> {
     let containers = client.containers().await?;
-    let projects = berth_engine::projects::group(client.id(), &containers, pins, remote);
+    let mut projects = berth_engine::projects::group(client.id(), &containers, pins, remote);
+    // A pinned folder nothing runs from has no container to name its Compose file.
+    let blank: Vec<std::path::PathBuf> = projects
+        .iter()
+        .filter(|p| p.compose_files.is_empty() && p.services.is_empty())
+        .filter_map(|p| p.folder.clone())
+        .collect();
+    let found = detect_pin_files(blank).await;
+    fill_pin_files(&mut projects, &found);
     let images = client.images().await.unwrap_or_else(|err| {
         tracing::warn!(%err, engine = %client.id().0, "images list failed");
         Vec::new()
@@ -521,6 +579,10 @@ pub struct Applier {
     /// A [`EngineUpdate::PinsChanged`] has arrived: the pins here are newer than the ones the
     /// engine loops hold, so a full refresh regroups with these.
     pins_updated: bool,
+    /// The Compose files each pinned folder was last known to start with: the config-files label
+    /// of its running containers, or the file found at its root. Outlives the containers, so a
+    /// project that was brought down can be started again.
+    pin_files: PinFiles,
     images: std::collections::BTreeMap<berth_core::EngineId, Vec<berth_core::Image>>,
     volumes: std::collections::BTreeMap<berth_core::EngineId, Vec<berth_core::Volume>>,
     networks: std::collections::BTreeMap<berth_core::EngineId, Vec<berth_core::Network>>,
@@ -530,7 +592,7 @@ impl Applier {
     /// Group `engine`'s containers into projects with the pins known now and put them in the
     /// signal in place of that engine's old projects. Returns the engine's containers.
     fn regroup(
-        &self,
+        &mut self,
         state: &mut AppState,
         engine: &berth_core::EngineId,
     ) -> Vec<berth_core::Container> {
@@ -547,15 +609,33 @@ impl Applier {
             .iter()
             .find(|e| e.id == *engine)
             .is_some_and(|e| is_remote(&e.kind));
-        let projects = berth_engine::projects::group(engine, &mine, &self.pins, remote);
+        let mut projects = berth_engine::projects::group(engine, &mine, &self.pins, remote);
+        self.remember_and_fill(&mut projects);
         replace_engine_slice(&mut state.projects, engine, projects);
         mine
+    }
+
+    /// Remember the Compose files of the pinned projects that have them, and give them back to
+    /// the pinned projects that lost them when their containers went away.
+    fn remember_and_fill(&mut self, projects: &mut [berth_core::Project]) {
+        for project in projects.iter() {
+            if let (true, Some(folder), false) = (
+                project.pinned,
+                &project.folder,
+                project.compose_files.is_empty(),
+            ) {
+                self.pin_files
+                    .insert(folder.clone(), project.compose_files.clone());
+            }
+        }
+        fill_pin_files(projects, &self.pin_files);
     }
 
     pub fn new(pins: Vec<berth_core::PinnedFolder>) -> Self {
         Self {
             pins,
             pins_updated: false,
+            pin_files: PinFiles::new(),
             images: std::collections::BTreeMap::new(),
             volumes: std::collections::BTreeMap::new(),
             networks: std::collections::BTreeMap::new(),
@@ -604,7 +684,7 @@ impl Applier {
                 engine,
                 info,
                 containers,
-                projects,
+                mut projects,
                 images,
                 volumes,
                 networks,
@@ -626,10 +706,21 @@ impl Applier {
                 self.volumes.insert(engine.clone(), volumes);
                 self.networks.insert(engine.clone(), networks);
                 replace_engine_slice(&mut state.containers, &engine, containers);
+                // The refresh just looked at these folders: one with no file and nothing
+                // running has none, whatever was remembered.
+                for project in &projects {
+                    if let (true, Some(folder)) = (
+                        project.compose_files.is_empty() && project.services.is_empty(),
+                        &project.folder,
+                    ) {
+                        self.pin_files.remove(folder);
+                    }
+                }
                 if self.pins_updated {
                     // The loop that built `projects` may hold pins from before one was added.
                     self.regroup(state, &engine);
                 } else {
+                    self.remember_and_fill(&mut projects);
                     replace_engine_slice(&mut state.projects, &engine, projects);
                 }
                 self.write_flat_lists(state);
@@ -671,6 +762,14 @@ impl Applier {
             EngineUpdate::PinsChanged(pins) => {
                 self.pins = pins;
                 self.pins_updated = true;
+                let engines: Vec<berth_core::EngineId> =
+                    state.engines.peek().iter().map(|e| e.id.clone()).collect();
+                for engine in engines {
+                    self.regroup(state, &engine);
+                }
+            }
+            EngineUpdate::PinFilesDetected(found) => {
+                self.pin_files.extend(found);
                 let engines: Vec<berth_core::EngineId> =
                     state.engines.peek().iter().map(|e| e.id.clone()).collect();
                 for engine in engines {
@@ -934,7 +1033,10 @@ impl EngineLink {
         let inner = Arc::clone(&self.inner);
         spawn_io(async move {
             let pins = inner.current_pins();
-            let _ = inner.tx.send(EngineUpdate::PinsChanged(pins)).await;
+            let found = detect_pin_files(pins.iter().map(|p| p.folder.clone()).collect()).await;
+            if inner.tx.send(EngineUpdate::PinsChanged(pins)).await.is_ok() {
+                let _ = inner.tx.send(EngineUpdate::PinFilesDetected(found)).await;
+            }
         });
     }
 }
@@ -1904,6 +2006,150 @@ mod tests {
         // A reconnect refresh built by a loop that still holds the old pins keeps it.
         apply(&dom, &mut applier, &mut state, empty_engine_data(engine));
         assert_eq!(projects_at(&dom, &state, &folder).len(), 1);
+    }
+
+    /// A pin for `folder` on the default engine.
+    fn pin_of(folder: &std::path::Path) -> berth_core::PinnedFolder {
+        berth_core::PinnedFolder {
+            folder: folder.to_path_buf(),
+            engine: default_engine_id(),
+            added: chrono::Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn pins_a_folder_with_a_compose_file_and_no_containers_can_be_started() {
+        let (dom, mut state) = harness();
+        let engine = default_engine_id();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let folder = dir.path().to_path_buf();
+        std::fs::write(folder.join("compose.yaml"), "services: {}\n").expect("compose");
+        let store = Arc::new(berth_store::Store::open_in_memory().expect("store"));
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        let link = EngineLink::new(
+            client_map(),
+            Arc::clone(&store),
+            Vec::new(),
+            tx,
+            CancellationToken::new(),
+            false,
+        );
+        let mut applier = Applier::new(Vec::new());
+        let world = berth_engine::MockWorld::bundled();
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::EnginesDiscovered(world.engines),
+        );
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            empty_engine_data(engine.clone()),
+        );
+
+        // From Git and Open folder both end here: the folder is pinned and nothing runs from it.
+        store.pin(&pin_of(&folder)).expect("pin");
+        link.pins_changed();
+        while let Ok(Some(update)) =
+            tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv()).await
+        {
+            apply(&dom, &mut applier, &mut state, update);
+        }
+
+        let found = projects_at(&dom, &state, &folder);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].compose_files, vec![folder.join("compose.yaml")]);
+        assert!(found[0].services.is_empty());
+        // The reconnect refresh of a loop that holds the old pins keeps the file.
+        apply(&dom, &mut applier, &mut state, empty_engine_data(engine));
+        assert_eq!(
+            projects_at(&dom, &state, &folder)[0].compose_files,
+            vec![folder.join("compose.yaml")]
+        );
+    }
+
+    #[tokio::test]
+    async fn pins_a_refresh_finds_the_compose_file_of_a_folder_nothing_runs_from() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let folder = dir.path().to_path_buf();
+        std::fs::write(folder.join("docker-compose.yml"), "services: {}\n").expect("compose");
+        let mock = TestEngine::new(&default_engine_id());
+        let update = full_refresh(&mock, &[pin_of(&folder)], false)
+            .await
+            .expect("refresh");
+        let EngineUpdate::EngineData { projects, .. } = update else {
+            panic!("a refresh is engine data");
+        };
+        let found = projects
+            .iter()
+            .find(|p| p.folder.as_deref() == Some(folder.as_path()))
+            .expect("the pinned folder is a project");
+        assert_eq!(found.compose_files, vec![folder.join("docker-compose.yml")]);
+    }
+
+    #[test]
+    fn pins_a_project_brought_down_keeps_the_compose_files_it_ran_with() {
+        let (dom, mut state) = harness();
+        let engine = default_engine_id();
+        let world = berth_engine::MockWorld::bundled();
+        let folder = std::path::PathBuf::from("/Users/me/Dev/side/deploy-app");
+        let files = folder.join("deploy/stack.yml");
+        let mut container = world.containers_for(&engine)[0].clone();
+        container.compose_project = Some("deploy-app".to_string());
+        container.service = Some("web".to_string());
+        container.labels.insert(
+            berth_engine::projects::LABEL_WORKING_DIR.to_string(),
+            folder.to_string_lossy().into_owned(),
+        );
+        container.labels.insert(
+            berth_engine::projects::LABEL_CONFIG_FILES.to_string(),
+            files.to_string_lossy().into_owned(),
+        );
+        let pins = vec![pin_of(&folder)];
+        let mut applier = Applier::new(pins.clone());
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::EnginesDiscovered(world.engines.clone()),
+        );
+        let projects = berth_engine::projects::group(&engine, &[container.clone()], &pins, false);
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::EngineData {
+                engine: engine.clone(),
+                info: None,
+                containers: vec![container.clone()],
+                projects,
+                images: Vec::new(),
+                volumes: Vec::new(),
+                networks: Vec::new(),
+            },
+        );
+        assert_eq!(
+            projects_at(&dom, &state, &folder)[0].compose_files,
+            std::slice::from_ref(&files)
+        );
+
+        // `docker compose down`: the container is gone and the pin is all that is left.
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::ContainerChanged {
+                engine,
+                id: container.id,
+                container: None,
+            },
+        );
+        let after = projects_at(&dom, &state, &folder);
+        assert_eq!(after.len(), 1);
+        assert!(after[0].services.is_empty());
+        assert_eq!(after[0].compose_files, [files]);
     }
 
     #[test]
