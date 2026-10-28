@@ -240,6 +240,11 @@ pub fn App() -> Element {
             }
         });
     }
+    // Project badges plugins contribute ("Deployed on Coolify: running", P9-T5).
+    crate::services::plugin_views::use_plugin_badges(
+        state,
+        use_context::<crate::services::plugin_views::PluginViewStore>(),
+    );
     let git = boot.git.clone();
     use_context_provider(|| git);
     {

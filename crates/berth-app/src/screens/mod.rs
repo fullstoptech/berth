@@ -20,6 +20,8 @@ pub mod logs_scene;
 pub mod network_detail;
 pub mod networks;
 pub mod palette;
+pub mod plugin_view;
+pub mod plugin_view_model;
 pub mod plugins;
 pub mod problems;
 pub mod project_detail;

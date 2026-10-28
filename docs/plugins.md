@@ -91,6 +91,11 @@ and MCP, below); `network` hosts are declared, not enforced, in protocol 1.
 | `project_badge` | `id` | A badge on local project rows; Berth asks for badge text via `project/badges` |
 | `palette_commands` | `commands: [{id, title, action}]` | Command-palette entries that invoke the named action |
 
+Berth also lists one palette command per sidebar item ("Coolify: Deployments"),
+which opens that view. Plugin commands appear once the user types a query, and
+only while the plugin is enabled. A `palette_commands` entry invokes `action`
+with empty params, so name an action that needs none.
+
 ### Config fields and secrets
 
 Each `config` entry is `{key, label, kind, required}` where `kind` is one of
@@ -185,8 +190,11 @@ it uses for its own screens.
 - Each row's `cells` map a column key to a cell. A cell is
   `{"kind": "text"|"mono"|"time", "value": "…"}` or
   `{"kind": "badge", "value": {"text": "…", "tone": "…"}}`.
-- `open` (optional) names the view a row click loads (with the row id
-  available in params, as the plugin defines them).
+- `open` (optional) names the view a row click loads. Berth selects the row
+  and shows that view in a pane beside the table, under a header built from
+  the row: its first cell is the title, its first badge the status, and its
+  other cells (except right-aligned columns, then any cell that is not a
+  column) make one muted line.
 - `actions` (optional) are the row's `ActionSpec`s, below.
 - `group` (optional) puts the row under a group heading; `groups` fixes the
   group order. `empty` is the text shown when there are no rows.
@@ -226,9 +234,20 @@ An `ActionSpec` is
 - `params` is free-form JSON handed back to `action/invoke` untouched.
 - `confirm` is `{title, lines, button}`: Berth shows this confirmation before
   invoking, so name everything the action touches (app, server, branch) in
-  `lines`. Destructive actions should always confirm.
+  `lines`. Destructive actions should always confirm. A line of the form
+  `Label: value` (a label of at most three words) is drawn as a row
+  (`Application: landing`); a line that starts `Warning: ` is drawn as an amber
+  warning box; any other line is a note under the options.
 - `options` are `{key, label, default}` toggles shown with the confirm (for
   example "Force rebuild"); the chosen values arrive in the invoke params.
+
+### The `status` view
+
+A plugin may answer a hidden view called `status` (it is in no sidebar item).
+When it is a `message` of tone `warning` or `danger`, Berth shows its text as
+a banner at the top of the plugin's section. Coolify uses it for the "Built for
+Coolify 4.5; some actions may fail" warning when the instance is a newer major
+version. An `info` answer shows nothing.
 
 ## Startup and failure behaviour
 

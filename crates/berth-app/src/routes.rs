@@ -21,6 +21,7 @@ pub fn screen(section: Section, dev_gallery: bool) -> Element {
         Section::Volumes => rsx! { crate::screens::volumes::VolumesScreen {} },
         Section::Images => rsx! { crate::screens::images::ImagesScreen {} },
         Section::Engines => rsx! { crate::screens::engines::EnginesScreen {} },
+        Section::Plugin => rsx! { crate::screens::plugin_view::PluginViewScreen {} },
         Section::Plugins => rsx! { crate::screens::plugins::PluginsScreen {} },
         Section::Registries => rsx! { crate::screens::registries::RegistriesScreen {} },
         Section::FirstRun => rsx! { crate::screens::first_run::FirstRunScreen {} },

@@ -13,7 +13,7 @@ use crate::state::Overlay;
 const COOLIFY_MANIFEST: &str = include_str!("../../../../plugins/coolify/berth-plugin.json");
 
 #[allow(clippy::expect_used)] // the manifest is a checked-in file
-fn coolify(state: PluginState, granted: bool) -> PluginEntry {
+pub(super) fn coolify(state: PluginState, granted: bool) -> PluginEntry {
     let manifest: berth_plugin_protocol::Manifest =
         serde_json::from_str(COOLIFY_MANIFEST).expect("the Coolify manifest parses");
     let granted = if granted {
@@ -36,7 +36,7 @@ fn coolify(state: PluginState, granted: bool) -> PluginEntry {
 }
 
 /// Coolify set up: an address and a stored token.
-fn configured(mut entry: PluginEntry) -> PluginEntry {
+pub(super) fn configured(mut entry: PluginEntry) -> PluginEntry {
     entry.config = serde_json::json!({
         "base_url": "https://coolify.acme.dev",
         "mcp_enabled": true,

@@ -88,6 +88,7 @@ fn git_deploy() {
 
 fn plugins() {
     crate::services::plugins::provide_plugins_view();
+    crate::services::plugin_views::provide_plugin_view_store();
 }
 
 fn plans() -> crate::services::plans::PlanStore {

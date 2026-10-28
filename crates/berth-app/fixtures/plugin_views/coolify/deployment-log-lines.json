@@ -1,0 +1,15 @@
+{
+  "lines": [
+    "Deployment queued · landing @ c2a7e94",
+    "Pulling caddy:2.9…",
+    "Step 1/6 FROM caddy:2.9",
+    "Step 2/6 COPY Caddyfile /etc/caddy/Caddyfile",
+    "Step 3/6 RUN caddy validate --config /etc/caddy/Caddyfile",
+    "Error: Caddyfile:14: unknown directive 'reverse_proxy_x'",
+    "Error: validate failed with exit code 1",
+    "Deployment failed at step 3 of 6",
+    "Rollback: c0ffee1 is still serving traffic",
+    "Health check on https://landing.example: 200 OK"
+  ],
+  "final_status": "failed"
+}

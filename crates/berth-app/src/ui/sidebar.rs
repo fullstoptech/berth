@@ -1,7 +1,11 @@
 use dioxus::prelude::*;
 
 use super::engine_switcher::scope_includes;
+use super::icon::{Icon, IconSize};
 use super::sidebar_item::{project_dot, DotSpec, SidebarItem};
+use crate::screens::plugin_view_model::icon_for_view;
+use crate::services::plugin_views::{sidebar_groups, PluginNav, PluginViewStore, SidebarGroup};
+use crate::services::plugins::PluginsView;
 use crate::state::{AppState, EngineScope, Section, Selection};
 
 /// One project row under PROJECTS.
@@ -119,6 +123,79 @@ fn SectionItem(
     }
 }
 
+/// The groups plugins contribute (P9-T5): a collapsible label and one item
+/// per view. Drawn only for enabled plugins; empty without the plugin views.
+#[component]
+fn PluginGroups() -> Element {
+    let mut state = use_context::<AppState>();
+    let (Some(plugins), Some(store)) = (
+        try_use_context::<PluginsView>(),
+        try_use_context::<PluginViewStore>(),
+    ) else {
+        return rsx! {};
+    };
+    let mut collapsed = use_signal(std::collections::BTreeSet::<String>::new);
+    let groups: Vec<SidebarGroup> = sidebar_groups(&plugins.entries.read());
+    let section = *state.section.read();
+    let nav = store.nav.read().clone();
+    rsx! {
+        for group in groups {
+            {
+                let group_key = format!("{}/{}", group.plugin, group.id);
+                let is_collapsed = collapsed.read().contains(&group_key);
+                let toggle_key = group_key.clone();
+                let expanded = (!is_collapsed).to_string();
+                let chevron: &'static str = if is_collapsed { "chevron-right" } else { "chevron-down" };
+                rsx! {
+                    button {
+                        key: "{group_key}-label",
+                        class: "sidebar-group-toggle",
+                        r#type: "button",
+                        "aria-expanded": "{expanded}",
+                        onclick: move |_| {
+                            let mut set = collapsed.write();
+                            if !set.remove(&toggle_key) {
+                                set.insert(toggle_key.clone());
+                            }
+                        },
+                        Icon { name: chevron, size: IconSize::Sm }
+                        span { "{group.title}" }
+                    }
+                    if !is_collapsed {
+                        for item in group.items.iter() {
+                            {
+                                let (plugin, view) = (group.plugin.clone(), item.view.clone());
+                                let selected = section == Section::Plugin
+                                    && nav.plugin == plugin
+                                    && nav.view == view;
+                                rsx! {
+                                    SidebarItem {
+                                        key: "{group_key}-{item.id}",
+                                        label: item.title.clone(),
+                                        icon: icon_for_view(&item.view),
+                                        indent: true,
+                                        selected,
+                                        onclick: move |_| {
+                                            let mut nav = store.nav;
+                                            nav.set(PluginNav {
+                                                plugin: plugin.clone(),
+                                                view: view.clone(),
+                                                row: None,
+                                                open: None,
+                                            });
+                                            state.section.set(Section::Plugin);
+                                        },
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The 220 px navigation column (PLAN 7.1): sections in ⌘1…⌘9 order, the
 /// project list with status dots, and the manage group.
 #[component]
@@ -197,6 +274,7 @@ pub fn Sidebar() -> Element {
             SectionItem { icon: "cloud", label: "Registries", target: Section::Registries }
             SectionItem { icon: "activity", label: "Activity", target: Section::Activity }
             SectionItem { icon: "zap", label: "Plugins", target: Section::Plugins }
+            PluginGroups {}
         }
     }
 }

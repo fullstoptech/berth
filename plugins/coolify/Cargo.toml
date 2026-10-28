@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 berth-plugin-protocol.workspace = true
+chrono.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 secrecy.workspace = true

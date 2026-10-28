@@ -1,0 +1,532 @@
+{
+  "kind": "table",
+  "title": "Deployments",
+  "columns": [
+    {
+      "key": "application",
+      "label": "App",
+      "mono": false,
+      "align_right": false
+    },
+    {
+      "key": "status",
+      "label": "Status",
+      "mono": false,
+      "align_right": false
+    },
+    {
+      "key": "commit",
+      "label": "Commit",
+      "mono": true,
+      "align_right": false
+    },
+    {
+      "key": "message",
+      "label": "Message",
+      "mono": false,
+      "align_right": false
+    },
+    {
+      "key": "duration",
+      "label": "Duration",
+      "mono": false,
+      "align_right": true
+    },
+    {
+      "key": "trigger",
+      "label": "Trigger",
+      "mono": false,
+      "align_right": false
+    }
+  ],
+  "rows": [
+    {
+      "id": "dep-uuid-0001",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "analytics-ingest"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "5e8d1f0"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 38 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Add ingest health check"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "In progress",
+            "tone": "info"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "API"
+        }
+      },
+      "open": "deployment/dep-uuid-0001/logs",
+      "actions": [
+        {
+          "id": "cancel-deployment",
+          "label": "Cancel deployment",
+          "danger": true,
+          "params": {
+            "uuid": "dep-uuid-0001"
+          },
+          "confirm": {
+            "title": "Cancel the deployment of analytics-ingest?",
+            "lines": [
+              "Application: analytics-ingest",
+              "Server: hetzner-1"
+            ],
+            "button": "Cancel deployment"
+          },
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-00ff",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "landing"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "c2a7e94"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 54 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "fix caddy upstream"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Failed",
+            "tone": "danger"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-00ff/logs",
+      "actions": [],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0101",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "shop-api"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "a3f9c2e"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "1 m 42 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Move db to port 5433"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0101/logs",
+      "actions": [],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0102",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "berth-site"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "3d6b0e8"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 51 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Update hero copy"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0102/logs",
+      "actions": [],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0103",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "analytics-ingest"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "f07c3a5"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "2 m 05 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Pin clickhouse to 24.8"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "API"
+        }
+      },
+      "open": "deployment/dep-uuid-0103/logs",
+      "actions": [],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0104",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "shop-api"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "7b2e91c"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "1 m 18 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Add redis healthcheck"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0104/logs",
+      "actions": [],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0105",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "landing"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "91ab4e7"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 47 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Add security headers"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0105/logs",
+      "actions": [],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0106",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "berth-site"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "8a14d2c"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 49 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Preload the display font"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0106/logs",
+      "actions": [],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0107",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "analytics-ingest"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "6f3e9b1"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "2 m 11 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Retry on 503 from clickhouse"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "API"
+        }
+      },
+      "open": "deployment/dep-uuid-0107/logs",
+      "actions": [],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0108",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "shop-api"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "d95a0c4"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "1 m 39 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Pin postgres to 17-alpine"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0108/logs",
+      "actions": [],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0109",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "landing"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "2b7f6d3"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 44 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Update hero copy"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0109/logs",
+      "actions": [],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0110",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "berth-site"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "e8c1a9f"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 58 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Bump node to 22"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "API"
+        }
+      },
+      "open": "deployment/dep-uuid-0110/logs",
+      "actions": [],
+      "group": null
+    }
+  ],
+  "empty": "No deployments.",
+  "groups": []
+}

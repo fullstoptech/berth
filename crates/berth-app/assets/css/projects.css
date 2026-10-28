@@ -162,6 +162,13 @@
   color: var(--color-danger);
   font-size: var(--text-caption-size);
 }
+.project-plugin-badge {
+  flex: none;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .project-cell-path,
 .project-cell-branch,
 .project-cell-ports {

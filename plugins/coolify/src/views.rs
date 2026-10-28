@@ -54,9 +54,52 @@ fn status_badge(status: Option<&str>) -> Cell {
         Tone::Neutral
     };
     Cell::Badge(Badge {
-        text: status.to_owned(),
+        text: humanize_status(status),
         tone,
     })
+}
+
+/// `in_progress` reads "In progress", `running:healthy` "Running (healthy)",
+/// `cancelled-by-user` "Cancelled by user".
+fn humanize_status(status: &str) -> String {
+    let (head, qualifier) = match status.split_once(':') {
+        Some((head, qualifier)) => (head, Some(qualifier)),
+        None => (status, None),
+    };
+    let spaced = head.replace(['_', '-'], " ");
+    let mut chars = spaced.chars();
+    let capitalised = chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    });
+    match qualifier {
+        Some(qualifier) if !qualifier.is_empty() => format!("{capitalised} ({qualifier})"),
+        _ => capitalised,
+    }
+}
+
+/// `38 s` between two Coolify timestamps as `0 m 38 s`; empty when either
+/// one is missing or unreadable.
+fn duration_text(start: Option<&String>, end: Option<&String>) -> String {
+    let parse =
+        |value: Option<&String>| value.and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok());
+    match (parse(start), parse(end)) {
+        (Some(start), Some(end)) => {
+            let seconds = (end - start).num_seconds().max(0);
+            format!("{} m {:02} s", seconds / 60, seconds % 60)
+        }
+        _ => String::new(),
+    }
+}
+
+/// How a deployment started: a git webhook, the API, or by hand.
+fn trigger_text(deployment: &Deployment) -> &'static str {
+    if deployment.is_webhook == Some(true) {
+        "webhook"
+    } else if deployment.is_api == Some(true) {
+        "API"
+    } else {
+        "manual"
+    }
 }
 
 fn text(value: Option<&String>) -> Cell {
@@ -179,11 +222,15 @@ pub fn deployments_table(deployments: &[Deployment]) -> View {
     View::Table {
         title: "Deployments".to_owned(),
         columns: vec![
-            column("application", "Application"),
-            column("server", "Server"),
-            mono_column("commit", "Commit"),
+            column("application", "App"),
             column("status", "Status"),
-            column("created", "Started"),
+            mono_column("commit", "Commit"),
+            column("message", "Message"),
+            Column {
+                align_right: true,
+                ..column("duration", "Duration")
+            },
+            column("trigger", "Trigger"),
         ],
         rows: deployments
             .iter()
@@ -202,10 +249,19 @@ pub fn deployments_table(deployments: &[Deployment]) -> View {
                     id,
                     vec![
                         ("application", text(deployment.application_name.as_ref())),
-                        ("server", text(deployment.server_name.as_ref())),
-                        ("commit", Cell::Mono(commit)),
                         ("status", status_badge(deployment.status.as_deref())),
-                        ("created", time(deployment.created_at.as_ref())),
+                        ("commit", Cell::Mono(commit)),
+                        ("message", text(deployment.commit_message.as_ref())),
+                        (
+                            "duration",
+                            Cell::Text(duration_text(
+                                deployment.created_at.as_ref(),
+                                deployment.updated_at.as_ref(),
+                            )),
+                        ),
+                        ("trigger", Cell::Text(trigger_text(deployment).to_owned())),
+                        // Not a column: the pane beside the table names the server.
+                        ("server", text(deployment.server_name.as_ref())),
                     ],
                     deployment
                         .deployment_uuid
@@ -402,6 +458,53 @@ mod tests {
             panic!("expected a table");
         };
         assert_eq!(rows[0].cells["commit"], Cell::Mono("0123456".to_owned()));
+    }
+
+    #[test]
+    fn views_deployments_table_has_duration_trigger_message_and_words_for_status() {
+        let deployment: Deployment = serde_json::from_str(
+            r#"{"deployment_uuid":"d1","commit":"c2a7e94aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","commit_message":"fix caddy upstream","status":"in_progress","is_webhook":true,"application_name":"landing","server_name":"hetzner-1","created_at":"2026-10-24T09:28:00.000000Z","updated_at":"2026-10-24T09:28:54.000000Z"}"#,
+        )
+        .expect("deployment decodes");
+        let View::Table { columns, rows, .. } = deployments_table(&[deployment]) else {
+            panic!("expected a table");
+        };
+        let keys: Vec<&str> = columns.iter().map(|c| c.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            [
+                "application",
+                "status",
+                "commit",
+                "message",
+                "duration",
+                "trigger"
+            ]
+        );
+        assert!(
+            columns[4].align_right,
+            "durations are right-aligned numbers"
+        );
+        assert_eq!(rows[0].cells["duration"], Cell::Text("0 m 54 s".to_owned()));
+        assert_eq!(rows[0].cells["trigger"], Cell::Text("webhook".to_owned()));
+        assert_eq!(
+            rows[0].cells["message"],
+            Cell::Text("fix caddy upstream".to_owned())
+        );
+        let Cell::Badge(badge) = &rows[0].cells["status"] else {
+            panic!("status is a badge");
+        };
+        assert_eq!(badge.text, "In progress");
+        assert_eq!(badge.tone, Tone::Info);
+        // The server stays on the row for the pane's header, not as a column.
+        assert_eq!(rows[0].cells["server"], Cell::Text("hetzner-1".to_owned()));
+    }
+
+    #[test]
+    fn views_status_words_keep_the_health_qualifier() {
+        assert_eq!(humanize_status("running:healthy"), "Running (healthy)");
+        assert_eq!(humanize_status("cancelled-by-user"), "Cancelled by user");
+        assert_eq!(humanize_status("exited"), "Exited");
     }
 
     #[test]

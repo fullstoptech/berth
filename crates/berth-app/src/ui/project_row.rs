@@ -720,6 +720,10 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
         .clone()
         .or_else(|| git.as_ref().map(|g| g.project.branch.clone()));
 
+    // A plugin that links this project to something it runs says so (P9-T5).
+    let plugin_badge = try_use_context::<crate::services::plugin_views::PluginViewStore>()
+        .and_then(|store| store.badges.read().get(&model.id.0).cloned());
+
     let open_project = {
         let id = id.clone();
         move || {
@@ -752,6 +756,14 @@ pub fn ProjectRow(model: ProjectRowModel) -> Element {
                     if model.problem_count > 0 {
                         span { class: "project-problem-tag",
                             {plural(model.problem_count, "problem", "problems")}
+                        }
+                    }
+                    if let Some(badge) = plugin_badge {
+                        span {
+                            class: "project-plugin-badge status-badge {crate::screens::plugin_view_model::tone_class(&badge.tone)}",
+                            title: "{badge.text}",
+                            span { class: "status-dot" }
+                            span { "{badge.text}" }
                         }
                     }
                 }

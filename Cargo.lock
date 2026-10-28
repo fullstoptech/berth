@@ -267,6 +267,7 @@ dependencies = [
  "berth-plugin-host",
  "berth-plugin-protocol",
  "berth-store",
+ "chrono",
  "reqwest",
  "rustls",
  "secrecy",

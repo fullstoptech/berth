@@ -7,6 +7,7 @@ use dioxus::html::ModifiersInteraction;
 use dioxus::prelude::*;
 
 use crate::services::actions::ActionsService;
+use crate::services::plugin_views;
 use crate::services::search::{self, Index, RecentKey, Results, SearchItem};
 use crate::services::Services;
 use crate::state::{AppState, Overlay};
@@ -129,6 +130,8 @@ pub fn PaletteScreen() -> Element {
         });
     });
 
+    let plugins_view = try_use_context::<crate::services::plugins::PluginsView>();
+
     // Rebuilt when the engine state or the selection changes; reading the
     // signals here is what subscribes the memo to them.
     let index = use_memo(move || {
@@ -163,7 +166,16 @@ pub fn PaletteScreen() -> Element {
                 recents.push(key.clone());
             }
         }
-        index.read().search(&query.read(), &recents)
+        let found = index.read().search(&query.read(), &recents);
+        // Commands enabled plugins contribute join a typed query (P9-T5).
+        match plugins_view {
+            Some(plugins) => search::with_plugin_commands(
+                found,
+                &plugin_views::palette_commands(&plugins.entries.read()),
+                &query.read(),
+            ),
+            None => found,
+        }
     });
 
     let run = use_callback(move |item: SearchItem| {
