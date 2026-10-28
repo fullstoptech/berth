@@ -273,6 +273,150 @@ fn projects_state_engine_stopped_offers_start_engine() {
     assert!(!html.contains("No projects yet"), "{html}");
 }
 
+fn default_engine_in(state_of: berth_core::EngineState) -> berth_core::Engine {
+    let mut engine = world()
+        .engines
+        .iter()
+        .find(|e| e.id.0 == "colima:default")
+        .expect("default engine")
+        .clone();
+    engine.state = state_of;
+    engine
+}
+
+fn pending_on(
+    engine: &berth_core::Engine,
+    action: &'static str,
+    value: PendingState,
+) -> std::collections::BTreeMap<PendingKey, PendingState> {
+    std::collections::BTreeMap::from([(
+        PendingKey {
+            subject: berth_core::Subject::Engine(engine.id.clone()),
+            action,
+        },
+        value,
+    )])
+}
+
+#[test]
+fn projects_start_status_follows_the_click_the_engine_and_a_failure() {
+    use std::collections::BTreeMap;
+    let stopped = default_engine_in(berth_core::EngineState::Stopped);
+    assert_eq!(start_status(&stopped, &BTreeMap::new()), StartStatus::Idle);
+
+    // Between the click and the engine reporting Starting.
+    let running = pending_on(
+        &stopped,
+        "engine.start",
+        PendingState::Running {
+            label: "Starting\u{2026}".to_string(),
+        },
+    );
+    assert_eq!(start_status(&stopped, &running), StartStatus::Starting);
+
+    // The engine says it is starting (a start from outside Berth, or after the click).
+    let starting = default_engine_in(berth_core::EngineState::Starting);
+    assert_eq!(
+        start_status(&starting, &BTreeMap::new()),
+        StartStatus::Starting
+    );
+
+    // A failed start offers Retry with the engine's message; another action's failure does not.
+    let failed = pending_on(
+        &stopped,
+        "engine.start",
+        PendingState::Failed {
+            message: "colima start exited with 1".to_string(),
+        },
+    );
+    assert_eq!(
+        start_status(&stopped, &failed),
+        StartStatus::Failed("colima start exited with 1".to_string())
+    );
+    let stop_failed = pending_on(
+        &stopped,
+        "engine.stop",
+        PendingState::Failed {
+            message: "x".to_string(),
+        },
+    );
+    assert_eq!(start_status(&stopped, &stop_failed), StartStatus::Idle);
+
+    // Another engine's run is not this engine's.
+    let mut other = stopped.clone();
+    other.id = berth_core::EngineId("colima:work".to_string());
+    assert_eq!(start_status(&other, &running), StartStatus::Idle);
+}
+
+#[test]
+fn projects_state_starting_engine_shows_the_starting_copy_and_a_disabled_button() {
+    let html = render(|state| {
+        state
+            .engines
+            .set(vec![default_engine_in(berth_core::EngineState::Starting)]);
+    });
+    assert!(html.contains("Starting Colima default\u{2026}"), "{html}");
+    let at = html
+        .find("empty-state-action")
+        .expect("the button is drawn");
+    let button = &html[html[..at].rfind("<button").expect("a button")..];
+    let button = &button[..button.find("</button>").expect("closed")];
+    assert!(button.contains("disabled"), "{button}");
+    assert!(button.contains("Starting\u{2026}"), "{button}");
+    assert!(!html.contains("Start engine default"), "{html}");
+    assert!(
+        !html.contains("projects-loading"),
+        "no blank loading body: {html}"
+    );
+}
+
+#[test]
+fn projects_state_click_on_start_engine_shows_starting_before_the_engine_reports_it() {
+    // The engine is still Stopped, the click is pending: the button is already disabled.
+    let html = render(|state| {
+        let engine = default_engine_in(berth_core::EngineState::Stopped);
+        state.pending.write().insert(
+            PendingKey {
+                subject: berth_core::Subject::Engine(engine.id.clone()),
+                action: "engine.start",
+            },
+            PendingState::Running {
+                label: "Starting\u{2026}".to_string(),
+            },
+        );
+        state.engines.set(vec![engine]);
+    });
+    assert!(html.contains("Starting Colima default\u{2026}"), "{html}");
+    assert!(html.contains("disabled"), "{html}");
+    assert!(!html.contains("Start engine default"), "{html}");
+}
+
+#[test]
+fn projects_state_failed_start_shows_the_error_with_retry() {
+    let html = render(|state| {
+        let engine = default_engine_in(berth_core::EngineState::Stopped);
+        state.pending.write().insert(
+            PendingKey {
+                subject: berth_core::Subject::Engine(engine.id.clone()),
+                action: "engine.start",
+            },
+            PendingState::Failed {
+                message: "colima start exited with 1".to_string(),
+            },
+        );
+        state.engines.set(vec![engine]);
+    });
+    assert!(html.contains("colima start exited with 1"), "{html}");
+    assert!(html.contains("Retry"), "{html}");
+    assert!(!html.contains("Starting Colima"), "{html}");
+    let at = html
+        .find("empty-state-action")
+        .expect("the button is drawn");
+    let button = &html[html[..at].rfind("<button").expect("a button")..];
+    let button = &button[..button.find("</button>").expect("closed")];
+    assert!(!button.contains("disabled=\"true\""), "{button}");
+}
+
 #[test]
 fn projects_state_stopped_engine_with_rows_shows_a_banner_above_the_table() {
     let html = render(|state| {
@@ -437,6 +581,13 @@ fn projects_screen_state_covers_loading_empty_stopped_and_rows() {
     );
     assert_eq!(
         screen_state(std::slice::from_ref(&starting), &[], false),
+        ScreenState::EngineStarting(Box::new(starting.clone())),
+        "an engine that is starting says so instead of going blank (P10-T3)"
+    );
+    let mut stopping = running.clone();
+    stopping.state = berth_core::EngineState::Stopping;
+    assert_eq!(
+        screen_state(std::slice::from_ref(&stopping), &[], false),
         ScreenState::Loading
     );
     assert_eq!(
@@ -602,6 +753,37 @@ fn projects_table_wide_tracks_grow_with_the_text() {
         assert!(css::has_scale(t), "track {i} `{t}` needs a scale term");
     }
     assert_eq!(tracks[8], "1fr");
+}
+
+#[test]
+fn projects_branch_track_holds_a_typical_feature_branch_name_without_ellipsis() {
+    // `feat/<word>-<word>` as a cloned project shows it: 18 mono characters at 12 px (0.6 em
+    // each), after the 16 px icon and its 8 px gap, inside the cell's 8 px right padding.
+    let name = "feat/checkout-flow";
+    let text_px = name.chars().count() as f32 * 12.0 * 0.6;
+    let needed = 16.0 + 8.0 + text_px + 8.0;
+    for scale in STEPS {
+        let tracks = tier_tracks(0);
+        let branch = css::min_px_with(&tracks[3], scale, &[]);
+        assert!(
+            branch >= needed * scale,
+            "the Branch track is {branch} px at {scale}, the name needs {}",
+            needed * scale
+        );
+    }
+    // The cell lets the name take its natural width and wraps the commit under it only when
+    // the line is full, so a short name keeps one line with its commit.
+    let css_text = PROJECTS_CSS;
+    assert!(
+        css_text.contains(
+            ".project-cell-branch:has(.project-commit) .project-branch-text {\n  flex: 0 1 auto;"
+        ),
+        "{css_text}"
+    );
+    assert!(
+        !css_text.contains("flex-basis: 100%"),
+        "the commit no longer forces its own line"
+    );
 }
 
 #[test]

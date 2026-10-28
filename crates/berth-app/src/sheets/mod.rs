@@ -18,6 +18,7 @@ pub mod open_folder;
 pub mod plugin_configure;
 pub mod plugin_enable;
 pub mod registry_login;
+pub mod remove_pin;
 pub mod review_changes;
 pub mod run;
 pub mod save_image;
