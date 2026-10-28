@@ -1,15 +1,15 @@
 //! Pure mappings from Coolify API types to `berth-plugin-protocol` views.
 //!
-//! These are the shapes `view/load` will return once the plugin binary's
-//! host lifecycle lands (P9-T2/T5); keeping them pure and free of I/O lets
-//! them be tested now. Env values never reach a view: the env table shows
+//! These are the shapes `view/load` returns (routed in `plugin.rs`);
+//! keeping them pure and free of I/O keeps them easy to test. Env values never reach a view: the env table shows
 //! keys with a masked value cell.
 
 use std::collections::BTreeMap;
 
 use berth_plugin_protocol::{Badge, Cell, Column, Row, Tone, View};
 
-use crate::types::{Application, Deployment, EnvVar, Resource, Server, VersionInfo};
+use crate::actions::{application_actions, deployment_actions, resource_actions};
+use crate::types::{Application, Deployment, EnvVar, Resource, ResourceKind, Server, VersionInfo};
 
 fn column(key: &str, label: &str) -> Column {
     Column {
@@ -91,7 +91,7 @@ pub fn resources_table(resources: &[Resource]) -> View {
                     .uuid
                     .as_ref()
                     .map(|uuid| format!("application/{uuid}"));
-                row(
+                let mut row = row(
                     id,
                     vec![
                         ("name", text(resource.name.as_ref())),
@@ -104,7 +104,19 @@ pub fn resources_table(resources: &[Resource]) -> View {
                         ("updated", time(resource.updated_at.as_ref())),
                     ],
                     open,
-                )
+                );
+                if let (Some(kind), Some(uuid)) = (
+                    resource.kind.as_deref().and_then(ResourceKind::parse),
+                    resource.uuid.as_deref(),
+                ) {
+                    row.actions = resource_actions(
+                        kind,
+                        resource.name.as_deref().unwrap_or("resource"),
+                        uuid,
+                        None,
+                    );
+                }
+                row
             })
             .collect(),
         empty: "No resources on this Coolify instance.".to_owned(),
@@ -186,7 +198,7 @@ pub fn deployments_table(deployments: &[Deployment]) -> View {
                     .as_deref()
                     .map(|sha| sha.chars().take(7).collect::<String>())
                     .unwrap_or_default();
-                row(
+                let mut row = row(
                     id,
                     vec![
                         ("application", text(deployment.application_name.as_ref())),
@@ -199,7 +211,9 @@ pub fn deployments_table(deployments: &[Deployment]) -> View {
                         .deployment_uuid
                         .as_ref()
                         .map(|uuid| format!("deployment/{uuid}/logs")),
-                )
+                );
+                row.actions = deployment_actions(deployment);
+                row
             })
             .collect(),
         empty: "No deployments.".to_owned(),
@@ -210,7 +224,7 @@ pub fn deployments_table(deployments: &[Deployment]) -> View {
 /// Application detail: identity, git coordinates and status. Logs and
 /// envs ride as tabs the host resolves through `view/load`.
 #[must_use]
-pub fn application_detail(application: &Application) -> View {
+pub fn application_detail(application: &Application, server_name: Option<&str>) -> View {
     let name = application
         .name
         .clone()
@@ -253,7 +267,7 @@ pub fn application_detail(application: &Application) -> View {
                 view: format!("application/{uuid}/envs"),
             },
         ],
-        actions: Vec::new(),
+        actions: application_actions(application, server_name),
     }
 }
 
@@ -400,7 +414,7 @@ mod tests {
             fields,
             tabs,
             ..
-        } = application_detail(&application)
+        } = application_detail(&application, Some("hetzner-1"))
         else {
             panic!("expected a detail view");
         };
@@ -419,6 +433,60 @@ mod tests {
         assert!(debug.contains("DATABASE_URL"), "{debug}");
         assert!(debug.contains("••••"), "{debug}");
         assert!(!debug.contains("fake-value-not-a-secret"), "{debug}");
+    }
+
+    #[test]
+    fn views_resource_rows_carry_start_stop_restart_by_kind() {
+        let resources: Vec<Resource> =
+            serde_json::from_str(include_str!("../../../fixtures/coolify/resources.json"))
+                .expect("fixture decodes");
+        let View::Table { rows, .. } = resources_table(&resources) else {
+            panic!("expected a table");
+        };
+        for row in &rows {
+            let ids: Vec<&str> = row.actions.iter().map(|a| a.id.as_str()).collect();
+            assert_eq!(ids, ["start", "stop", "restart"], "{}", row.id);
+        }
+        // The postgres database acts on the databases URL family.
+        let db = rows
+            .iter()
+            .find(|r| r.id == "db-uuid-0001")
+            .expect("db row");
+        assert_eq!(db.actions[0].params["kind"], "database");
+    }
+
+    #[test]
+    fn views_application_detail_deploy_confirm_names_app_server_and_branch() {
+        let application: Application =
+            serde_json::from_str(include_str!("../../../fixtures/coolify/application.json"))
+                .expect("fixture decodes");
+        let View::Detail { actions, .. } = application_detail(&application, Some("hetzner-1"))
+        else {
+            panic!("expected a detail view");
+        };
+        let deploy = actions.iter().find(|a| a.id == "deploy").expect("deploy");
+        let confirm = deploy.confirm.as_ref().expect("deploy confirms");
+        let lines = confirm.lines.join("\n");
+        assert!(lines.contains("landing"), "{lines}");
+        assert!(lines.contains("hetzner-1"), "{lines}");
+        assert!(lines.contains("main"), "{lines}");
+        assert_eq!(deploy.options[0].key, "force");
+    }
+
+    #[test]
+    fn views_deployment_rows_offer_cancel_only_before_a_final_status() {
+        let deployments: Vec<Deployment> = serde_json::from_str(include_str!(
+            "../../../fixtures/coolify/app-deployments.json"
+        ))
+        .expect("fixture decodes");
+        let mut running = deployments[0].clone();
+        running.status = Some("in_progress".to_owned());
+        let View::Table { rows, .. } = deployments_table(&[running, deployments[0].clone()]) else {
+            panic!("expected a table");
+        };
+        assert_eq!(rows[0].actions.len(), 1);
+        assert_eq!(rows[0].actions[0].id, "cancel-deployment");
+        assert!(rows[1].actions.is_empty());
     }
 
     #[test]

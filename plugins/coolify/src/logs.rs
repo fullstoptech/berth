@@ -79,9 +79,33 @@ pub async fn poll_deployment(
     }
 }
 
+/// Remembers the last tail an application returned and reports only the
+/// lines that are new. Coolify answers every poll with the last N lines, so
+/// consecutive tails overlap: the longest run of previously seen lines that
+/// starts the new tail is dropped.
+#[derive(Debug, Default)]
+pub struct LogTail {
+    seen: Vec<String>,
+}
+
+impl LogTail {
+    /// Feeds one fetched tail; returns the lines not seen before.
+    pub fn fresh(&mut self, text: &str) -> Vec<String> {
+        let lines: Vec<String> = text.lines().map(str::to_owned).collect();
+        let overlap = (0..=self.seen.len().min(lines.len()))
+            .rev()
+            .find(|&k| self.seen[self.seen.len() - k..] == lines[..k])
+            .unwrap_or(0);
+        let fresh = lines[overlap..].to_vec();
+        if !lines.is_empty() {
+            self.seen = lines;
+        }
+        fresh
+    }
+}
+
 /// Polls an application's log tail `polls` times (the first fetch counts),
-/// returning every line seen with re-sent tails de-duplicated: when the
-/// new text extends the old, only the appended part is new.
+/// returning every line seen with re-sent tails de-duplicated.
 pub async fn poll_application_logs(
     client: &CoolifyClient,
     uuid: &str,
@@ -90,24 +114,44 @@ pub async fn poll_application_logs(
     polls: usize,
     cancel: &CancellationToken,
 ) -> Result<Vec<String>, ClientError> {
-    let mut seen_text = String::new();
+    let mut tail = LogTail::default();
     let mut out: Vec<String> = Vec::new();
     for poll in 0..polls {
         if poll > 0 {
             sleep_or_cancel(interval, cancel).await?;
         }
         let text = client.application_logs(uuid, lines, cancel).await?.logs;
-        let fresh = match text.strip_prefix(seen_text.as_str()) {
-            Some(appended) => appended,
-            None if seen_text.starts_with(text.as_str()) => "",
-            None => text.as_str(),
-        };
-        out.extend(fresh.lines().map(str::to_owned));
-        if text.len() >= seen_text.len() || !seen_text.starts_with(text.as_str()) {
-            seen_text = text;
-        }
+        out.extend(tail.fresh(&text));
     }
     Ok(out)
+}
+
+/// Follows an application's log tail until `cancel` fires or a request
+/// fails (`Cancelled` is the normal way out). `on_lines` sees each batch of
+/// new lines, never an empty one.
+pub async fn follow_application_logs(
+    client: &CoolifyClient,
+    uuid: &str,
+    lines: u32,
+    interval: Duration,
+    cancel: &CancellationToken,
+    mut on_lines: impl FnMut(Vec<String>),
+) -> ClientError {
+    let mut tail = LogTail::default();
+    loop {
+        match client.application_logs(uuid, lines, cancel).await {
+            Ok(logs) => {
+                let fresh = tail.fresh(&logs.logs);
+                if !fresh.is_empty() {
+                    on_lines(fresh);
+                }
+            }
+            Err(e) => return e,
+        }
+        if let Err(e) = sleep_or_cancel(interval, cancel).await {
+            return e;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -303,5 +347,52 @@ mod tests {
         .expect("within timeout")
         .expect("poll ok");
         assert_eq!(lines, ["one", "two", "three"]);
+    }
+
+    #[test]
+    fn logs_tail_drops_the_overlap_of_a_sliding_window() {
+        let mut tail = LogTail::default();
+        assert_eq!(tail.fresh("a\nb\nc\n"), ["a", "b", "c"]);
+        assert_eq!(tail.fresh("b\nc\nd\n"), ["d"]);
+        assert!(tail.fresh("b\nc\nd\n").is_empty());
+        assert_eq!(tail.fresh("x\ny\n"), ["x", "y"]);
+    }
+
+    #[tokio::test]
+    async fn logs_follow_application_streams_new_lines_until_cancelled() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/applications/app-1/logs"))
+            .respond_with(Sequence::new(vec![
+                r#"{"logs":"one\ntwo\n"}"#.to_owned(),
+                r#"{"logs":"two\nthree\n"}"#.to_owned(),
+            ]))
+            .mount(&server)
+            .await;
+        let cancel = CancellationToken::new();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = Arc::clone(&seen);
+        let stop = cancel.clone();
+        let end = tokio::time::timeout(
+            TIMEOUT,
+            follow_application_logs(
+                &client(&server),
+                "app-1",
+                100,
+                FAST,
+                &cancel,
+                move |lines| {
+                    let mut all = sink.lock().expect("lock");
+                    all.extend(lines);
+                    if all.len() >= 3 {
+                        stop.cancel();
+                    }
+                },
+            ),
+        )
+        .await
+        .expect("within timeout");
+        assert!(matches!(end, ClientError::Cancelled), "{end:?}");
+        assert_eq!(*seen.lock().expect("lock"), ["one", "two", "three"]);
     }
 }

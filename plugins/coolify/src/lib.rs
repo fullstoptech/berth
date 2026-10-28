@@ -1,16 +1,17 @@
 //! Coolify API client for the Berth Coolify plugin (P9-T3, PLAN D46/D76).
 //!
 //! Hand-written `reqwest` client over the Coolify v4.5.0 OpenAPI surface
-//! (vendored at `spec/openapi-v4.5.0.json`). The plugin binary's host
-//! lifecycle (initialize, view/load, secret.get) lands with P9-T2/T5; this
-//! library is the crate-only slice: response types, the HTTP client and the
-//! pure mappings from API types to `berth-plugin-protocol` views.
+//! (vendored at `spec/openapi-v4.5.0.json`): response types, the HTTP
+//! client, the pure mappings from API types to `berth-plugin-protocol`
+//! views, actions, log pollers, project badges, and `plugin`, the protocol
+//! loop the `berth-coolify` binary runs over stdio.
 
 pub mod actions;
 pub mod badges;
 pub mod client;
 pub mod logs;
 pub mod mcp;
+pub mod plugin;
 pub mod types;
 pub mod views;
 
