@@ -139,11 +139,13 @@ fn terminal_scene_without_a_shell_says_so_and_offers_the_files() {
         "This image has no shell",
         "gcr.io/distroless/static-debian12 is built without bash or sh. Browse its files instead.",
         "Files",
-        "Open a debug shell",
         "metrics-exporter-1",
     ] {
         assert!(html.contains(text), "{text}: {html}");
     }
+    // P10-T3: the debug shell is not built, so neither its button nor its note shows.
+    assert!(!html.contains("debug shell"), "{html}");
+    assert!(!html.contains("busybox"), "{html}");
     assert!(!html.contains("class=\"term-dot\""));
 }
 

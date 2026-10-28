@@ -776,15 +776,6 @@ fn NoShell(image: String, container: Option<berth_core::ContainerId>) -> Element
                         }
                     },
                 }
-                Button {
-                    label: "Open a debug shell\u{2026}",
-                    variant: ButtonVariant::Secondary,
-                    disabled: true,
-                    disabled_reason: "Debug shells are not built yet".to_string(),
-                }
-            }
-            p { class: "term-noshell-note",
-                "Starts a temporary busybox container that shares this container\u{2019}s processes and files; removed when you exit."
             }
         }
     }

@@ -160,13 +160,12 @@
   font-size: var(--text-body-lg-size);
   font-weight: var(--text-body-weight);
 }
-.term-noshell-body, .term-noshell-note {
+.term-noshell-body {
   max-width: 30em;
   margin: 0;
   color: var(--color-ink-muted);
   font-size: var(--text-body-size);
 }
-.term-noshell-note { font-size: var(--text-caption-size); }
 .term-noshell-actions { display: flex; gap: var(--space-8); margin: var(--space-4) 0; }
 
 .term-popout { display: flex; flex-direction: column; height: 100vh; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-text); }
