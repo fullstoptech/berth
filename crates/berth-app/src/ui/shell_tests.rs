@@ -4,6 +4,7 @@
 use crate::keys::{self, KeyContext, Modifiers};
 use crate::scenes;
 use crate::state::{use_app_state, AppState, BottomTab, EngineScope, Overlay, Section, Selection};
+use crate::ui::sidebar::SETTINGS_ACTION;
 use crate::ui::*;
 
 const FRAME: &str = "Containers / selected / 1440";
@@ -241,6 +242,43 @@ fn shell_sidebar_marks_the_current_section_and_orders_them_like_the_keys() {
     let item = &html[item_start..item_start + 400];
     assert!(item.contains("sidebar-item-selected"), "{item}");
     assert!(item.contains("Containers"), "{item}");
+}
+
+#[test]
+fn shell_sidebar_has_a_settings_item_after_plugins() {
+    let html = scene_html();
+    let plugins = html
+        .find("class=\"sidebar-label\">Plugins<")
+        .expect("Plugins item");
+    let settings = html
+        .find("class=\"sidebar-label\">Settings<")
+        .expect("Settings item missing from the sidebar");
+    assert!(settings > plugins, "Settings must follow Plugins");
+    // Same markup as its neighbours: a button with the gear icon.
+    let item_start = html[..settings].rfind("<button").expect("button");
+    let item = &html[item_start..settings];
+    assert!(item.contains("sidebar-item"), "{item}");
+    assert!(item.contains("/icons.svg#settings"), "{item}");
+    // Not the open page in the Containers frame.
+    assert!(!item.contains("aria-current"), "{item}");
+}
+
+#[test]
+fn shell_sidebar_settings_item_runs_the_settings_action_and_shows_selected() {
+    let (dom, mut state) = harness();
+    dom.in_runtime(|| {
+        assert_ne!(*state.section.peek(), Section::Settings);
+        keys::dispatch(&mut state, SETTINGS_ACTION);
+        assert_eq!(*state.section.peek(), Section::Settings);
+    });
+    let html = render_shell(|state| state.section.set(Section::Settings));
+    let at = html
+        .find("class=\"sidebar-label\">Settings<")
+        .expect("Settings item");
+    let start = html[..at].rfind("<button").expect("button");
+    let item = &html[start..at];
+    assert!(item.contains("sidebar-item-selected"), "{item}");
+    assert!(item.contains("aria-current=\"page\""), "{item}");
 }
 
 // ---------- the frame: status bar ----------
