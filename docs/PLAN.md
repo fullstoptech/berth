@@ -1417,6 +1417,7 @@ pub struct AddServiceSeed { pub project: Option<berth_core::ProjectId>, pub temp
 pub struct AppState {
     pub settings: Signal<berth_store::Settings>,
     pub engines: Signal<Vec<berth_core::Engine>>,
+    pub engines_discovered: Signal<bool>,                      // discovery has reported at least once, even with no engines (AD68)
     pub engine_scope: Signal<EngineScope>,                     // One(EngineId) | All (D81)
     pub containers: Signal<Vec<berth_core::Container>>,        // all engines in scope
     pub projects: Signal<Vec<berth_core::Project>>,
