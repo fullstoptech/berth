@@ -199,16 +199,21 @@ pub(crate) fn spawn_io(future: impl std::future::Future<Output = ()> + Send + 's
     }
 }
 
-/// Run `future` on the UI thread for as long as the app lives, in the root scope.
+/// Run `future` on the UI thread for as long as the app lives, in the App component's scope.
 ///
 /// Use it for work the user started whose result must land even if the caller unmounts (a
 /// click handler that swaps its own page out, a sheet that closes). A plain `spawn` attaches to
 /// the current component scope and is dropped with it. Keep scoped `spawn` for subscriptions
 /// that should die with their view.
+///
+/// The task runs in `ScopeId::APP` (the user's root component, which never unmounts), not
+/// `ScopeId::ROOT` (the runtime wrapper above it, where `spawn_forever` runs). The app's signals
+/// are created in the App scope, and Dioxus warns ("Copy Value ... hoisted") when one is used
+/// from a scope that is not the App scope or below it.
 pub(crate) fn spawn_job(
     future: impl std::future::Future<Output = ()> + 'static,
 ) -> dioxus::core::Task {
-    dioxus::core::spawn_forever(future)
+    dioxus::core::Runtime::current().in_scope(dioxus::core::ScopeId::APP, || spawn(future))
 }
 
 /// The actions service. Cheap to clone; provide it as context from the App

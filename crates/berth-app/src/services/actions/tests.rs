@@ -1296,3 +1296,95 @@ async fn actions_disabled_reasons_for_engines() {
         Some("Only Colima engines can be started or stopped here")
     );
 }
+
+// --- spawn_job: survives its caller, and runs in the scope that owns the app's signals. ---
+
+thread_local! {
+    static JOB: std::cell::RefCell<Option<(Signal<u32>, Signal<bool>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[component]
+fn JobHarness() -> Element {
+    let landed = use_signal(|| 0_u32);
+    let shown = use_signal(|| true);
+    use_hook(move || JOB.with(|slot| *slot.borrow_mut() = Some((landed, shown))));
+    rsx! {
+        if shown() {
+            JobCaller { landed }
+        }
+    }
+}
+
+#[component]
+fn JobCaller(landed: Signal<u32>) -> Element {
+    use_hook(move || {
+        let mut landed = landed;
+        spawn_job(async move {
+            tokio::task::yield_now().await;
+            landed.set(1);
+        });
+    });
+    rsx! { div {} }
+}
+
+#[derive(Clone, Default)]
+struct LogSink(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for LogSink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let Ok(mut out) = self.0.lock() {
+            out.extend_from_slice(buf);
+        }
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogSink {
+    type Writer = LogSink;
+    fn make_writer(&'a self) -> LogSink {
+        self.clone()
+    }
+}
+
+/// A job started from a child that unmounts at once still lands, and writing the App's signal
+/// from it raises no "Copy Value ... hoisted" warning (the job runs in the App scope).
+#[tokio::test]
+async fn spawn_job_outlives_its_caller_and_writes_app_signals_without_a_hoist_warning() {
+    let sink = LogSink::default();
+    let _guard = tracing::subscriber::set_default(
+        tracing_subscriber::fmt()
+            .with_writer(sink.clone())
+            .with_max_level(tracing::Level::WARN)
+            .with_ansi(false)
+            .finish(),
+    );
+    let mut dom = VirtualDom::new(JobHarness);
+    let _ = dom.rebuild_to_vec();
+    let (landed, mut shown) = JOB
+        .with(|slot| slot.borrow_mut().take())
+        .expect("harness captured its signals");
+    dom.in_runtime(|| shown.set(false));
+    dom.render_immediate(&mut dioxus::core::NoOpMutations);
+
+    let waited = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while dom.in_runtime(|| *landed.peek()) != 1 {
+            let _ = tokio::time::timeout(std::time::Duration::from_millis(50), dom.wait_for_work())
+                .await;
+            dom.render_immediate(&mut dioxus::core::NoOpMutations);
+        }
+    })
+    .await;
+    assert!(
+        waited.is_ok(),
+        "the job did not run after its caller unmounted"
+    );
+    let log = String::from_utf8_lossy(&sink.0.lock().expect("log").clone()).into_owned();
+    assert!(
+        !log.contains("hoisted"),
+        "the job warned about a hoisted Copy Value:\n{log}"
+    );
+}
