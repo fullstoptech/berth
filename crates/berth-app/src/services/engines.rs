@@ -1316,7 +1316,7 @@ mod tests {
             &self,
             reference: &str,
             platform: Option<&str>,
-            credentials: Option<&berth_engine::client::PullCredentials>,
+            credentials: Option<&berth_engine::client::RegistryAuth>,
             cancel: CancellationToken,
         ) -> Bs<berth_core::PullProgress> {
             self.inner.pull(reference, platform, credentials, cancel)

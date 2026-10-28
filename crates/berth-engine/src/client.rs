@@ -38,29 +38,23 @@ impl ExecHandle {
 
 pub type Bs<T> = futures::stream::BoxStream<'static, Result<T, EngineError>>;
 
-/// Registry credentials for one pull or push (AD42, P8-T2). The
+/// Registry credentials for one pull or push (AD42/AD43). The
 /// password comes from the Keychain at the call site and is never
 /// logged; `server` is the registry host (`index.docker.io` style).
 #[derive(Clone)]
-pub struct PullCredentials {
-    pub username: String,
-    pub password: secrecy::SecretString,
-    pub server: String,
-}
-
-impl std::fmt::Debug for PullCredentials {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PullCredentials")
-            .field("username", &self.username)
-            .field("server", &self.server)
-            .finish_non_exhaustive()
-    }
-}
-
 pub struct RegistryAuth {
     pub server: String,
     pub username: String,
     pub password: secrecy::SecretString,
+}
+
+impl std::fmt::Debug for RegistryAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegistryAuth")
+            .field("username", &self.username)
+            .field("server", &self.server)
+            .finish_non_exhaustive()
+    }
 }
 
 pub fn unsupported_stream<T: Send + 'static>(what: &str) -> Bs<T> {
@@ -145,7 +139,7 @@ pub trait EngineClient: Send + Sync {
         &self,
         reference: &str,
         platform: Option<&str>,
-        credentials: Option<&PullCredentials>,
+        credentials: Option<&RegistryAuth>,
         cancel: Cancel,
     ) -> Bs<berth_core::PullProgress>;
     async fn remove_image(&self, id: &str, force: bool) -> Result<(), EngineError>;
@@ -186,10 +180,20 @@ pub trait EngineClient: Send + Sync {
     fn push(
         &self,
         _reference: &str,
-        _auth: Option<RegistryAuth>,
+        _auth: Option<&RegistryAuth>,
         _cancel: Cancel,
     ) -> Bs<berth_core::PullProgress> {
         unsupported_stream("push")
+    }
+    /// Builds an image through the engine API (AD43): the context is
+    /// tarred by the implementation; events are the parsed steps.
+    fn build_image(
+        &self,
+        _spec: &berth_core::BuildSpec,
+        _credentials: Option<&RegistryAuth>,
+        _cancel: Cancel,
+    ) -> Bs<berth_core::BuildEvent> {
+        unsupported_stream("build")
     }
     fn export_image(&self, _id: &str, _cancel: Cancel) -> Bs<bytes::Bytes> {
         unsupported_stream("export")

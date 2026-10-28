@@ -188,13 +188,13 @@ impl RegistriesService {
         &self,
         registries: &[Registry],
         reference: &str,
-    ) -> Option<berth_engine::client::PullCredentials> {
+    ) -> Option<berth_engine::client::RegistryAuth> {
         let registry = registries
             .iter()
             .find(|r| r.status == RegistryStatus::LoggedIn && matches(r, reference))?;
         let username = registry.username.clone()?;
         let password = self.secrets.get(&secret_key(&registry.id)).ok().flatten()?;
-        Some(berth_engine::client::PullCredentials {
+        Some(berth_engine::client::RegistryAuth {
             username,
             password,
             server: registry_id(&registry.url),

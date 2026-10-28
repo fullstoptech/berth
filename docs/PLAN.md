@@ -151,7 +151,7 @@ Every decision below is final for v1. The workhorse implements them and never re
 | D49 | Git | The `git` CLI as a subprocess: `git -C <dir> status --porcelain=v2 --branch` for branch and dirty flag, `git remote get-url origin`, `clone --progress`, `fetch`, `log --oneline HEAD..@{u}`, `pull --ff-only`. No libgit2. |
 | D50 | Image search | Engine `/images/search` through `bollard::Docker::search_images`, plus Docker Hub `GET https://hub.docker.com/v2/repositories/<ns>/<repo>/tags?page_size=N` (fields `name`, `images[].architecture`, `images[].size`, `last_updated`, `digest`; checked 2026-10-24) and `GET https://hub.docker.com/v2/search/repositories/?query=` (fields `repo_name`, `short_description`, `star_count`, `pull_count`, `is_official`). Verified Publisher and Sponsored OSS badges need another Hub endpoint: P4-T2 verifies one or shows only Official and Community. HTTP 429 is the rate-limited state. |
 | D51 | Volume and container files | Volume browser and backup use a helper container `alpine:3` (pulled once after a confirm that names it and its size) with the volume mounted read-only; listing runs `stat -c '%n\|%s\|%Y\|%F'` through exec; download and backup use the archive API (`download_from_container`) gzipped with `flate2`. Container Files uses exec when a shell exists, else the archive API. Restore asks for the typed volume name. |
-| D52 | Build, push | Build runs `docker build --progress rawjson` (CLI, with `DOCKER_HOST`), parsed into steps so the failing step can be highlighted; P8-T3 verifies the flag and falls back to `--progress plain` parsing. Tag, push, import, export, commit use bollard (`tag_image`, `push_image`, `import_image`, `export_image`, `commit_container`). |
+| D52 | Build, push | Build runs through the engine API (bollard `build_image`) with the context tarred by Berth, parsed into steps so the failing step can be highlighted (AD43, 2026-10-28: this Mac's docker client has no buildx and no `--progress` flag — legacy builder verified at P8-T3 — and the API works the same on local, SSH and TCP engines; the original CLI plan is superseded). Tag, push, import, export, commit use bollard (`tag_image`, `push_image`, `import_image`, `export_image`, `commit_container`). |
 | D53 | Testing | `cargo nextest`. Unit tests next to code. Integration tests in each crate's `tests/`, run only with `BERTH_IT=1` against the fixture Compose projects on the local Colima engine (§8.1). Components and screens tested with `dioxus-ssr` 0.7. `insta` snapshots for mappers, detections, generated files and SSR scenes. Harness smoke tests run only with `BERTH_HARNESS_SMOKE=1` (they spend the owner's subscription). Coolify tests run against `wiremock`. |
 | D54 | Lints | `rustfmt` defaults. `cargo clippy --workspace --all-targets -- -D warnings`. `clippy::unwrap_used` and `clippy::expect_used` denied in library crates (allowed in tests via `clippy.toml`). `clippy::pedantic` denied in `berth-core`. |
 | D55 | Branches and commits | Branch `phase/N-name`, commit `P<N>-T<M>: <what>`, local tag `v0.N` at phase merge. Nothing is pushed without the owner's approval. |
@@ -523,6 +523,12 @@ pub struct ImageLayer { pub created_by: String, pub size: ByteSize, pub created:
 pub struct ImageDetail { pub image: Image, pub layers: Vec<ImageLayer>, pub env_keys: Vec<String>, pub exposed_ports: Vec<u16> }
 pub struct ImageSearchHit { pub name: String, pub description: String, pub stars: u32, pub official: bool }
 pub struct PullProgress { pub layer: Option<String>, pub status: String, pub current: Option<u64>, pub total: Option<u64> }
+// AD43 (2026-10-28, P8-T3): one image build through the engine API. BuildSpec carries build-arg
+// values, which may be secrets: never log a spec. Only the first tag rides in the build request;
+// the rest are tagged from it after a successful build.
+pub enum BuildContext { Folder(std::path::PathBuf), Inline(String) }   // Inline: the Dockerfile's text alone is the context
+pub struct BuildSpec { pub context: BuildContext, pub dockerfile: Option<String>, pub tags: Vec<String>, pub build_args: Vec<(String, String)>, pub platform: Option<String> }
+pub enum BuildEvent { Step { index: u32, total: u32, text: String }, Failed { text: String }, Log(String) }
 pub struct Volume {
     pub name: String, pub driver: String, pub size: Option<ByteSize>, pub mountpoint: String,
     pub used_by: Vec<ContainerId>, pub project: Option<ProjectId>, pub created: Option<DateTime<Utc>>,
@@ -939,7 +945,7 @@ pub trait EngineClient: Send + Sync {
     async fn list_files(&self, target: &berth_core::FileTarget, path: &str) -> Result<Vec<berth_core::FileEntry>, EngineError>;
     fn download(&self, target: &berth_core::FileTarget, path: &str, cancel: Cancel) -> Bs<bytes::Bytes>;   // tar stream
     async fn upload(&self, target: &berth_core::FileTarget, dir: &str, tar: bytes::Bytes) -> Result<(), EngineError>;
-    fn pull(&self, reference: &str, platform: Option<&str>, credentials: Option<&PullCredentials>, cancel: Cancel) -> Bs<berth_core::PullProgress>;   // AD42 (2026-10-27): PullCredentials { username, password: SecretString, server } in client.rs; push (P8-T3) takes the same
+    fn pull(&self, reference: &str, platform: Option<&str>, credentials: Option<&RegistryAuth>, cancel: Cancel) -> Bs<berth_core::PullProgress>;   // AD42/AD43 (2026-10-27): RegistryAuth serves pull and push
     async fn remove_image(&self, id: &str, force: bool) -> Result<(), EngineError>;
     async fn search_images(&self, term: &str, limit: u32) -> Result<Vec<berth_core::ImageSearchHit>, EngineError>;
     async fn create_volume(&self, spec: &berth_core::VolumeSpec) -> Result<berth_core::Volume, EngineError>;
@@ -951,9 +957,10 @@ pub trait EngineClient: Send + Sync {
     async fn prune(&self, plan: &berth_core::PrunePlan, cancel: Cancel) -> Result<berth_core::PruneReport, EngineError>;
     // M4 (P8). Default bodies return EngineError::Unsupported until P8-T3/T4 implement them.
     async fn tag_image(&self, id: &str, repo: &str, tag: &str) -> Result<(), EngineError> { Err(EngineError::Unsupported("tag".into())) }
-    fn push(&self, reference: &str, auth: Option<RegistryAuth>, cancel: Cancel) -> Bs<berth_core::PullProgress> { unsupported_stream("push") }
+    fn push(&self, reference: &str, auth: Option<&RegistryAuth>, cancel: Cancel) -> Bs<berth_core::PullProgress> { unsupported_stream("push") }
+    fn build_image(&self, spec: &berth_core::BuildSpec, credentials: Option<&RegistryAuth>, cancel: Cancel) -> Bs<berth_core::BuildEvent> { unsupported_stream("build") }   // AD43: context tarred by the implementation (.dockerignore honoured); credentials keyed by server for private base images
     fn export_image(&self, id: &str, cancel: Cancel) -> Bs<bytes::Bytes> { unsupported_stream("export") }
-    async fn import_image(&self, tar: bytes::Bytes) -> Result<Vec<String>, EngineError> { Err(EngineError::Unsupported("import".into())) }
+    async fn import_image(&self, tar: bytes::Bytes) -> Result<Vec<String>, EngineError> { Err(EngineError::Unsupported("import".into())) }   // Ok: the names the load reported ("Loaded image: …")
     async fn commit(&self, id: &berth_core::ContainerId, repo: &str, tag: &str) -> Result<String, EngineError> { Err(EngineError::Unsupported("commit".into())) }
 }
 pub struct RegistryAuth { pub server: String, pub username: String, pub password: secrecy::SecretString }

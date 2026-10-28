@@ -1058,7 +1058,7 @@ impl EngineClient for BollardEngine {
         &self,
         reference: &str,
         platform: Option<&str>,
-        credentials: Option<&crate::client::PullCredentials>,
+        credentials: Option<&crate::client::RegistryAuth>,
         cancel: Cancel,
     ) -> Bs<berth_core::PullProgress> {
         let (from_image, tag) = split_image_ref(reference);
