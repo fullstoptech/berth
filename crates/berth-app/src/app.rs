@@ -23,6 +23,8 @@ struct Boot {
     assistant: Option<crate::services::assistant::AssistantService>,
     /// Registry rows + Keychain passwords (P8-T2); None in a scene.
     registries: Option<crate::services::registries::RegistriesService>,
+    /// Installed plugins and their processes (P9-T2); None in a scene.
+    plugins: Option<crate::services::plugins::PluginsService>,
     /// Clone, new-commit polling and pull-and-redeploy for Git projects (P8-T5); None in a scene.
     git: Option<crate::services::git_deploy::GitDeployHandle>,
     /// Whether the window is shown (AD32); every screen timer follows it.
@@ -145,6 +147,14 @@ fn boot_services(mut state: AppState, plans: crate::services::plans::PlanStore) 
             std::sync::Arc::clone(&store),
         ))
     };
+    // Plugins (P9-T2): discovered and started by the App root; a scene runs none.
+    let plugins = (!scene).then(|| {
+        crate::services::plugins::PluginsService::live(
+            std::sync::Arc::clone(&store),
+            berth_store::secret_store(),
+            cancel.clone(),
+        )
+    });
     // The Problems list (P5-T8): rules re-run when the engines, projects or a Compose
     // failure change. A scene shows the frame's problems and runs no pass.
     let problems = if scene {
@@ -183,6 +193,7 @@ fn boot_services(mut state: AppState, plans: crate::services::plans::PlanStore) 
         tools,
         assistant,
         registries,
+        plugins,
         git,
         visibility,
         link,
@@ -217,6 +228,23 @@ pub fn App() -> Element {
     use_context_provider(|| assistant);
     let registries = boot.registries.clone();
     use_context_provider(|| registries);
+    let plugins = boot.plugins.clone();
+    use_context_provider(|| plugins);
+    {
+        let plugins = boot.plugins.clone();
+        let view = use_context::<crate::services::plugins::PluginsView>();
+        use_hook(move || {
+            if let Some(plugins) = plugins {
+                crate::services::plugins::bridge(&plugins, view);
+                spawn(async move { plugins.start().await });
+            }
+        });
+    }
+    // Project badges plugins contribute ("Deployed on Coolify: running", P9-T5).
+    crate::services::plugin_views::use_plugin_badges(
+        state,
+        use_context::<crate::services::plugin_views::PluginViewStore>(),
+    );
     let git = boot.git.clone();
     use_context_provider(|| git);
     {

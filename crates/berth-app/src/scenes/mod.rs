@@ -60,6 +60,7 @@ scene_modules! {
     build_image,
     clean_up,
     containers,
+    coolify,
     detected,
     dev,
     engines,
@@ -72,6 +73,7 @@ scene_modules! {
     networks,
     open_folder,
     palette,
+    plugins,
     problems,
     project_detail,
     projects,
@@ -85,6 +87,8 @@ scene_modules! {
 
 #[cfg(test)]
 pub(crate) use add_service::SCENE_PASSWORD;
+#[cfg(test)]
+pub(crate) use coolify::enabled_entry;
 pub(crate) use dev::{DevFilesPanel, DevStatsPanel};
 #[cfg(test)]
 pub(crate) use generate::next_detection;

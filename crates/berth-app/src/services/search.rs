@@ -60,6 +60,8 @@ pub enum Group {
     Volumes,
     Networks,
     Engine,
+    /// Commands enabled plugins contribute (P9-T5); the palette adds them to a typed query.
+    Plugins,
 }
 
 impl Group {
@@ -74,6 +76,7 @@ impl Group {
             Self::Volumes => "Volumes",
             Self::Networks => "Networks",
             Self::Engine => "Engine",
+            Self::Plugins => "Plugins",
         }
     }
 }
@@ -88,6 +91,8 @@ pub enum Target {
     },
     /// Select the record and show its section.
     Open(Subject),
+    /// A command an enabled plugin contributes (P9-T5).
+    Plugin(crate::services::plugin_views::PluginCommand),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,6 +125,10 @@ impl SearchItem {
             Target::Open(subject) => RecentKey {
                 action: OPEN.to_string(),
                 subject: Some(subject.clone()),
+            },
+            Target::Plugin(command) => RecentKey {
+                action: format!("plugin:{}:{}", command.plugin, command.id),
+                subject: None,
             },
         }
     }
@@ -985,7 +994,7 @@ impl Entry {
             Group::Volumes => "hard-drive",
             Group::Networks => "network",
             Group::Engine => "server",
-            Group::Recent | Group::Actions => "search",
+            Group::Recent | Group::Actions | Group::Plugins => "search",
         };
         SearchItem {
             group: self.group,
@@ -1448,6 +1457,39 @@ pub fn open(state: &mut AppState, subject: &Subject) {
     }
 }
 
+/// `results` with a "Plugins" group of the commands whose titles match the
+/// typed `query` (P9-T5). Plugin commands answer a typed query only; the
+/// "run as docker command" offer is dropped when one matched.
+#[must_use]
+pub fn with_plugin_commands(
+    mut results: Results,
+    commands: &[crate::services::plugin_views::PluginCommand],
+    query: &str,
+) -> Results {
+    let items: Vec<SearchItem> = crate::services::plugin_views::match_commands(commands, query)
+        .into_iter()
+        .map(|command| SearchItem {
+            group: Group::Plugins,
+            icon: "zap",
+            title: command.title.clone(),
+            meta: "Plugin".to_string(),
+            shortcut: None,
+            danger: false,
+            confirm: false,
+            target: Target::Plugin(command.clone()),
+            score: 0,
+        })
+        .collect();
+    if !items.is_empty() {
+        results.docker_command = None;
+        results.groups.push(ResultGroup {
+            group: Group::Plugins,
+            items,
+        });
+    }
+    results
+}
+
 /// Run the item's target. The caller closes the palette first, so overlays
 /// pushed here (confirm, sheets) land on an empty stack.
 pub fn run(
@@ -1461,6 +1503,10 @@ pub fn run(
             return RunOutcome::Done;
         }
         Target::Run { action, subject } => (*action, subject.clone()),
+        Target::Plugin(command) => {
+            crate::services::plugin_views::run_command(state, command);
+            return RunOutcome::Done;
+        }
     };
     let Some(subject) = subject else {
         match action {

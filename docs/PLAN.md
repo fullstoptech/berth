@@ -1388,6 +1388,8 @@ impl PluginHandle {
     pub fn notifications(&self) -> tokio::sync::broadcast::Receiver<berth_plugin_protocol::Notification>;
     pub async fn stop(self);
 }
+// AD53 (2026-10-28): additive host surface beyond the above, as implemented: PluginHandle::{start_with_backoff, state, is_running, restarts,
+// init_result, stderr_tail}, Backoff (1 s, 5 s, 30 s then Error), load_manifest, validate_manifest, MANIFEST_FILE and the dispatch method constants.
 ```
 
 ### 6.11 App (`berth-app`)
@@ -1406,6 +1408,8 @@ pub enum Overlay {          // stacked; Esc closes the top one
     OpenFolder, DropFolder(Vec<std::path::PathBuf>), NewProject, EditRecreate(berth_core::ContainerId), Run(String),
     CleanUp(berth_core::EngineId), CreateVolume, CreateNetwork, EditResources(String), AddEngine, AddRegistry,
     BuildImage, AddService(AddServiceSeed), DeleteProject(berth_core::ProjectId),   // AD33 (2026-10-25): AddService opens from Templates/Find images without a project; DeleteProject has two checkboxes
+    PluginEnable(String), PluginConfigure(String),   // AD48 (2026-10-28): plugin id; the permission request sheet and the Configure form
+    PluginAction(PendingAction),   // AD52 (2026-10-28): a plugin action asking first; PendingAction { plugin: String, action: berth_plugin_protocol::ActionSpec, context: Option<RowContext> } (services/plugin_views.rs), drawn with ConfirmDialog from the action's Confirm
 }
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AddServiceSeed { pub project: Option<berth_core::ProjectId>, pub template: Option<String>, pub image: Option<String> }

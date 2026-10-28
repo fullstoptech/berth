@@ -1,0 +1,999 @@
+{
+  "kind": "table",
+  "title": "Deployments",
+  "columns": [
+    {
+      "key": "application",
+      "label": "App",
+      "mono": false,
+      "align_right": false
+    },
+    {
+      "key": "status",
+      "label": "Status",
+      "mono": false,
+      "align_right": false
+    },
+    {
+      "key": "commit",
+      "label": "Commit",
+      "mono": true,
+      "align_right": false
+    },
+    {
+      "key": "message",
+      "label": "Message",
+      "mono": false,
+      "align_right": false
+    },
+    {
+      "key": "duration",
+      "label": "Duration",
+      "mono": false,
+      "align_right": true
+    },
+    {
+      "key": "trigger",
+      "label": "Trigger",
+      "mono": false,
+      "align_right": false
+    }
+  ],
+  "rows": [
+    {
+      "id": "dep-uuid-0001",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "analytics-ingest"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "5e8d1f0"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 38 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Add ingest health check"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/analytics"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "In progress",
+            "tone": "info"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "API"
+        }
+      },
+      "open": "deployment/dep-uuid-0001/logs",
+      "actions": [
+        {
+          "id": "cancel-deployment",
+          "label": "Cancel deployment",
+          "danger": true,
+          "params": {
+            "uuid": "dep-uuid-0001"
+          },
+          "confirm": {
+            "title": "Cancel the deployment of analytics-ingest?",
+            "lines": [
+              "App: analytics-ingest",
+              "Server: hetzner-1"
+            ],
+            "button": "Cancel deployment"
+          },
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-00ff",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "landing"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "c2a7e94"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 54 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "fix caddy upstream"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/landing"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Failed",
+            "tone": "danger"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-00ff/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0001",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy landing?",
+            "lines": [
+              "App: landing",
+              "Server: hetzner-1",
+              "Branch: main",
+              "Commit: c2a7e94 · fix caddy upstream",
+              "Warning: This commit failed (Caddyfile:14: unknown directive 'reverse_proxy_x'). Redeploying it will likely fail again.",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy anyway"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-00ff/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0101",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "shop-api"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "a3f9c2e"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "1 m 42 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Move db to port 5433"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/shop-api"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0101/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0012",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy shop-api?",
+            "lines": [
+              "App: shop-api",
+              "Server: hetzner-1",
+              "Branch: main",
+              "Commit: a3f9c2e · Move db to port 5433",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-0101/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0102",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "berth-site"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "3d6b0e8"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 51 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Update hero copy"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/berth-site"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0102/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0014",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy berth-site?",
+            "lines": [
+              "App: berth-site",
+              "Server: hetzner-1",
+              "Branch: main",
+              "Commit: 3d6b0e8 · Update hero copy",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-0102/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0103",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "analytics-ingest"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "f07c3a5"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "2 m 05 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Pin clickhouse to 24.8"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/analytics"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "API"
+        }
+      },
+      "open": "deployment/dep-uuid-0103/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0013",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy analytics-ingest?",
+            "lines": [
+              "App: analytics-ingest",
+              "Server: hetzner-1",
+              "Branch: release",
+              "Commit: f07c3a5 · Pin clickhouse to 24.8",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-0103/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0104",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "shop-api"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "7b2e91c"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "1 m 18 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Add redis healthcheck"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/shop-api"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0104/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0012",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy shop-api?",
+            "lines": [
+              "App: shop-api",
+              "Server: hetzner-1",
+              "Branch: main",
+              "Commit: 7b2e91c · Add redis healthcheck",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-0104/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0105",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "landing"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "91ab4e7"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 47 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Add security headers"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/landing"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0105/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0001",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy landing?",
+            "lines": [
+              "App: landing",
+              "Server: hetzner-1",
+              "Branch: main",
+              "Commit: 91ab4e7 · Add security headers",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-0105/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0106",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "berth-site"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "8a14d2c"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 49 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Preload the display font"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/berth-site"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0106/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0014",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy berth-site?",
+            "lines": [
+              "App: berth-site",
+              "Server: hetzner-1",
+              "Branch: main",
+              "Commit: 8a14d2c · Preload the display font",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-0106/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0107",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "analytics-ingest"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "6f3e9b1"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "2 m 11 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Retry on 503 from clickhouse"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/analytics"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "API"
+        }
+      },
+      "open": "deployment/dep-uuid-0107/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0013",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy analytics-ingest?",
+            "lines": [
+              "App: analytics-ingest",
+              "Server: hetzner-1",
+              "Branch: release",
+              "Commit: 6f3e9b1 · Retry on 503 from clickhouse",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-0107/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0108",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "shop-api"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "d95a0c4"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "1 m 39 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Pin postgres to 17-alpine"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/shop-api"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0108/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0012",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy shop-api?",
+            "lines": [
+              "App: shop-api",
+              "Server: hetzner-1",
+              "Branch: main",
+              "Commit: d95a0c4 · Pin postgres to 17-alpine",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-0108/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0109",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "landing"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "2b7f6d3"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 44 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Update hero copy"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/landing"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "webhook"
+        }
+      },
+      "open": "deployment/dep-uuid-0109/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0001",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy landing?",
+            "lines": [
+              "App: landing",
+              "Server: hetzner-1",
+              "Branch: main",
+              "Commit: 2b7f6d3 · Update hero copy",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-0109/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "dep-uuid-0110",
+      "cells": {
+        "application": {
+          "kind": "text",
+          "value": "berth-site"
+        },
+        "commit": {
+          "kind": "mono",
+          "value": "e8c1a9f"
+        },
+        "duration": {
+          "kind": "text",
+          "value": "0 m 58 s"
+        },
+        "message": {
+          "kind": "text",
+          "value": "Bump node to 22"
+        },
+        "repository": {
+          "kind": "text",
+          "value": "example/berth-site"
+        },
+        "server": {
+          "kind": "text",
+          "value": "hetzner-1"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Finished",
+            "tone": "success"
+          }
+        },
+        "trigger": {
+          "kind": "text",
+          "value": "API"
+        }
+      },
+      "open": "deployment/dep-uuid-0110/logs",
+      "actions": [
+        {
+          "id": "deploy",
+          "label": "Redeploy…",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0014",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Redeploy berth-site?",
+            "lines": [
+              "App: berth-site",
+              "Server: hetzner-1",
+              "Branch: main",
+              "Commit: e8c1a9f · Bump node to 22",
+              "Keeps serving the current version until a new build passes."
+            ],
+            "button": "Redeploy"
+          },
+          "options": [
+            {
+              "key": "force",
+              "label": "Force rebuild (ignore the build cache)",
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": "open-logs",
+          "label": "Logs",
+          "danger": false,
+          "params": {
+            "open": "deployment/dep-uuid-0110/logs"
+          },
+          "confirm": null,
+          "options": []
+        }
+      ],
+      "group": null
+    }
+  ],
+  "empty": "No deployments.",
+  "groups": []
+}

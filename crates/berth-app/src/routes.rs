@@ -21,6 +21,8 @@ pub fn screen(section: Section, dev_gallery: bool) -> Element {
         Section::Volumes => rsx! { crate::screens::volumes::VolumesScreen {} },
         Section::Images => rsx! { crate::screens::images::ImagesScreen {} },
         Section::Engines => rsx! { crate::screens::engines::EnginesScreen {} },
+        Section::Plugin => rsx! { crate::screens::plugin_view::PluginViewScreen {} },
+        Section::Plugins => rsx! { crate::screens::plugins::PluginsScreen {} },
         Section::Registries => rsx! { crate::screens::registries::RegistriesScreen {} },
         Section::FirstRun => rsx! { crate::screens::first_run::FirstRunScreen {} },
         Section::Settings => rsx! { crate::screens::settings::SettingsScreen {} },
@@ -103,6 +105,9 @@ fn overlay_title(overlay: &Overlay) -> &'static str {
         Overlay::BuildImage => "Build image",
         Overlay::AddService(_) => "Add service",
         Overlay::DeleteProject(_) => "Delete project",
+        Overlay::PluginEnable(_) => "Enable plugin",
+        Overlay::PluginConfigure(_) => "Configure plugin",
+        Overlay::PluginAction(_) => "Plugin action",
     }
 }
 
@@ -149,6 +154,18 @@ pub fn overlay(overlay: &Overlay) -> Element {
             crate::sheets::detected::DetectedSheet { key: "{folder.display()}", folder: folder.clone() }
         },
         Overlay::NewProject => rsx! { crate::sheets::new_project::NewProjectSheet {} },
+        Overlay::PluginConfigure(id) => rsx! {
+            crate::sheets::plugin_configure::PluginConfigureSheet { key: "{id}", id: id.clone() }
+        },
+        Overlay::PluginAction(pending) => rsx! {
+            crate::screens::plugin_action::PluginActionDialog {
+                key: "{pending.plugin}/{pending.action.id}",
+                pending: pending.clone(),
+            }
+        },
+        Overlay::PluginEnable(id) => rsx! {
+            crate::sheets::plugin_enable::PluginEnableSheet { key: "{id}", id: id.clone() }
+        },
         Overlay::OpenFolder => rsx! { crate::sheets::open_folder::OpenFolderSheet {} },
         Overlay::AddEngine => rsx! { crate::sheets::add_engine::AddEngineSheet {} },
         Overlay::AddRegistry(existing) => rsx! {

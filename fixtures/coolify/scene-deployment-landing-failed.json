@@ -1,0 +1,17 @@
+{
+  "id": 299,
+  "application_id": 11,
+  "deployment_uuid": "dep-uuid-00ff",
+  "commit": "c2a7e940123456789abcdef0123456789abcdef0",
+  "commit_message": "fix caddy upstream",
+  "status": "failed",
+  "is_webhook": true,
+  "is_api": false,
+  "force_rebuild": false,
+  "application_name": "landing",
+  "server_name": "hetzner-1",
+  "server_id": 1,
+  "created_at": "2026-10-24T14:24:00.000000Z",
+  "updated_at": "2026-10-24T14:24:54.000000Z",
+  "logs": "[{\"command\": null, \"output\": \"Deployment queued \\u00b7 landing @ c2a7e94\", \"type\": \"stdout\", \"timestamp\": \"2026-10-24T14:30:41.000000Z\", \"hidden\": false, \"batch\": 1, \"order\": 1}, {\"command\": null, \"output\": \"Pulling caddy:2.9\\u2026\", \"type\": \"stdout\", \"timestamp\": \"2026-10-24T14:30:42.000000Z\", \"hidden\": false, \"batch\": 1, \"order\": 2}, {\"command\": null, \"output\": \"Step 1/6 FROM caddy:2.9\", \"type\": \"stdout\", \"timestamp\": \"2026-10-24T14:30:43.000000Z\", \"hidden\": false, \"batch\": 1, \"order\": 3}, {\"command\": null, \"output\": \"Step 2/6 COPY Caddyfile /etc/caddy/Caddyfile\", \"type\": \"stdout\", \"timestamp\": \"2026-10-24T14:30:44.000000Z\", \"hidden\": false, \"batch\": 1, \"order\": 4}, {\"command\": null, \"output\": \"Step 3/6 RUN caddy validate --config /etc/caddy/Caddyfile\", \"type\": \"stdout\", \"timestamp\": \"2026-10-24T14:30:45.000000Z\", \"hidden\": false, \"batch\": 1, \"order\": 5}, {\"command\": null, \"output\": \"Error: Caddyfile:14: unknown directive 'reverse_proxy_x'\", \"type\": \"stderr\", \"timestamp\": \"2026-10-24T14:30:46.000000Z\", \"hidden\": false, \"batch\": 1, \"order\": 6}, {\"command\": null, \"output\": \"Error: validate failed with exit code 1\", \"type\": \"stderr\", \"timestamp\": \"2026-10-24T14:30:47.000000Z\", \"hidden\": false, \"batch\": 1, \"order\": 7}, {\"command\": null, \"output\": \"Deployment failed at step 3 of 6\", \"type\": \"stderr\", \"timestamp\": \"2026-10-24T14:30:48.000000Z\", \"hidden\": false, \"batch\": 1, \"order\": 8}, {\"command\": null, \"output\": \"Rollback: c0ffee1 is still serving traffic\", \"type\": \"stdout\", \"timestamp\": \"2026-10-24T14:30:49.000000Z\", \"hidden\": false, \"batch\": 1, \"order\": 9}, {\"command\": null, \"output\": \"Health check on https://landing.example: 200 OK\", \"type\": \"stdout\", \"timestamp\": \"2026-10-24T14:30:50.000000Z\", \"hidden\": false, \"batch\": 1, \"order\": 10}]"
+}

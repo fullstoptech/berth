@@ -15,6 +15,8 @@ pub mod from_git;
 pub mod generate;
 pub mod new_project;
 pub mod open_folder;
+pub mod plugin_configure;
+pub mod plugin_enable;
 pub mod registry_login;
 pub mod review_changes;
 pub mod run;

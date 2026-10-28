@@ -11,7 +11,7 @@ use dioxus::prelude::*;
 
 use berth_core::{EffectKind, EffectSummary};
 
-use super::{Button, ButtonVariant, CheckState, Checkbox, ControlSize, TextField};
+use super::{Button, ButtonVariant, CheckState, Checkbox, ControlSize, Icon, IconSize, TextField};
 use crate::services::actions::ActionsService;
 use crate::services::confirm;
 use crate::state::{AppState, ConfirmModel};
@@ -56,9 +56,31 @@ pub fn ConfirmDialog(
     oncheck: EventHandler<bool>,
     oncancel: EventHandler<()>,
     onconfirm: EventHandler<()>,
+    /// Labelled rows (`App: landing`) in place of the effect's own, for a
+    /// confirm whose rows are not removes/keeps/changes (a plugin action, AD52).
+    #[props(default)]
+    rows: Vec<(String, String)>,
+    /// An amber warning box under the rows.
+    #[props(default)]
+    warning: Option<String>,
+    /// Muted notes under the options.
+    #[props(default)]
+    notes: Vec<String>,
+    /// The confirm button's text when the summary's own wording is not it.
+    #[props(default)]
+    button_label: Option<String>,
+    /// More options (checkboxes) between the warning and the notes.
+    #[props(default = rsx! {})]
+    body: Element,
+    /// More buttons after the confirm button ("Fix with Claude Code").
+    #[props(default = rsx! {})]
+    buttons: Element,
+    /// The wider dialog of a plugin action (478 px, as its frame).
+    #[props(default)]
+    wide: bool,
 ) -> Element {
     let mut typed = use_signal(String::new);
-    let label = confirm::button_label(&effect);
+    let label = button_label.unwrap_or_else(|| confirm::button_label(&effect));
     let unlocked = name_matches(&effect, &typed.read());
     let reason = effect
         .typed_name
@@ -69,20 +91,36 @@ pub fn ConfirmDialog(
     rsx! {
         style { "{CONFIRM_DIALOG_CSS}" }
         div {
-            class: "confirm-dialog",
+            class: if wide { "confirm-dialog confirm-dialog-wide" } else { "confirm-dialog" },
             role: "dialog",
             "aria-modal": "true",
             "aria-label": "{title}",
             onclick: move |e| e.stop_propagation(),
             h2 { class: "confirm-title", "{title}" }
             dl { class: "confirm-rows",
-                for (index, line) in effect.lines.iter().enumerate() {
-                    div { key: "{index}", class: "confirm-row",
-                        dt { class: "confirm-row-label", "{row_label(line.kind)}" }
-                        dd { class: "confirm-row-text", "{line.text}" }
+                if rows.is_empty() {
+                    for (index, line) in effect.lines.iter().enumerate() {
+                        div { key: "{index}", class: "confirm-row",
+                            dt { class: "confirm-row-label", "{row_label(line.kind)}" }
+                            dd { class: "confirm-row-text", "{line.text}" }
+                        }
+                    }
+                } else {
+                    for (index, (label, value)) in rows.iter().enumerate() {
+                        div { key: "{index}", class: "confirm-row",
+                            dt { class: "confirm-row-label", "{label}" }
+                            dd { class: "confirm-row-text", "{value}" }
+                        }
                     }
                 }
             }
+            if let Some(text) = warning {
+                div { class: "confirm-warning tone-warning", role: "alert",
+                    Icon { name: "alert-triangle", size: IconSize::Sm }
+                    span { "{text}" }
+                }
+            }
+            {body}
             if let Some((text, on)) = checkbox {
                 div { class: "confirm-option",
                     Checkbox {
@@ -102,6 +140,9 @@ pub fn ConfirmDialog(
                     }
                 }
             }
+            for (index, note) in notes.iter().enumerate() {
+                p { key: "{index}", class: "confirm-footer", "{note}" }
+            }
             if let Some(text) = footer {
                 p { class: "confirm-footer", "{text}" }
             }
@@ -120,6 +161,7 @@ pub fn ConfirmDialog(
                     disabled_reason: reason,
                     onclick: move |_| onconfirm.call(()),
                 }
+                {buttons}
             }
         }
     }

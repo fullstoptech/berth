@@ -1,0 +1,24 @@
+[
+  {
+    "id": 0,
+    "uuid": "srv-uuid-0001",
+    "name": "localhost",
+    "description": "This is the Coolify host.",
+    "ip": "127.0.0.1",
+    "user": "root",
+    "port": 22,
+    "proxy_type": "TRAEFIK",
+    "settings": { "is_reachable": true, "is_usable": true }
+  },
+  {
+    "id": 1,
+    "uuid": "srv-uuid-0002",
+    "name": "hetzner-1",
+    "description": null,
+    "ip": "203.0.113.10",
+    "user": "root",
+    "port": 22,
+    "proxy_type": "TRAEFIK",
+    "settings": { "is_reachable": false, "is_usable": false }
+  }
+]

@@ -5,12 +5,34 @@ edition.workspace = true
 publish.workspace = true
 license.workspace = true
 repository.workspace = true
+# tests/fixture-plugin/main.rs is the fixture binary below, not a test.
+autotests = false
+
+# Conformance fixture (P9-T2): a small plugin speaking the protocol over
+# stdio, exercised by tests/host_conformance.rs via CARGO_BIN_EXE.
+[[bin]]
+name = "berth-fixture-plugin"
+path = "tests/fixture-plugin/main.rs"
+
+[[test]]
+name = "host_conformance"
+path = "tests/host_conformance.rs"
 
 [dependencies]
 berth-core.workspace = true
 berth-plugin-protocol.workspace = true
 berth-store.workspace = true
 berth-sys.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

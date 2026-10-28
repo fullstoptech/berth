@@ -1,0 +1,271 @@
+{
+  "kind": "table",
+  "title": "Resources",
+  "columns": [
+    {
+      "key": "name",
+      "label": "Name",
+      "mono": false,
+      "align_right": false
+    },
+    {
+      "key": "kind",
+      "label": "Type",
+      "mono": false,
+      "align_right": false
+    },
+    {
+      "key": "status",
+      "label": "Status",
+      "mono": false,
+      "align_right": false
+    },
+    {
+      "key": "fqdn",
+      "label": "Address",
+      "mono": true,
+      "align_right": false
+    },
+    {
+      "key": "updated",
+      "label": "Updated",
+      "mono": false,
+      "align_right": false
+    }
+  ],
+  "rows": [
+    {
+      "id": "app-uuid-0001",
+      "cells": {
+        "fqdn": {
+          "kind": "mono",
+          "value": "https://landing.example.test"
+        },
+        "kind": {
+          "kind": "text",
+          "value": "application"
+        },
+        "name": {
+          "kind": "text",
+          "value": "landing"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Running (healthy)",
+            "tone": "success"
+          }
+        },
+        "updated": {
+          "kind": "time",
+          "value": "2026-10-24T09:30:00.000000Z"
+        }
+      },
+      "open": "application/app-uuid-0001",
+      "actions": [
+        {
+          "id": "start",
+          "label": "Start",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0001",
+            "kind": "application"
+          },
+          "confirm": null,
+          "options": []
+        },
+        {
+          "id": "stop",
+          "label": "Stop",
+          "danger": true,
+          "params": {
+            "uuid": "app-uuid-0001",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Stop landing?",
+            "lines": [
+              "App: landing"
+            ],
+            "button": "Stop"
+          },
+          "options": []
+        },
+        {
+          "id": "restart",
+          "label": "Restart",
+          "danger": false,
+          "params": {
+            "uuid": "app-uuid-0001",
+            "kind": "application"
+          },
+          "confirm": {
+            "title": "Restart landing?",
+            "lines": [
+              "App: landing"
+            ],
+            "button": "Restart"
+          },
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "db-uuid-0001",
+      "cells": {
+        "fqdn": {
+          "kind": "mono",
+          "value": ""
+        },
+        "kind": {
+          "kind": "text",
+          "value": "standalone-postgresql"
+        },
+        "name": {
+          "kind": "text",
+          "value": "landing-db"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Running (healthy)",
+            "tone": "success"
+          }
+        },
+        "updated": {
+          "kind": "time",
+          "value": "2026-10-24T09:30:00.000000Z"
+        }
+      },
+      "open": "application/db-uuid-0001",
+      "actions": [
+        {
+          "id": "start",
+          "label": "Start",
+          "danger": false,
+          "params": {
+            "uuid": "db-uuid-0001",
+            "kind": "database"
+          },
+          "confirm": null,
+          "options": []
+        },
+        {
+          "id": "stop",
+          "label": "Stop",
+          "danger": true,
+          "params": {
+            "uuid": "db-uuid-0001",
+            "kind": "database"
+          },
+          "confirm": {
+            "title": "Stop landing-db?",
+            "lines": [
+              "App: landing-db"
+            ],
+            "button": "Stop"
+          },
+          "options": []
+        },
+        {
+          "id": "restart",
+          "label": "Restart",
+          "danger": false,
+          "params": {
+            "uuid": "db-uuid-0001",
+            "kind": "database"
+          },
+          "confirm": {
+            "title": "Restart landing-db?",
+            "lines": [
+              "App: landing-db"
+            ],
+            "button": "Restart"
+          },
+          "options": []
+        }
+      ],
+      "group": null
+    },
+    {
+      "id": "svc-uuid-0001",
+      "cells": {
+        "fqdn": {
+          "kind": "mono",
+          "value": ""
+        },
+        "kind": {
+          "kind": "text",
+          "value": "service"
+        },
+        "name": {
+          "kind": "text",
+          "value": "wiki"
+        },
+        "status": {
+          "kind": "badge",
+          "value": {
+            "text": "Exited",
+            "tone": "danger"
+          }
+        },
+        "updated": {
+          "kind": "time",
+          "value": "2026-10-23T11:00:00.000000Z"
+        }
+      },
+      "open": "application/svc-uuid-0001",
+      "actions": [
+        {
+          "id": "start",
+          "label": "Start",
+          "danger": false,
+          "params": {
+            "uuid": "svc-uuid-0001",
+            "kind": "service"
+          },
+          "confirm": null,
+          "options": []
+        },
+        {
+          "id": "stop",
+          "label": "Stop",
+          "danger": true,
+          "params": {
+            "uuid": "svc-uuid-0001",
+            "kind": "service"
+          },
+          "confirm": {
+            "title": "Stop wiki?",
+            "lines": [
+              "App: wiki"
+            ],
+            "button": "Stop"
+          },
+          "options": []
+        },
+        {
+          "id": "restart",
+          "label": "Restart",
+          "danger": false,
+          "params": {
+            "uuid": "svc-uuid-0001",
+            "kind": "service"
+          },
+          "confirm": {
+            "title": "Restart wiki?",
+            "lines": [
+              "App: wiki"
+            ],
+            "button": "Restart"
+          },
+          "options": []
+        }
+      ],
+      "group": null
+    }
+  ],
+  "empty": "No resources on this Coolify instance.",
+  "groups": []
+}

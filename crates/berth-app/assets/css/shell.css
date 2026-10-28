@@ -207,6 +207,32 @@ html, body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+/* Sidebar group of a plugin */
+.sidebar-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+  margin: var(--space-8) 0 var(--space-4);
+  padding: 0 var(--space-12);
+  border: none;
+  background: none;
+  color: var(--color-ink-muted);
+  font-family: var(--font-text);
+  font-size: var(--text-caption-size);
+  line-height: var(--space-20);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar-group-toggle:hover {
+  color: var(--color-ink);
+}
+.sidebar-group-toggle:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
 .sidebar-separator {
   height: 1px;
   margin: 2px var(--space-8) 6px;

@@ -1,0 +1,18 @@
+{
+  "id": 100,
+  "application_id": 11,
+  "deployment_uuid": "dep-uuid-0000",
+  "commit": "89abcdef0123456789abcdef0123456789abcdef",
+  "commit_message": "Initial import",
+  "status": "finished",
+  "is_webhook": false,
+  "is_api": true,
+  "force_rebuild": false,
+  "application_name": "landing",
+  "server_name": "hetzner-1",
+  "server_id": 1,
+  "deployment_url": "/project/proj-uuid-0001/production/application/app-uuid-0001/deployment/dep-uuid-0000",
+  "created_at": "2026-10-20T08:10:00.000000Z",
+  "updated_at": "2026-10-20T08:14:00.000000Z",
+  "logs": "[{\"output\": \"Starting deployment of landing to hetzner-1.\", \"type\": \"stdout\", \"order\": 1}, {\"output\": \"New container started. Deployment finished.\", \"type\": \"stdout\", \"order\": 2}]"
+}

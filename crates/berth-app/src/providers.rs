@@ -32,6 +32,7 @@ pub fn provide_screen_views(state: AppState) -> ScreenViews {
     engine_dashboard();
     folder_view();
     git_deploy();
+    plugins();
     let plans = plans();
     ScreenViews {
         dock,
@@ -83,6 +84,11 @@ fn folder_view() {
 
 fn git_deploy() {
     crate::services::git_deploy::provide_git_deploy_view();
+}
+
+fn plugins() {
+    crate::services::plugins::provide_plugins_view();
+    crate::services::plugin_views::provide_plugin_view_store();
 }
 
 fn plans() -> crate::services::plans::PlanStore {

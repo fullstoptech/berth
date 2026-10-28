@@ -927,6 +927,7 @@ pub fn LogViewer(
                         opts: RowOpts {
                             tone: tones[index].0,
                             time: time(),
+                            seconds_only: false,
                             container: merged,
                             raw: raw(),
                             wrap: wrap(),

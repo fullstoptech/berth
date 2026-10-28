@@ -211,6 +211,42 @@ pub fn problem_entry(
     })
 }
 
+/// "Fix with <harness>" on a plugin's failed log (a Coolify deployment): the
+/// log's last [`LOG_LINES_CAP`] lines as a Logs item, the project's Compose
+/// file and folder tree. No `.env` and no env value is attached (D79).
+#[must_use]
+pub fn plugin_log_entry(
+    project: &Project,
+    harness: &Harness,
+    plugin_name: &str,
+    title: &str,
+    lines: &[String],
+) -> Option<Entry> {
+    let kept = &lines[lines.len().saturating_sub(LOG_LINES_CAP)..];
+    let mut context = Vec::new();
+    if !kept.is_empty() {
+        context.push(ContextItem::Logs {
+            container: ContainerId(format!("plugin:{}", plugin_name.to_lowercase())),
+            name: format!("{plugin_name} \u{b7} {title}"),
+            lines: kept.to_vec(),
+        });
+    }
+    if let Some(compose) = project.compose_files.first() {
+        context.push(ContextItem::ComposeFile(compose.clone()));
+    }
+    if let Some(folder) = &project.folder {
+        context.push(ContextItem::FolderTree(folder.clone()));
+    }
+    Some(Entry {
+        request: request(project, harness)?,
+        context,
+        prompt: format!(
+            "The {plugin_name} deployment of {title} failed. Read the attached log, find the step that failed and why, then propose the smallest change in this project that fixes it. Propose file changes with files.propose_edit so I can review them; do not apply anything yourself."
+        ),
+        origin: format!("From {plugin_name} \u{b7} {title}"),
+    })
+}
+
 fn stack_name(stack: &StackGuess) -> String {
     match stack {
         StackGuess::Node {

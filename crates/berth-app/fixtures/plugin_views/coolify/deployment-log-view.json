@@ -1,0 +1,5 @@
+{
+  "kind": "log_stream",
+  "stream": "deployment/dep-uuid-00ff/logs",
+  "title": "Deployment log"
+}

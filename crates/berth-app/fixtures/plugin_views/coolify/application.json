@@ -1,0 +1,131 @@
+{
+  "kind": "detail",
+  "title": "landing",
+  "status": {
+    "text": "Running (healthy)",
+    "tone": "success"
+  },
+  "fields": [
+    [
+      "Address",
+      "https://landing.example.test"
+    ],
+    [
+      "Repository",
+      "example/landing"
+    ],
+    [
+      "Branch",
+      "main"
+    ],
+    [
+      "Commit",
+      "0123456789abcdef0123456789abcdef01234567"
+    ],
+    [
+      "Build pack",
+      "nixpacks"
+    ],
+    [
+      "Ports",
+      "3000"
+    ],
+    [
+      "Updated",
+      "2026-10-24T09:30:00.000000Z"
+    ]
+  ],
+  "tabs": [
+    {
+      "id": "deployments",
+      "title": "Deployments",
+      "view": "deployments/app-uuid-0001"
+    },
+    {
+      "id": "logs",
+      "title": "Logs",
+      "view": "application/app-uuid-0001/logs"
+    },
+    {
+      "id": "env",
+      "title": "Env",
+      "view": "application/app-uuid-0001/envs"
+    }
+  ],
+  "actions": [
+    {
+      "id": "deploy",
+      "label": "Deploy",
+      "danger": false,
+      "params": {
+        "uuid": "app-uuid-0001",
+        "kind": "application"
+      },
+      "confirm": {
+        "title": "Deploy landing?",
+        "lines": [
+          "App: landing",
+          "Server: hetzner-1",
+          "Branch: main"
+        ],
+        "button": "Deploy"
+      },
+      "options": [
+        {
+          "key": "force",
+          "label": "Force rebuild (ignore the build cache)",
+          "default": false
+        }
+      ]
+    },
+    {
+      "id": "start",
+      "label": "Start",
+      "danger": false,
+      "params": {
+        "uuid": "app-uuid-0001",
+        "kind": "application"
+      },
+      "confirm": null,
+      "options": []
+    },
+    {
+      "id": "stop",
+      "label": "Stop",
+      "danger": true,
+      "params": {
+        "uuid": "app-uuid-0001",
+        "kind": "application"
+      },
+      "confirm": {
+        "title": "Stop landing?",
+        "lines": [
+          "App: landing",
+          "Server: hetzner-1",
+          "Branch: main"
+        ],
+        "button": "Stop"
+      },
+      "options": []
+    },
+    {
+      "id": "restart",
+      "label": "Restart",
+      "danger": false,
+      "params": {
+        "uuid": "app-uuid-0001",
+        "kind": "application"
+      },
+      "confirm": {
+        "title": "Restart landing?",
+        "lines": [
+          "App: landing",
+          "Server: hetzner-1",
+          "Branch: main"
+        ],
+        "button": "Restart"
+      },
+      "options": []
+    }
+  ]
+}

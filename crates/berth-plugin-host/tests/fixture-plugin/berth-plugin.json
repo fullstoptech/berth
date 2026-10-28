@@ -1,0 +1,26 @@
+{
+  "id": "fixture",
+  "name": "Fixture",
+  "version": "0.1.0",
+  "protocol": 1,
+  "executable": "berth-fixture-plugin",
+  "permissions": [
+    { "kind": "secrets", "keys": ["api_token"] },
+    { "kind": "read_engines" }
+  ],
+  "contributes": [
+    {
+      "kind": "sidebar_section",
+      "id": "fixture",
+      "title": "Fixture",
+      "items": [{ "id": "main", "title": "Main", "view": "main" }]
+    }
+  ],
+  "config": [
+    { "key": "url", "label": "Instance URL", "kind": "url", "required": false }
+  ],
+  "secrets": [
+    { "key": "api_token", "label": "API token" },
+    { "key": "declared_only", "label": "Declared but never granted in tests" }
+  ]
+}
