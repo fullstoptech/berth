@@ -9,10 +9,28 @@ use dioxus::prelude::*;
 use crate::screens::registries::REGISTRIES_CSS;
 use crate::services::registries::RegistriesService;
 use crate::state::AppState;
-use crate::ui::{Button, ButtonVariant, ControlSize, InlineMessage, InlineTone, TextField};
+use crate::ui::{Button, ButtonVariant, ControlSize, TextField};
 
-/// Parses the sheet's registry URL: `https://` is assumed for a bare
-/// host; a local fixture's `http://` stays as typed.
+/// Whether a bare `host[:port]` is a loopback address (`localhost`,
+/// `127.0.0.0/8`, `::1`). Docker talks plain HTTP to those registries.
+fn is_loopback_host(bare: &str) -> bool {
+    let host_port = bare.split('/').next().unwrap_or(bare);
+    let host = if let Some(rest) = host_port.strip_prefix('[') {
+        rest.split(']').next().unwrap_or(rest)
+    } else if host_port.matches(':').count() > 1 {
+        host_port
+    } else {
+        host_port.split(':').next().unwrap_or(host_port)
+    };
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
+/// Parses the sheet's registry URL: a bare loopback host is `http://`
+/// (Docker allows plain HTTP there), every other bare host is `https://`;
+/// a scheme typed by hand stays as typed.
 ///
 /// # Errors
 /// A sentence for the field's inline error.
@@ -23,6 +41,12 @@ pub fn parse_registry_url(text: &str) -> Result<url::Url, String> {
     }
     let with_scheme = if text.contains("://") {
         text.to_string()
+    } else if is_loopback_host(text) {
+        if text.parse::<std::net::Ipv6Addr>().is_ok() {
+            format!("http://[{text}]")
+        } else {
+            format!("http://{text}")
+        }
     } else {
         format!("https://{text}")
     };
@@ -38,7 +62,12 @@ pub fn parse_registry_url(text: &str) -> Result<url::Url, String> {
 }
 
 #[component]
-pub fn RegistryLoginSheet(existing: Option<String>) -> Element {
+pub fn RegistryLoginSheet(
+    existing: Option<String>,
+    /// A refusal already showing (the sheet starts clean; tests start here).
+    #[props(default)]
+    refusal: Option<String>,
+) -> Element {
     let mut state = use_context::<AppState>();
     let service = try_consume_context::<Option<RegistriesService>>().flatten();
     let row = existing.as_ref().and_then(|id| {
@@ -62,7 +91,7 @@ pub fn RegistryLoginSheet(existing: Option<String>) -> Element {
     });
     let mut password = use_signal(String::new);
     let mut working = use_signal(|| false);
-    let mut refused = use_signal(|| None::<String>);
+    let mut refused = use_signal(|| refusal.clone());
 
     let parsed = parse_registry_url(&url.read());
     let url_problem = if url.read().trim().is_empty() {
@@ -133,6 +162,7 @@ pub fn RegistryLoginSheet(existing: Option<String>) -> Element {
                     label: "URL".to_string(),
                     initial_value: initial_url,
                     placeholder: "https://index.docker.io".to_string(),
+                    help: "A bare localhost or 127.0.0.1 address uses plain http.".to_string(),
                     aria_label: "Registry URL".to_string(),
                     error: url_problem,
                     oninput: move |e: FormEvent| url.set(e.value()),
@@ -149,11 +179,7 @@ pub fn RegistryLoginSheet(existing: Option<String>) -> Element {
                     aria_label: "Registry password".to_string(),
                     error: refused.read().clone(),
                     oninput: move |e: FormEvent| password.set(e.value()),
-                }
-                if let Some(reason) = refused.read().clone() {
-                    InlineMessage { message: reason, tone: InlineTone::Danger }
-                }
-            }
+                }            }
             div { class: "rl-actions",
                 Button {
                     label: "Cancel".to_string(),

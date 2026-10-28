@@ -13,7 +13,7 @@ use super::plugin_view_model::confirm_view;
 use crate::services::assistant::AssistantService;
 use crate::services::assistant_entry;
 use crate::services::plugin_views::{
-    linked_project, open_only, plugin_effect, PendingAction, PluginNav, PluginViewStore, RowContext,
+    linked_project, open_only, plugin_effect, PendingAction, PluginViewStore, RowContext,
 };
 use crate::services::plugins::{PluginsService, PluginsView};
 use crate::state::{AppState, Overlay};
@@ -34,11 +34,7 @@ pub fn request_action(
     context: Option<RowContext>,
 ) {
     if let Some(view) = open_only(action) {
-        let mut nav = store.nav;
-        let mut next = nav.peek().clone();
-        next.row = context.map(|c| c.row);
-        next.open = Some(view.to_string());
-        nav.set(next);
+        store.open_beside(None, context.map(|c| c.row), Some(view.to_string()));
         return;
     }
     let pending = PendingAction {
@@ -308,12 +304,5 @@ pub fn select_row(
     context: &RowContext,
     open: Option<String>,
 ) {
-    let mut nav = store.nav;
-    let view = nav.peek().view.clone();
-    nav.set(PluginNav {
-        plugin: plugin.to_string(),
-        view,
-        row: Some(context.row.clone()),
-        open,
-    });
+    store.open_beside(Some(plugin), Some(context.row.clone()), open);
 }

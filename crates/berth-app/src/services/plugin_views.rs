@@ -495,6 +495,10 @@ pub struct PluginNav {
     /// The view shown in the pane beside the table: the row's `open`, or what
     /// an action's result asked to open.
     pub open: Option<String>,
+    /// The view the pane showed before `open` replaced it, for the Back
+    /// control: set when something opened from inside a pane (a card's log),
+    /// never when another row was picked.
+    pub back: Option<String>,
 }
 
 /// What a table row knows that an action or a harness entry needs: the row it
@@ -642,6 +646,53 @@ impl PluginViewStore {
             .cloned()
     }
 
+    /// Show `open` in the pane beside the table with `row` selected.
+    ///
+    /// `row` is the row the click came from. A card inside a pane belongs to
+    /// the pane's table, not to the main one, so a `row` the loaded main
+    /// table does not list leaves the selection where it is. When `open`
+    /// replaces a pane of the same selection, Back remembers what that pane
+    /// showed (the first one, so a log opened from a log still returns to
+    /// where the person started).
+    pub fn open_beside(&self, plugin: Option<&str>, row: Option<String>, open: Option<String>) {
+        let mut nav = self.nav;
+        let mut next = nav.peek().clone();
+        if let Some(plugin) = plugin {
+            next.plugin = plugin.to_string();
+        }
+        let in_main = match (self.view(&next.plugin, &next.view), &row) {
+            (Some(ViewState::Ready(View::Table { rows, .. })), Some(id)) => {
+                Some(rows.iter().any(|r| &r.id == id))
+            }
+            _ => None,
+        };
+        let row = match (row, in_main) {
+            (Some(id), None | Some(true)) => Some(id),
+            _ => next.row.clone(),
+        };
+        let same_row = row == next.row;
+        next.back = if open.is_some() && open != next.open && same_row {
+            next.back.clone().or_else(|| next.open.clone())
+        } else if open == next.open {
+            next.back.clone()
+        } else {
+            None
+        };
+        next.row = row;
+        next.open = open;
+        nav.set(next);
+    }
+
+    /// The pane's Back: the view it showed before, with the selection kept.
+    pub fn go_back(&self) {
+        let mut nav = self.nav;
+        let mut next = nav.peek().clone();
+        if let Some(back) = next.back.take() {
+            next.open = Some(back);
+            nav.set(next);
+        }
+    }
+
     /// Put a view in a slot (a scene's recorded answer, or a test).
     pub fn seed_view(&self, plugin: &str, view: &str, state: ViewState) {
         let mut views = self.views;
@@ -754,11 +805,11 @@ impl PluginViewStore {
                         store.reload(Some(&service), &plugin, view);
                     }
                     if let Some(open) = result.open {
-                        let mut nav = store.nav;
-                        let mut next = nav.peek().clone();
-                        next.row = pending.context.as_ref().map(|c| c.row.clone());
-                        next.open = Some(open);
-                        nav.set(next);
+                        store.open_beside(
+                            None,
+                            pending.context.as_ref().map(|c| c.row.clone()),
+                            Some(open),
+                        );
                     }
                 }
                 Err(reason) => toast(state, reason, ToastTone::Danger),
@@ -794,6 +845,7 @@ pub fn run_command(state: &mut AppState, command: &PluginCommand) {
                 view: view.clone(),
                 row: None,
                 open: None,
+                back: None,
             });
             state.section.set(crate::state::Section::Plugin);
         }
