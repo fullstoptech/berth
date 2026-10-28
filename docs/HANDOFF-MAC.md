@@ -33,58 +33,37 @@ again.
 ## Current state (written 2026-10-28, Linux box)
 
 - Phase 8 (P8-T3 rest, P8-T4, P8-T5) and Phase 9 (P9-T1..T5) are done and
-  closed on Linux. Both are merged into local `main`: `21a537a` (Phase 8,
-  0.8.0) and `9119e2d` (Phase 9, 0.9.0). Phase 9 close commit `ac5421f`
-  (`P9: workspace version 0.9.0; STATUS at phase close (AD53); Phase 10
-  Learned`); the branch `phase/9-plugins` carries this handoff commit and a
-  merge of it into `main` on top. Workspace version `0.9.0`.
+  closed on Linux, and both are merged into `origin/main` through GitHub
+  PRs (owner-approved 2026-10-28): PR #1 `6b6152d` (Phase 8, 0.8.0) and
+  PR #2 `9de9ace` (Phase 9, 0.9.0, includes this handoff). CI
+  (`scripts/check.sh` on macos-14) passed on both PRs: 2472 and 2704
+  passed, 70 skipped. Phase 9 close commit `ac5421f`. Workspace version
+  `0.9.0`.
 - Last `scripts/check.sh` on Linux: exit 0, **2695 passed, 70 skipped**. The
   Mac count will differ (some tests are platform-gated); only exit 0 matters.
 - Live ITs that passed on Linux against the native engine, with
   `BERTH_KEYRING=memory`: `registry_it`, `build_it`, `git_it`,
   `save_image_it`. `ssh_it` skipped (no `BERTH_SSH_TEST`).
-- **Nothing from the Linux period is pushed.** The commits exist only on the
-  Linux box. The Mac's `origin` has only the 2026-10-28 first push
-  (`origin/phase/8-parity` at `1be9372`, `origin/main` at `35257b9`, the
-  `origin/work/*` slices). The tags `v0.2`–`v0.7` are local to the Mac;
-  `v0.8` and `v0.9` do not exist anywhere (below).
+- **Everything is pushed** (`main`, `phase/8-parity`, `phase/9-plugins`).
+  The tags `v0.2`–`v0.7` are local to the Mac; `v0.8` and `v0.9` do not
+  exist anywhere yet (item 8 below).
 - Local branch `phase/9-plugins-crates` on Linux (`247f230`) is redundant:
   its commits were cherry-picked onto `phase/9-plugins`. Ignore it.
 
-## Step 0 — get the Linux commits onto the Mac
+## Step 0 — sync the Mac with `origin`
 
-Needs the owner. A push needs explicit approval (CLAUDE.md "Git"); the
-2026-10-28 push of all branches was for that push only.
+The Linux work is on GitHub (PRs #1 and #2, merged 2026-10-28). On the Mac:
 
-On the Linux box, once the owner approves:
-
-```
-git push origin main phase/8-parity phase/9-plugins
-```
-
-(No tags, no `work/*`, no `phase/9-plugins-crates`.) If the owner prefers not
-to push, a bundle does the same without a remote:
-`git bundle create berth-linux.bundle main phase/8-parity phase/9-plugins`,
-carry the file over, then `git fetch ../berth-linux.bundle
-main:refs/remotes/linux/main phase/8-parity:refs/remotes/linux/phase/8-parity
-phase/9-plugins:refs/remotes/linux/phase/9-plugins` on the Mac and fast-forward
-from `linux/*` instead of `origin/*`.
-
-On the Mac:
-
-1. `git fetch origin`. Check `git log --oneline -3 origin/phase/9-plugins`
-   shows `P9: Mac handoff notes` on top of `ac5421f`, and
-   `git merge-base --is-ancestor 1be9372 origin/phase/9-plugins` exits 0.
-2. The Mac's local `main` (should be `35257b9`) and `phase/8-parity` (should
-   be `1be9372`) are ancestors of the new heads, so all three fast-forward:
-   `git checkout main && git merge --ff-only origin/main`, the same for
-   `phase/8-parity` and `phase/9-plugins`. If a `--ff-only` refuses, the Mac
-   moved on since the first push: stop and compare (`git log
-   main..origin/main`, `origin/main..main`) before doing anything else.
-3. Work from `phase/9-plugins`; its tip is merged into `main`, so the two
-   point at the same tree. Phase 10 gets its own branch `phase/10-ship`.
-4. The untracked `.audit/` in the repo root is the owner's. Leave it.
-5. The sibling worktrees `../berth-p8t1`, `../berth-p8t5`, `../berth-p9t1`,
+1. `git fetch origin`, then fast-forward each local branch:
+   `git checkout main && git merge --ff-only origin/main` (local `main`
+   should be `35257b9`), and the same for `phase/8-parity` (local should be
+   `1be9372`). `phase/9-plugins` is new: `git checkout phase/9-plugins`
+   tracks it. If a `--ff-only` refuses, the Mac moved on since the first push:
+   stop and compare (`git log main..origin/main`, `origin/main..main`).
+2. Work from `main` (`9de9ace` or later). Phase 10 gets its own branch
+   `phase/10-ship` from it.
+3. The untracked `.audit/` in the repo root is the owner's. Leave it.
+4. The sibling worktrees `../berth-p8t1`, `../berth-p8t5`, `../berth-p9t1`,
    `../berth-p9t2`, `../berth-p9t3` (branches `work/p8-t1-remote`,
    `work/p8-t5-git`, `work/p9-t1-protocol`, `work/p9-t2-host`,
    `work/p9-t3-coolify`) are **superseded**. What was used is on `main`:
@@ -96,7 +75,7 @@ On the Mac:
    was never used: P8-T1 landed as `7a64c58`. Before removing any worktree run
    `git -C <dir> status` and keep anything uncommitted; never delete the
    `origin/work/*` branches (that is a push).
-6. Run fixtures and live tests from this primary checkout only. Compose
+5. Run fixtures and live tests from this primary checkout only. Compose
    records the project folder; recreating `berthfx` from another checkout
    splits it in two (see Gotchas).
 
@@ -253,7 +232,7 @@ Fix failures forward as `P8-HC: <fix>` or `P9-HC: <fix>` commits on
       last Mac numbers (Phase 6): cold start to a populated Projects table
       580 ms median (budget 600), idle CPU 0.10 %, footprint 97 MB.
 - [ ] **8. Tags, locally.** Only after 1–7 pass:
-      `git tag v0.8 21a537a` and `git tag v0.9 9119e2d` (the phases' merge
+      `git tag v0.8 6b6152d` and `git tag v0.9 9de9ace` (the PR merge
       commits; check `git rev-parse v0.7` is the Phase 7 merge `35257b9` and
       follow the same pattern). If acceptance needed fix commits and you want
       the tags to include them, ask the owner where they point. Never push a
