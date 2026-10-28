@@ -68,6 +68,50 @@ pub fn parse_build_chunk(text: &str) -> Vec<BuildEvent> {
         .collect()
 }
 
+/// Line buffer between the engine's `stream` chunks and the parser: a
+/// chunk may end mid-line, and the next one continues it.
+#[derive(Debug, Default)]
+pub struct BuildLines {
+    pending: String,
+}
+
+impl BuildLines {
+    /// Feeds one `stream` chunk; returns the events of every line the
+    /// chunk completed.
+    pub fn push(&mut self, chunk: &str) -> Vec<BuildEvent> {
+        self.pending.push_str(chunk);
+        let mut events = Vec::new();
+        while let Some(pos) = self.pending.find('\n') {
+            let line: String = self.pending.drain(..=pos).collect();
+            events.extend(parse_build_line(&line));
+        }
+        events
+    }
+
+    /// The last line when the stream ended without a newline.
+    pub fn finish(&mut self) -> Vec<BuildEvent> {
+        let rest = std::mem::take(&mut self.pending);
+        parse_build_line(&rest).into_iter().collect()
+    }
+}
+
+/// The image names an image load reported: the engine writes
+/// `Loaded image: name:tag` (or `Loaded image ID: sha256:…` for an
+/// untagged image) into its `stream` text. Other lines are ignored.
+#[must_use]
+pub fn loaded_image_names<'a>(chunks: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let text: String = chunks.into_iter().collect();
+    text.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            line.strip_prefix("Loaded image ID: ")
+                .or_else(|| line.strip_prefix("Loaded image: "))
+        })
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,5 +171,62 @@ The command '/bin/sh -c exit 3' returned a non-zero code: 3\n";
             parse_build_line("ERROR: failed to solve: nope"),
             Some(BuildEvent::Failed { .. })
         ));
+    }
+
+    #[test]
+    fn build_lines_join_a_line_split_across_chunks() {
+        let mut lines = BuildLines::default();
+        assert!(lines.push("Step 1/2 : FR").is_empty());
+        let events = lines.push("OM alpine\n ---> abc\nStep 2/2 : RUN tr");
+        assert_eq!(
+            events,
+            [
+                BuildEvent::Step {
+                    index: 1,
+                    total: 2,
+                    text: "Step 1/2 : FROM alpine".to_string()
+                },
+                BuildEvent::Log(" ---> abc".to_string()),
+            ]
+        );
+        // The unfinished line comes out at the end, not before.
+        assert_eq!(
+            lines.finish(),
+            [BuildEvent::Step {
+                index: 2,
+                total: 2,
+                text: "Step 2/2 : RUN tr".to_string()
+            }]
+        );
+        assert!(lines.finish().is_empty());
+    }
+
+    #[test]
+    fn build_lines_classify_a_recorded_failure() {
+        let mut lines = BuildLines::default();
+        let mut events = lines.push(RECORDED);
+        events.extend(lines.finish());
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, BuildEvent::Failed { .. })),
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn build_loaded_image_names_reads_tags_and_ids_only() {
+        let names = loaded_image_names([
+            "Loaded image: 127.0.0.1:56500/berthfx/app:1\n",
+            "Loaded image: alpi",
+            "ne:3\n",
+            "Loaded image ID: sha256:abc123\n",
+            "something else\n",
+        ]);
+        assert_eq!(
+            names,
+            ["127.0.0.1:56500/berthfx/app:1", "alpine:3", "sha256:abc123"]
+        );
+        assert!(loaded_image_names(["nothing here\n"]).is_empty());
     }
 }

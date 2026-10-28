@@ -8,6 +8,8 @@
 use futures::StreamExt;
 use tokio_util::sync::CancellationToken as Cancel;
 
+mod images;
+
 use super::{MockWorld, BUNDLED_JSON};
 use crate::client::{unsupported_stream, Bs, EngineClient, ExecHandle};
 use crate::EngineError;
@@ -679,6 +681,41 @@ impl EngineClient for MockEngine {
             image.dangling = false;
         }
         Ok(())
+    }
+
+    fn push(
+        &self,
+        reference: &str,
+        _auth: Option<&crate::client::RegistryAuth>,
+        cancel: Cancel,
+    ) -> Bs<berth_core::PullProgress> {
+        images::push(&self.state, reference, cancel)
+    }
+
+    fn build_image(
+        &self,
+        spec: &berth_core::BuildSpec,
+        _credentials: Option<&crate::client::RegistryAuth>,
+        cancel: Cancel,
+    ) -> Bs<berth_core::BuildEvent> {
+        images::build(&self.state, &self.id, spec, cancel)
+    }
+
+    fn export_image(&self, id: &str, cancel: Cancel) -> Bs<bytes::Bytes> {
+        images::export(&self.state, id, cancel)
+    }
+
+    async fn import_image(&self, tar: bytes::Bytes) -> Result<Vec<String>, EngineError> {
+        images::import(&self.state, &self.id, &tar)
+    }
+
+    async fn commit(
+        &self,
+        id: &berth_core::ContainerId,
+        repo: &str,
+        tag: &str,
+    ) -> Result<String, EngineError> {
+        images::commit(&self.state, &self.id, id, repo, tag)
     }
 
     async fn search_images(
