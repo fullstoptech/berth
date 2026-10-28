@@ -231,6 +231,32 @@ fn engine_for_user(user: &UserEngineRef) -> berth_core::Engine {
     }
 }
 
+/// `colima list` carries no socket and `colima status` can fail (Linux without
+/// lima), so a running profile may arrive without one. Fall back to the
+/// profile directory's socket, then to the profile's docker context
+/// (`colima`, or `colima-<profile>`), whichever exists on disk.
+fn socket_fallback(
+    profile: &berth_core::ColimaProfile,
+    contexts: &[DockerContext],
+    colima_dir: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    let in_dir = colima_dir.join(&profile.name).join("docker.sock");
+    if in_dir.exists() {
+        return Some(in_dir);
+    }
+    let context_name = if profile.name == "default" {
+        "colima".to_string()
+    } else {
+        format!("colima-{}", profile.name)
+    };
+    contexts
+        .iter()
+        .filter(|ctx| ctx.name == context_name)
+        .filter_map(|ctx| ctx.host.strip_prefix("unix://"))
+        .map(std::path::PathBuf::from)
+        .find(|socket| socket.exists())
+}
+
 async fn discover_with(
     colima: &dyn ColimaControl,
     user: &[UserEngineRef],
@@ -244,13 +270,17 @@ async fn discover_with(
         match colima.profiles().await {
             Ok(profiles) => {
                 for profile in &profiles {
+                    let mut profile = profile.clone();
+                    if profile.running && profile.docker_socket.is_none() {
+                        profile.docker_socket = socket_fallback(&profile, contexts, colima_dir);
+                    }
                     covered_sockets.push(
                         profile
                             .docker_socket
                             .clone()
                             .unwrap_or_else(|| colima_dir.join(&profile.name).join("docker.sock")),
                     );
-                    engines.push(engine_for_profile(profile));
+                    engines.push(engine_for_profile(&profile));
                 }
             }
             Err(err) => tracing::warn!(%err, "colima profiles unavailable during discovery"),
@@ -459,6 +489,57 @@ mod tests {
             Some("unix:///tmp/colima.sock")
         );
         assert!(engines[0].resources.is_some());
+    }
+
+    #[tokio::test]
+    async fn discovery_running_profile_without_status_socket_uses_context_socket() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let socket = dir.path().join("ctx.sock");
+        std::fs::write(&socket, "").expect("socket stand-in");
+        let mut default = profile("default", true, berth_core::Runtime::Docker);
+        default.docker_socket = None;
+        let mut work = profile("work", true, berth_core::Runtime::Docker);
+        work.docker_socket = None;
+        let colima = MockColima::new(vec![default, work]);
+        let ctxs = [
+            DockerContext {
+                name: "colima".to_string(),
+                host: format!("unix://{}", socket.display()),
+                current: true,
+            },
+            DockerContext {
+                name: "colima-work".to_string(),
+                host: "unix:///tmp/berth-no-such.sock".to_string(),
+                current: false,
+            },
+        ];
+        let engines = discover_with(&colima, &[], &ctxs, &dir.path().join("colima-home")).await;
+        assert_eq!(engines[0].id.0, "colima:default");
+        assert_eq!(engines[0].state, berth_core::EngineState::Running);
+        assert_eq!(
+            engines[0].docker_host,
+            Some(format!("unix://{}", socket.display()))
+        );
+        assert_eq!(engines[1].id.0, "colima:work");
+        assert_eq!(engines[1].docker_host, None, "no socket on disk, no guess");
+    }
+
+    #[tokio::test]
+    async fn discovery_running_profile_without_status_socket_uses_profile_dir_socket() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let profile_dir = dir.path().join("default");
+        std::fs::create_dir_all(&profile_dir).expect("mkdir");
+        std::fs::write(profile_dir.join("docker.sock"), "").expect("socket stand-in");
+        let mut default = profile("default", true, berth_core::Runtime::Docker);
+        default.docker_socket = None;
+        let engines = discover_with(&MockColima::new(vec![default]), &[], &[], dir.path()).await;
+        assert_eq!(
+            engines[0].docker_host,
+            Some(format!(
+                "unix://{}",
+                profile_dir.join("docker.sock").display()
+            ))
+        );
     }
 
     #[tokio::test]
