@@ -711,6 +711,7 @@ fn plugin_view_section_shows_the_status_warning_as_a_banner() {
                 view: "servers".to_string(),
                 row: None,
                 open: None,
+                back: None,
             });
         });
         rsx! { PluginViewScreen {} }
@@ -741,6 +742,7 @@ fn plugin_view_section_of_a_plugin_that_is_not_enabled_says_so() {
                 view: "servers".to_string(),
                 row: None,
                 open: None,
+                back: None,
             });
         });
         rsx! { PluginViewScreen {} }
@@ -750,6 +752,210 @@ fn plugin_view_section_of_a_plugin_that_is_not_enabled_says_so() {
     let html = strip_styles(dioxus_ssr::render(&dom));
     assert!(html.contains("This plugin is not running"), "{html}");
     assert!(!html.contains("pv-table"), "{html}");
+}
+
+// -- a log opened from a pane has a way back (P10-T4) -------------------------
+
+const LOG: &str = "deployment/d1/logs";
+
+fn logs_action() -> ActionSpec {
+    let mut logs = action("open-logs", "Logs", false, None);
+    logs.params = serde_json::json!({ "open": LOG });
+    logs
+}
+
+fn card_ctx() -> RowContext {
+    // A deployment card in the inspector of application row "a".
+    RowContext {
+        row: "dep-9".to_string(),
+        ..row_ctx()
+    }
+}
+
+/// Seeds the main table ("servers", rows a and b), shows row "a" with its
+/// own detail beside it, runs `steps` against the store and prints the nav.
+type NavSteps = fn(PluginViewStore, AppState);
+
+thread_local! {
+    static NAV_STEPS: std::cell::Cell<Option<NavSteps>> = const { std::cell::Cell::new(None) };
+}
+
+#[component]
+fn NavProbe() -> Element {
+    let state = use_app_state();
+    use_context_provider(|| state);
+    let store = crate::services::plugin_views::provide_plugin_view_store();
+    use_hook(|| {
+        store.seed_view(
+            "coolify",
+            "servers",
+            crate::services::plugin_views::ViewState::Ready(table()),
+        );
+        let mut nav = store.nav;
+        nav.set(crate::services::plugin_views::PluginNav {
+            plugin: "coolify".to_string(),
+            view: "servers".to_string(),
+            row: Some("a".to_string()),
+            open: Some("application/a".to_string()),
+            back: None,
+        });
+        if let Some(steps) = NAV_STEPS.with(std::cell::Cell::get) {
+            steps(store, state);
+        }
+    });
+    let nav = store.nav.read();
+    rsx! { span { "row={nav.row:?} open={nav.open:?} back={nav.back:?}" } }
+}
+
+fn probe_nav(steps: NavSteps) -> String {
+    NAV_STEPS.with(|slot| slot.set(Some(steps)));
+    let mut dom = VirtualDom::new(NavProbe);
+    let _ = dom.rebuild_to_vec();
+    dioxus_ssr::render(&dom).replace("&#34;", "\"")
+}
+
+#[test]
+fn plugin_view_a_log_opened_from_a_card_keeps_the_row_and_remembers_the_pane() {
+    let html = probe_nav(|store, state| {
+        request_action(
+            store,
+            None,
+            state,
+            "coolify",
+            &logs_action(),
+            Some(card_ctx()),
+        );
+    });
+    assert!(
+        html.contains(&format!(
+            "row=Some(\"a\") open=Some(\"{LOG}\") back=Some(\"application/a\")"
+        )),
+        "the application row stays selected and Back knows the pane: {html}"
+    );
+}
+
+#[test]
+fn plugin_view_back_returns_to_the_pane_with_the_row_still_selected() {
+    let html = probe_nav(|store, state| {
+        request_action(
+            store,
+            None,
+            state,
+            "coolify",
+            &logs_action(),
+            Some(card_ctx()),
+        );
+        store.go_back();
+    });
+    assert!(
+        html.contains("row=Some(\"a\") open=Some(\"application/a\") back=None"),
+        "{html}"
+    );
+}
+
+#[test]
+fn plugin_view_a_log_opened_from_a_log_still_goes_back_to_where_it_started() {
+    let html = probe_nav(|store, state| {
+        request_action(
+            store,
+            None,
+            state,
+            "coolify",
+            &logs_action(),
+            Some(card_ctx()),
+        );
+        let mut other = logs_action();
+        other.params = serde_json::json!({ "open": "deployment/d2/logs" });
+        request_action(store, None, state, "coolify", &other, Some(card_ctx()));
+        store.go_back();
+    });
+    assert!(html.contains("open=Some(\"application/a\")"), "{html}");
+}
+
+#[test]
+fn plugin_view_picking_another_main_row_moves_the_selection_and_drops_back() {
+    let html = probe_nav(|store, state| {
+        request_action(
+            store,
+            None,
+            state,
+            "coolify",
+            &logs_action(),
+            Some(card_ctx()),
+        );
+        let beta = RowContext {
+            row: "b".to_string(),
+            ..row_ctx()
+        };
+        crate::screens::plugin_action::select_row(
+            store,
+            "coolify",
+            &beta,
+            Some("application/b".to_string()),
+        );
+    });
+    assert!(
+        html.contains("row=Some(\"b\") open=Some(\"application/b\") back=None"),
+        "{html}"
+    );
+}
+
+#[component]
+fn PaneSection(back: Option<String>) -> Element {
+    let state = use_app_state();
+    use_context_provider(|| state);
+    let plugins = crate::services::plugins::provide_plugins_view();
+    let store = crate::services::plugin_views::provide_plugin_view_store();
+    use_hook(|| {
+        use crate::services::plugin_views::ViewState;
+        let mut entries = plugins.entries;
+        entries.set(vec![scenes::enabled_entry()]);
+        store.seed_view("coolify", "servers", ViewState::Ready(table()));
+        store.seed_view(
+            "coolify",
+            LOG,
+            ViewState::Ready(View::LogStream {
+                stream: LOG.to_string(),
+                title: "Deployment log".to_string(),
+            }),
+        );
+        store.seed_log("coolify", LOG, log_state(&["compiling"], Some("failed")));
+        let mut nav = store.nav;
+        nav.set(crate::services::plugin_views::PluginNav {
+            plugin: "coolify".to_string(),
+            view: "servers".to_string(),
+            row: Some("a".to_string()),
+            open: Some(LOG.to_string()),
+            back,
+        });
+    });
+    rsx! { PluginViewScreen {} }
+}
+
+fn pane_section(back: Option<&str>) -> String {
+    let back = back.map(str::to_string);
+    let mut dom = VirtualDom::new_with_props(PaneSection, PaneSectionProps { back });
+    let _ = dom.rebuild_to_vec();
+    strip_styles(dioxus_ssr::render(&dom))
+}
+
+#[test]
+fn plugin_view_a_log_in_the_pane_shows_back_and_keeps_the_row_selected() {
+    let html = pane_section(Some("application/a"));
+    assert_eq!(count(&html, "class=\"pv-back\""), 1, "{html}");
+    assert!(html.contains("<span>Back</span>"), "{html}");
+    assert!(html.contains("compiling"), "the log is still drawn: {html}");
+    assert_eq!(count(&html, "pv-row pv-selected"), 1, "{html}");
+    // The pane starts with Back, before the log.
+    let back = html.find("pv-back").expect("back");
+    assert!(back < html.find("compiling").expect("log"), "{html}");
+}
+
+#[test]
+fn plugin_view_a_pane_that_nothing_was_opened_from_has_no_back() {
+    let html = pane_section(None);
+    assert!(!html.contains("pv-back"), "{html}");
+    assert!(html.contains("compiling"), "{html}");
 }
 
 // -- pure rules ---------------------------------------------------------------

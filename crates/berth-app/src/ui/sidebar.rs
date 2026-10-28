@@ -202,6 +202,7 @@ fn PluginGroups() -> Element {
                                                 view: view.clone(),
                                                 row: None,
                                                 open: None,
+                                                back: None,
                                             });
                                             state.section.set(Section::Plugin);
                                         },

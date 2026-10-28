@@ -11,6 +11,14 @@ pub fn home() -> std::path::PathBuf {
     )
 }
 
+/// The person's Downloads folder (the default place for a file Berth
+/// exports): the platform's download directory, else `~/Downloads`.
+pub fn downloads_dir() -> std::path::PathBuf {
+    directories::UserDirs::new()
+        .and_then(|dirs| dirs.download_dir().map(std::path::Path::to_path_buf))
+        .unwrap_or_else(|| home().join("Downloads"))
+}
+
 fn data_dir_from(berth_data_dir: Option<std::path::PathBuf>) -> std::path::PathBuf {
     if let Some(dir) = berth_data_dir {
         return dir;
@@ -93,6 +101,16 @@ mod tests {
         let custom = std::path::PathBuf::from("/tmp/custom-colima");
         assert_eq!(colima_dir_from(Some(custom.clone()), home), custom);
         assert_eq!(colima_dir_from(None, home), home.join(".config/colima"));
+    }
+
+    #[test]
+    fn downloads_dir_is_absolute_and_named_downloads() {
+        let dir = downloads_dir();
+        assert!(dir.is_absolute(), "{}", dir.display());
+        assert_eq!(
+            dir.file_name().map(|n| n.to_string_lossy().to_lowercase()),
+            Some("downloads".into())
+        );
     }
 
     #[test]

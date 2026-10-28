@@ -591,10 +591,25 @@ fn Pane(plugin: String, main_view: String, row: Option<String>, open: String) ->
         store.view(&plugin, &open),
         Some(ViewState::Ready(View::Detail { .. }))
     );
+    // Something opened from inside the pane (a card's log): Back returns to
+    // what the pane showed, with the row still selected.
+    let can_go_back = store.nav.read().back.is_some();
     rsx! {
         Inspector { frame: InspectorFrame::Docked,
             div { class: "pv-pane",
-                if let (Some((summary, context, actions)), false) = (found, opened_is_detail) {
+                if can_go_back {
+                    button {
+                        class: "pv-back",
+                        r#type: "button",
+                        "aria-label": "Back",
+                        onclick: move |_| store.go_back(),
+                        span { class: "pv-back-chevron",
+                            Icon { name: "chevron-right", size: IconSize::Sm }
+                        }
+                        span { "Back" }
+                    }
+                }
+                if let (Some((summary, context, actions)), false, false) = (found, opened_is_detail, can_go_back) {
                     RowHeader { plugin: plugin.clone(), summary, context, actions, open: open.clone() }
                 }
                 ViewBody { plugin: plugin.clone(), view: open, in_pane: true }

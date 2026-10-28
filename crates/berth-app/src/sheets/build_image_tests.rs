@@ -255,6 +255,15 @@ fn build_image_export_offers_a_safe_file_name() {
 }
 
 #[test]
+fn build_image_export_panel_opens_in_downloads_with_the_default_file_name() {
+    let downloads = std::path::PathBuf::from("/Users/someone/Downloads");
+    let request = export_panel_request("postgres:17-alpine", downloads.clone());
+    assert_eq!(request.directory, downloads);
+    assert_eq!(request.file_name, "postgres-17-alpine.tar");
+    assert_eq!(request.title, "Export postgres:17-alpine");
+}
+
+#[test]
 fn build_image_import_toast_names_what_was_loaded() {
     let names = |n: &[&str]| n.iter().map(ToString::to_string).collect::<Vec<_>>();
     assert_eq!(imported_text(&[], "a.tar"), "Imported a.tar");

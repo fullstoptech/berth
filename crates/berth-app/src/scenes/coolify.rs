@@ -118,6 +118,7 @@ fn deployments_setup(state: &mut AppState) {
         view: "deployments".to_string(),
         row: Some(FAILED_ROW.to_string()),
         open: Some(FAILED_STREAM.to_string()),
+        back: None,
     });
 }
 
