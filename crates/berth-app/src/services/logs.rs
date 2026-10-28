@@ -631,6 +631,7 @@ pub fn use_log_session(targets: Vec<LogTarget>) -> LogHandle {
     let mut version = use_signal(|| 0_u64);
     let waker = Arc::clone(&core);
     use_hook(move || {
+        // Scoped on purpose: a never-ending loop writing a signal the component owns.
         spawn(async move {
             loop {
                 waker.changed().await;

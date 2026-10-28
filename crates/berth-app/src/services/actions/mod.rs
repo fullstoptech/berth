@@ -199,6 +199,18 @@ pub(crate) fn spawn_io(future: impl std::future::Future<Output = ()> + Send + 's
     }
 }
 
+/// Run `future` on the UI thread for as long as the app lives, in the root scope.
+///
+/// Use it for work the user started whose result must land even if the caller unmounts (a
+/// click handler that swaps its own page out, a sheet that closes). A plain `spawn` attaches to
+/// the current component scope and is dropped with it. Keep scoped `spawn` for subscriptions
+/// that should die with their view.
+pub(crate) fn spawn_job(
+    future: impl std::future::Future<Output = ()> + 'static,
+) -> dioxus::core::Task {
+    dioxus::core::spawn_forever(future)
+}
+
 /// The actions service. Cheap to clone; provide it as context from the App
 /// root next to `Services`.
 #[derive(Clone)]

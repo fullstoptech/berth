@@ -458,7 +458,7 @@ fn EnginesGroup() -> Element {
 
 /// Pick a binary for a harness; an unchanged answer (the dialog cancelled) changes nothing.
 fn choose_binary(mut state: AppState, store: Option<FirstRunStore>, mock: bool, id: String) {
-    spawn(async move {
+    crate::services::actions::spawn_job(async move {
         let Some(file) = rfd::AsyncFileDialog::new()
             .set_title("Choose the program")
             .pick_file()

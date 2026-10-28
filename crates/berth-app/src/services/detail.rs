@@ -230,7 +230,7 @@ impl DetailStore {
             let _ = tx.send(result);
         });
         let id = container.id.clone();
-        spawn(async move {
+        crate::services::actions::spawn_job(async move {
             let Ok(result) = rx.await else { return };
             // A newer request for this container replaced this one.
             if requested.peek().get(&id) != Some(&signature) {

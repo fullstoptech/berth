@@ -731,7 +731,7 @@ impl ImageStore {
         let store = *self;
         let store_services = services.clone();
         let engine = engine.clone();
-        spawn(async move {
+        crate::services::actions::spawn_job(async move {
             while let Some(message) = rx.recv().await {
                 let finished = !matches!(message, PullMessage::Event(_));
                 let outcome = match &message {
@@ -921,7 +921,7 @@ pub(crate) fn io<T: Send + 'static>(
     spawn_io(async move {
         let _ = tx.send(work.await);
     });
-    spawn(async move {
+    crate::services::actions::spawn_job(async move {
         if let Ok(value) = rx.await {
             then(value);
         }

@@ -454,7 +454,7 @@ impl ImageStore {
         let store = *self;
         let services = services.clone();
         let engine = engine.clone();
-        spawn(async move {
+        crate::services::actions::spawn_job(async move {
             while let Some(message) = rx.recv().await {
                 let (phase, outcome) = match message {
                     Msg::Event(event) => {
@@ -548,7 +548,7 @@ impl ImageStore {
         let store = *self;
         let services = services.clone();
         let engine = engine.clone();
-        spawn(async move {
+        crate::services::actions::spawn_job(async move {
             while let Some(message) = rx.recv().await {
                 let (phase, outcome) = match message {
                     Msg::Event(event) => {

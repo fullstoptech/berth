@@ -8,6 +8,7 @@ use berth_core::{BuildContext, BuildEvent, Image, PullProgress};
 use berth_engine::client::{Bs, RegistryAuth};
 use berth_engine::{EngineClient, EngineError};
 use berth_store::{InMemorySecretStore, SecretStore};
+use dioxus::core::current_scope_id;
 use secrecy::ExposeSecret as _;
 
 use super::*;
@@ -425,6 +426,27 @@ fn Harness() -> Element {
         provide_context(Some(registries));
         SLOT.with(|slot| *slot.borrow_mut() = Some((state, store)));
     });
+    let shown = use_signal(|| true);
+    use_hook(|| CALLER_SHOWN.with(|slot| *slot.borrow_mut() = Some(shown)));
+    rsx! {
+        div {}
+        if shown() {
+            Caller {}
+        }
+    }
+}
+
+thread_local! {
+    static CALLER_SHOWN: std::cell::RefCell<Option<Signal<bool>>> =
+        const { std::cell::RefCell::new(None) };
+    static CALLER_SCOPE: std::cell::Cell<Option<ScopeId>> = const { std::cell::Cell::new(None) };
+}
+
+/// A child that starts work and is then removed, as the Build image
+/// sheet's form page is the moment its build starts.
+#[component]
+fn Caller() -> Element {
+    use_hook(|| CALLER_SCOPE.with(|slot| slot.set(Some(current_scope_id()))));
     rsx! { div {} }
 }
 
@@ -477,6 +499,23 @@ impl Rig {
 
     fn read<R>(&self, f: impl FnOnce() -> R) -> R {
         self.dom.in_runtime(f)
+    }
+
+    /// Run `f` inside the `Caller` child, as a sheet's click handler runs.
+    fn in_caller<R>(&self, f: impl FnOnce() -> R) -> R {
+        let scope = CALLER_SCOPE
+            .with(std::cell::Cell::get)
+            .expect("caller mounted");
+        self.dom.in_scope(scope, f)
+    }
+
+    /// Unmount the `Caller` child, as the sheet swaps its form page out.
+    fn remove_caller(&mut self) {
+        let mut shown = CALLER_SHOWN
+            .with(|slot| *slot.borrow())
+            .expect("harness shown signal");
+        self.dom.in_runtime(|| shown.set(false));
+        self.dom.render_immediate(&mut dioxus::core::NoOpMutations);
     }
 
     /// Drive the dom until `done` says so (5 s at most).
@@ -540,6 +579,32 @@ impl Rig {
 }
 
 const DOCKERFILE: &str = "FROM alpine:3\nRUN echo hi\n";
+
+/// P8-HC: the Build image sheet starts a build from its form page and
+/// unmounts that page at once; the build must still reach Done.
+#[tokio::test]
+async fn build_started_from_a_child_that_unmounts_still_reaches_done() {
+    let mut rig = Rig::new();
+    let store = rig.store;
+    let services = rig.services.clone();
+    let result = rig.in_caller(|| {
+        store.build(
+            &services,
+            &default_engine(),
+            inline(DOCKERFILE, &["berthfx/unmount:1"]),
+        )
+    });
+    assert_eq!(result, Ok(()));
+    rig.remove_caller();
+    rig.build_phase_is_over().await;
+    let done = rig.read(|| store.builds.peek()[0].clone());
+    assert_eq!(done.phase, BuildPhase::Done);
+    assert!(done
+        .lines
+        .iter()
+        .any(|l| l.text.contains("Successfully built")));
+    assert_eq!(rig.pending("berthfx/unmount:1", BUILD_ACTION), None);
+}
 
 #[tokio::test]
 async fn build_store_runs_to_done_with_its_pending_entry_activity_and_the_new_image() {
@@ -818,6 +883,37 @@ async fn push_store_runs_to_done_with_credentials_digest_pending_and_activity() 
             && e.outcome == Outcome::Ok),
         "{:?}",
         rig.activity()
+    );
+}
+
+/// P8-HC: a push started from a child that unmounts at once still ends.
+#[tokio::test]
+async fn push_started_from_a_child_that_unmounts_still_reaches_done() {
+    let mut rig = Rig::new();
+    let store = rig.store;
+    tagged(&rig, "127.0.0.1:56500/berthfx/unmount", "1").await;
+    let services = rig.services.clone();
+    rig.in_caller(|| {
+        store
+            .push(
+                &services,
+                &default_engine(),
+                "127.0.0.1:56500/berthfx/unmount:1",
+            )
+            .expect("started");
+    });
+    rig.remove_caller();
+    rig.until("the push", |dom| {
+        dom.in_runtime(|| store.pushes.peek().iter().all(|p| !p.is_running()))
+    })
+    .await;
+    assert_eq!(
+        rig.read(|| store.pushes.peek()[0].phase.clone()),
+        PushPhase::Done
+    );
+    assert_eq!(
+        rig.pending("127.0.0.1:56500/berthfx/unmount:1", PUSH_ACTION),
+        None
     );
 }
 

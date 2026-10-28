@@ -906,7 +906,7 @@ impl GitDeployHandle {
         });
         let service = self.service.clone();
         let cancel = self.cancel.clone();
-        spawn(async move {
+        crate::services::actions::spawn_job(async move {
             let result = crate::services::plans::off_ui({
                 let folder = folder.clone();
                 async move { service.check(&folder, cancel).await }
@@ -935,7 +935,7 @@ impl GitDeployHandle {
             s.notice = None;
         });
         let handle = self.clone();
-        spawn(async move {
+        crate::services::actions::spawn_job(async move {
             let result = handle.pull_now(state, &folder).await;
             Self::update(&mut view, &folder, |s| {
                 s.busy = Busy::Idle;
@@ -1055,7 +1055,7 @@ impl GitDeployHandle {
                 .await
         });
         let handle = self.clone();
-        spawn(async move {
+        crate::services::actions::spawn_job(async move {
             let watching = async {
                 while let Some(progress) = rx.recv().await {
                     view.cloning.set(CloneState::Cloning {
