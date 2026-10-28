@@ -197,6 +197,9 @@ pub struct AppState {
     pub settings: Signal<berth_store::Settings>,
     pub engines: Signal<Vec<berth_core::Engine>>,
     pub engine_scope: Signal<EngineScope>,
+    /// Engine discovery has reported at least once, even an empty list: an
+    /// empty `engines` then means "no engine found", not "still looking".
+    pub engines_discovered: Signal<bool>,
     pub containers: Signal<Vec<berth_core::Container>>,
     pub projects: Signal<Vec<berth_core::Project>>,
     pub images: Signal<Vec<berth_core::Image>>,
@@ -233,6 +236,7 @@ pub fn use_app_state() -> AppState {
         settings,
         engines: use_signal(Vec::new),
         engine_scope: use_signal(|| EngineScope::All),
+        engines_discovered: use_signal(|| false),
         containers: use_signal(Vec::new),
         projects: use_signal(Vec::new),
         images: use_signal(Vec::new),

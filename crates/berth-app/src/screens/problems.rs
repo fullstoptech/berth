@@ -52,6 +52,10 @@ fn empty_text(connection: Connection) -> (&'static str, &'static str) {
             "Checking\u{2026}",
             "Berth is reading your engines. Problems show up here when it has.",
         ),
+        Connection::NoEngine => (
+            "No engine",
+            "Berth found no Docker engine. Finish setup to start one.",
+        ),
         _ => (
             "No problems",
             "Berth checks every engine as things change and lists what it can explain.",
@@ -69,7 +73,11 @@ pub fn ProblemsPanel() -> Element {
     let problems = state.problems.read().clone();
     let harnesses = state.harnesses.read().clone();
     let shown = read_view(&state, |view| groups(&problems, view, now, &harnesses));
-    let connection = connection(&state.engines.read(), &state.engine_scope.read());
+    let connection = connection(
+        &state.engines.read(),
+        &state.engine_scope.read(),
+        *state.engines_discovered.read(),
+    );
     let open_all = problems.len() <= OPEN_ALL_UP_TO;
     let first = problems.first().map(|p| p.id.0.clone());
     let on_fix = {

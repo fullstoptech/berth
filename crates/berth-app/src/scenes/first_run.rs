@@ -53,6 +53,7 @@ fn setup_colima_missing(state: &mut AppState) {
     load_mock_world(state);
     state.settings.write().theme = berth_store::Theme::Light;
     state.engines.set(Vec::new());
+    state.engines_discovered.set(true);
     state.containers.set(Vec::new());
     state.projects.set(Vec::new());
     state.problems.set(Vec::new());

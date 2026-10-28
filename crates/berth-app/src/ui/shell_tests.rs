@@ -296,7 +296,8 @@ fn shell_status_bar_text_is_exactly_the_frames() {
     assert_eq!(
         engine_summary(
             &world.engines,
-            &EngineScope::One(engine_id("colima:default"))
+            &EngineScope::One(engine_id("colima:default")),
+            true
         ),
         "colima/default \u{b7} Docker 28.4.0 \u{b7} 4 CPU \u{b7} 8 GB \u{b7} 15 running"
     );
@@ -306,22 +307,27 @@ fn shell_status_bar_text_is_exactly_the_frames() {
 fn shell_status_bar_names_engines_that_are_not_running() {
     let world = mock_world();
     assert_eq!(
-        engine_summary(&world.engines, &EngineScope::One(engine_id("colima:work"))),
+        engine_summary(
+            &world.engines,
+            &EngineScope::One(engine_id("colima:work")),
+            true
+        ),
         "colima/work \u{b7} Stopped"
     );
     assert_eq!(
         engine_summary(
             &world.engines,
-            &EngineScope::One(engine_id("ssh:hetzner-1"))
+            &EngineScope::One(engine_id("ssh:hetzner-1")),
+            true
         ),
         "ssh/hetzner-1 \u{b7} Unreachable"
     );
     assert_eq!(
-        engine_summary(&world.engines, &EngineScope::All),
+        engine_summary(&world.engines, &EngineScope::All, true),
         "All engines \u{b7} 3 engines \u{b7} 15 running"
     );
     assert_eq!(
-        engine_summary(&[], &EngineScope::All),
+        engine_summary(&[], &EngineScope::All, false),
         "Looking for engines\u{2026}"
     );
 }
@@ -339,6 +345,7 @@ fn shell_status_bar_shows_colimas_whole_gib_as_gb() {
     let text = engine_summary(
         &world.engines,
         &EngineScope::One(engine_id("colima:default")),
+        true,
     );
     assert!(text.contains("\u{b7} 8 GB \u{b7}"), "{text}");
 }
@@ -447,21 +454,35 @@ fn default_engine_with(
 fn shell_connection_follows_the_scoped_engine() {
     let world = mock_world();
     let default = EngineScope::One(engine_id("colima:default"));
-    assert_eq!(connection(&world.engines, &default), Connection::Ready);
     assert_eq!(
-        connection(&world.engines, &EngineScope::All),
+        connection(&world.engines, &default, true),
         Connection::Ready
     );
-    assert_eq!(connection(&[], &default), Connection::Connecting);
+    assert_eq!(
+        connection(&world.engines, &EngineScope::All, true),
+        Connection::Ready
+    );
+    // Discovery still running: an empty list means "not looked yet".
+    assert_eq!(connection(&[], &default, false), Connection::Connecting);
+    // Discovery finished and found nothing: nothing is checking.
+    assert_eq!(connection(&[], &default, true), Connection::NoEngine);
+    assert_eq!(
+        connection(&[], &EngineScope::All, true),
+        Connection::NoEngine
+    );
     let (engines, scope) = default_engine_with(|e| e.docker_version = None);
-    assert_eq!(connection(&engines, &scope), Connection::Connecting);
+    assert_eq!(connection(&engines, &scope, true), Connection::Connecting);
     let (engines, scope) = default_engine_with(|e| e.state = berth_core::EngineState::Stopped);
-    assert_eq!(connection(&engines, &scope), Connection::EngineStopped);
+    assert_eq!(
+        connection(&engines, &scope, true),
+        Connection::EngineStopped
+    );
     // A stopped engine outside the scope does not change the chrome.
     assert_eq!(
         connection(
             &world.engines,
-            &EngineScope::One(engine_id("colima:default"))
+            &EngineScope::One(engine_id("colima:default")),
+            true
         ),
         Connection::Ready
     );
@@ -469,13 +490,53 @@ fn shell_connection_follows_the_scoped_engine() {
         e.state = berth_core::EngineState::Stopped;
         e.docker_version = None;
     });
-    assert_eq!(connection(&engines, &scope), Connection::EngineStopped);
     assert_eq!(
-        engine_summary(&engines, &scope),
+        connection(&engines, &scope, true),
+        Connection::EngineStopped
+    );
+    assert_eq!(
+        engine_summary(&engines, &scope, true),
         "colima/default \u{b7} Stopped"
     );
     let (engines, scope) = default_engine_with(|e| e.docker_version = None);
-    assert_eq!(engine_summary(&engines, &scope), "Connecting\u{2026}");
+    assert_eq!(engine_summary(&engines, &scope, true), "Connecting\u{2026}");
+}
+
+#[test]
+fn shell_no_engine_summary_stops_saying_looking() {
+    assert_eq!(
+        engine_summary(&[], &EngineScope::All, true),
+        "No engine found \u{b7} Finish setup"
+    );
+}
+
+#[test]
+fn shell_first_run_colima_missing_shows_no_engine_without_a_spinner() {
+    let html = scenes::render_scene_html("First run / colima missing / 1440").expect("scene");
+    let bar = titlebar_of(&html);
+    assert!(bar.contains("No engine"), "{bar}");
+    assert!(!bar.contains("Checking"), "{bar}");
+    assert!(!bar.contains("btn-spinner"), "no spinner: {bar}");
+    let status = statusbar_of(&html);
+    assert!(status.contains("No engine found"), "{status}");
+    assert!(!status.contains("Looking for engines"), "{status}");
+    assert!(!status.contains("Checking"), "{status}");
+    assert!(!status.contains("btn-spinner"), "no spinner: {status}");
+}
+
+#[test]
+fn shell_discovery_in_progress_still_checks() {
+    let html = render_shell(|state| {
+        state.engines.set(Vec::new());
+        state.engines_discovered.set(false);
+    });
+    let bar = titlebar_of(&html);
+    assert!(bar.contains("Checking\u{2026}"), "{bar}");
+    assert!(bar.contains("btn-spinner"), "{bar}");
+    assert!(
+        statusbar_of(&html).contains("Looking for engines"),
+        "{html}"
+    );
 }
 
 fn titlebar_of(html: &str) -> &str {

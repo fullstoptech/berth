@@ -31,4 +31,16 @@ fn registries_list(state: &mut AppState) {
     ]);
 }
 
-pub(super) const SCENES: &[Scene] = &[Scene::dev("Dev / registries", registries_list)];
+/// "Dev / registry login": the Add registry sheet over the list.
+fn registry_login(state: &mut AppState) {
+    registries_list(state);
+    state
+        .overlays
+        .write()
+        .push(crate::state::Overlay::AddRegistry(None));
+}
+
+pub(super) const SCENES: &[Scene] = &[
+    Scene::dev("Dev / registries", registries_list),
+    Scene::dev("Dev / registry login", registry_login),
+];

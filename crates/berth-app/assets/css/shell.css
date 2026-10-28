@@ -274,7 +274,8 @@ html, body {
 }
 .statusbar-summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .statusbar .problems-chip { color: var(--color-ink); }
-.titlebar .problems-chip-checking, .statusbar .problems-chip-checking { color: var(--color-ink-muted); }
+.titlebar .problems-chip-checking, .statusbar .problems-chip-checking,
+.titlebar .problems-chip-noengine, .statusbar .problems-chip-noengine { color: var(--color-ink-muted); }
 
 /* Inspector (AD21, AD22): a resizable column at the right (360 px unless the
    user dragged it, width set inline from Settings), an overlay over the main

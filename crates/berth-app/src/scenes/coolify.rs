@@ -127,6 +127,19 @@ fn deployments(state: &mut AppState) {
     deployments_setup(state);
 }
 
+/// "Coolify / log with Back / 1440" (dev): the failed deployment's log opened
+/// from a card of its application pane, so the pane shows Back and the row
+/// stays selected.
+fn log_with_back(state: &mut AppState) {
+    deployments_setup(state);
+    if let Some(store) = try_consume_context::<PluginViewStore>() {
+        let mut nav = store.nav;
+        let mut next = nav.peek().clone();
+        next.back = Some("application/app-uuid-0001".to_string());
+        nav.set(next);
+    }
+}
+
 /// "Coolify / confirm redeploy / 1440": the failed deployment's own
 /// "Redeploy\u{2026}" confirm, as the plugin sent it with the row, over the same screen.
 #[allow(clippy::expect_used)] // checked-in recording
@@ -155,4 +168,5 @@ fn confirm_redeploy(state: &mut AppState) {
 pub(super) const SCENES: &[Scene] = &[
     Scene::design("Coolify / confirm redeploy / 1440", confirm_redeploy),
     Scene::design("Coolify / deployments / 1440", deployments),
+    Scene::dev("Coolify / log with Back / 1440", log_with_back),
 ];
