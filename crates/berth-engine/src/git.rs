@@ -39,15 +39,34 @@ pub fn remote_args(dir: &std::path::Path) -> Vec<std::ffi::OsString> {
     ]
 }
 
+/// The `core.sshCommand` that makes git use one private key through the
+/// user's agent: `-i` names the key, `IdentitiesOnly` keeps ssh from
+/// offering every other key the agent holds, `BatchMode` makes a missing
+/// key fail instead of asking on a terminal nobody sees. The path is
+/// single-quoted for the shell git runs it in.
+#[must_use]
+pub fn ssh_command(key: &std::path::Path) -> String {
+    let quoted = key.to_string_lossy().replace('\'', "'\\''");
+    format!("ssh -i '{quoted}' -o IdentitiesOnly=yes -o BatchMode=yes")
+}
+
 /// Pure argument builder for `git clone --progress` (D49). The `--`
-/// keeps a URL starting with `-` from being read as a flag.
+/// keeps a URL starting with `-` from being read as a flag. With an
+/// `ssh_key`, `-c core.sshCommand=...` is also written into the new
+/// repository's config, so every later fetch and pull uses the same key
+/// without Berth storing it anywhere.
 #[must_use]
 pub fn clone_args(
     url: &str,
     dir: &std::path::Path,
     branch: Option<&str>,
+    ssh_key: Option<&std::path::Path>,
 ) -> Vec<std::ffi::OsString> {
     let mut args: Vec<std::ffi::OsString> = vec!["clone".into(), "--progress".into()];
+    if let Some(key) = ssh_key {
+        args.push("-c".into());
+        args.push(format!("core.sshCommand={}", ssh_command(key)).into());
+    }
     if let Some(branch) = branch {
         args.push("--branch".into());
         args.push(branch.into());
@@ -98,6 +117,44 @@ pub fn head_args(dir: &std::path::Path) -> Vec<std::ffi::OsString> {
         "--short".into(),
         "HEAD".into(),
     ]
+}
+
+/// One progress update of a clone: the phase git is in ("Receiving
+/// objects") and how far it is, when git said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloneProgress {
+    pub phase: String,
+    pub percent: Option<u8>,
+}
+
+/// Read one stderr line of `git clone --progress`. Git redraws a phase
+/// with a carriage return, so the last non-empty piece is the newest.
+/// A "remote: " prefix is dropped. A line without the `Phase: text`
+/// shape (`Cloning into ...`, `fatal: ...`) is not progress.
+#[must_use]
+pub fn parse_clone_progress(line: &str) -> Option<CloneProgress> {
+    const PHASES: [&str; 6] = [
+        "Enumerating objects",
+        "Counting objects",
+        "Compressing objects",
+        "Receiving objects",
+        "Resolving deltas",
+        "Updating files",
+    ];
+    let newest = line
+        .split('\r')
+        .rev()
+        .find(|piece| !piece.trim().is_empty())?;
+    let text = newest.trim().trim_start_matches("remote:").trim();
+    let (phase, rest) = text.split_once(':')?;
+    let phase = PHASES.iter().find(|known| **known == phase.trim())?;
+    let percent = rest
+        .split_once('%')
+        .and_then(|(digits, _)| digits.trim().parse::<u8>().ok());
+    Some(CloneProgress {
+        phase: (*phase).to_string(),
+        percent,
+    })
 }
 
 /// One line of `git log --oneline`: the abbreviated hash and the subject.
@@ -253,17 +310,69 @@ impl GitCli {
     }
 
     /// Clone `url` into `dir` (which git creates), optionally checking
-    /// out `branch`. Ends when the token fires; a clone that git rejects
-    /// (bad URL, auth) is an error carrying git's message.
+    /// out `branch` and using one `ssh_key` through the agent. Each
+    /// progress phase git prints goes to `on_progress`. Ends when the
+    /// token fires; a clone that git rejects (bad URL, auth) is an error
+    /// carrying git's message. A folder this call made is removed again
+    /// when the clone does not finish; one that was there before is not
+    /// touched.
     pub async fn clone_repo(
         &self,
         url: &str,
         dir: &std::path::Path,
         branch: Option<&str>,
+        ssh_key: Option<&std::path::Path>,
         cancel: tokio_util::sync::CancellationToken,
+        mut on_progress: impl FnMut(CloneProgress) + Send,
     ) -> Result<(), EngineError> {
-        self.run_network(&clone_args(url, dir, branch), cancel)
-            .await
+        use futures::StreamExt as _;
+
+        let binary = self.binary().ok_or_else(Self::not_found)?;
+        let existed = dir.exists();
+        let mut stream = berth_sys::spawn_lines(
+            &binary,
+            &clone_args(url, dir, branch, ssh_key),
+            berth_sys::SpawnOpts {
+                path: Some(self.search.path_var()),
+                env: vec![("GIT_TERMINAL_PROMPT".into(), "0".into())],
+                ..Default::default()
+            },
+            cancel,
+        );
+        let mut errors: Vec<String> = Vec::new();
+        let mut code = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(berth_sys::ProcessLine::Stderr(line)) => match parse_clone_progress(&line) {
+                    Some(progress) => on_progress(progress),
+                    None => errors.push(line.trim().to_string()),
+                },
+                Ok(berth_sys::ProcessLine::Stdout(_)) => {}
+                Ok(berth_sys::ProcessLine::Exit(exit)) => code = exit,
+                Err(err) => {
+                    if !existed {
+                        let _ = std::fs::remove_dir_all(dir);
+                    }
+                    return Err(err.into());
+                }
+            }
+        }
+        if code == Some(0) {
+            return Ok(());
+        }
+        if !existed {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        let message = errors
+            .into_iter()
+            .filter(|l| !l.is_empty() && !l.starts_with("Cloning into"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Err(EngineError::Docker(if message.is_empty() {
+            "git clone failed".to_string()
+        } else {
+            message
+        }))
     }
 
     /// Fetch from the configured remotes so `@{u}` is current.
@@ -419,6 +528,7 @@ mod tests {
             as_strings(&clone_args(
                 "https://example.com/shop.git",
                 std::path::Path::new("/x/shop"),
+                None,
                 None
             )),
             [
@@ -433,7 +543,8 @@ mod tests {
             as_strings(&clone_args(
                 "git@example.com:shop.git",
                 std::path::Path::new("/x/shop"),
-                Some("dev")
+                Some("dev"),
+                None
             )),
             [
                 "clone",
@@ -445,6 +556,52 @@ mod tests {
                 "/x/shop"
             ]
         );
+    }
+
+    #[test]
+    fn git_deploy_clone_args_carry_the_chosen_key_into_the_repo_config() {
+        let args = as_strings(&clone_args(
+            "git@example.com:shop.git",
+            std::path::Path::new("/x/shop"),
+            None,
+            Some(std::path::Path::new("/home/me/.ssh/id work")),
+        ));
+        assert_eq!(args[..3], ["clone", "--progress", "-c"]);
+        assert_eq!(
+            args[3],
+            "core.sshCommand=ssh -i '/home/me/.ssh/id work' -o IdentitiesOnly=yes -o BatchMode=yes"
+        );
+        // A quote in the path cannot end the quoting.
+        assert_eq!(
+            ssh_command(std::path::Path::new("/k/it's")),
+            "ssh -i '/k/it'\\''s' -o IdentitiesOnly=yes -o BatchMode=yes"
+        );
+    }
+
+    #[test]
+    fn git_deploy_progress_reads_the_newest_redraw_of_a_phase() {
+        assert_eq!(
+            parse_clone_progress(
+                "Receiving objects:  10% (1/10)\rReceiving objects:  60% (6/10)\rReceiving objects: 100% (10/10), done."
+            ),
+            Some(CloneProgress {
+                phase: "Receiving objects".into(),
+                percent: Some(100)
+            })
+        );
+        assert_eq!(
+            parse_clone_progress("remote: Counting objects: 40% (4/10)"),
+            Some(CloneProgress {
+                phase: "Counting objects".into(),
+                percent: Some(40)
+            })
+        );
+        assert_eq!(parse_clone_progress("Cloning into 'x'..."), None);
+        assert_eq!(
+            parse_clone_progress("fatal: repository 'x' does not exist"),
+            None
+        );
+        assert_eq!(parse_clone_progress(""), None);
     }
 
     #[test]
@@ -570,14 +727,21 @@ mod tests {
         let clone_dir = tmp.path().join("deployed");
         let token = tokio_util::sync::CancellationToken::new;
 
+        let mut phases: Vec<CloneProgress> = Vec::new();
         cli.clone_repo(
             bare.to_str().expect("utf8"),
             &clone_dir,
             Some("main"),
+            None,
             token(),
+            |progress| phases.push(progress),
         )
         .await
         .expect("clone");
+        assert!(
+            phases.iter().all(|p| !p.phase.is_empty()),
+            "progress phases are named: {phases:?}"
+        );
 
         assert_eq!(
             cli.current_commit(&clone_dir, token()).await.expect("head"),
@@ -611,9 +775,16 @@ mod tests {
         let (bare, _) = make_bare_fixture(&cli, tmp.path()).await;
         let token = tokio_util::sync::CancellationToken::new;
         let deployed = tmp.path().join("deployed");
-        cli.clone_repo(bare.to_str().expect("utf8"), &deployed, None, token())
-            .await
-            .expect("clone deployed");
+        cli.clone_repo(
+            bare.to_str().expect("utf8"),
+            &deployed,
+            None,
+            None,
+            token(),
+            |_| {},
+        )
+        .await
+        .expect("clone deployed");
 
         // Another clone pushes a third commit.
         let other = tmp.path().join("other");
@@ -675,10 +846,100 @@ mod tests {
                 missing.to_str().expect("utf8"),
                 &tmp.path().join("out"),
                 None,
+                None,
                 tokio_util::sync::CancellationToken::new(),
+                |_| {},
             )
             .await;
         assert!(result.is_err(), "cloning a missing repo must fail");
+        assert!(
+            !tmp.path().join("out").exists(),
+            "a failed clone leaves no folder behind"
+        );
+    }
+
+    #[tokio::test]
+    async fn git_deploy_failed_clone_keeps_a_folder_that_was_already_there() {
+        let Some(cli) = cli() else { return };
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("mine");
+        std::fs::create_dir(&target).expect("mkdir");
+        std::fs::write(target.join("keep.txt"), "keep").expect("write");
+        let result = cli
+            .clone_repo(
+                tmp.path().join("no-such.git").to_str().expect("utf8"),
+                &target,
+                None,
+                None,
+                tokio_util::sync::CancellationToken::new(),
+                |_| {},
+            )
+            .await;
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read_to_string(target.join("keep.txt")).expect("still there"),
+            "keep"
+        );
+    }
+
+    /// A `git` that makes the target folder, then hangs until it is killed.
+    fn hanging_git(dir: &std::path::Path) -> GitCli {
+        use std::os::unix::fs::PermissionsExt as _;
+        let script = dir.join("git");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nfor last; do :; done\nmkdir -p \"$last\"\nexec sleep 30\n",
+        )
+        .expect("write fake git");
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod fake git");
+        GitCli::new(berth_sys::SearchPath::from_dirs(vec![
+            dir.to_path_buf(),
+            "/bin".into(),
+            "/usr/bin".into(),
+        ]))
+    }
+
+    #[tokio::test]
+    async fn git_deploy_cancelled_clone_removes_the_folder_it_began_but_not_an_older_one() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let bin = tmp.path().join("bin");
+        std::fs::create_dir(&bin).expect("mkdir");
+        let cli = hanging_git(&bin);
+        assert_eq!(
+            cli.binary(),
+            Some(bin.join("git")),
+            "the fake git is the one found"
+        );
+
+        for (name, existed) in [("fresh", false), ("older", true)] {
+            let target = tmp.path().join(name);
+            if existed {
+                std::fs::create_dir(&target).expect("mkdir");
+            }
+            let token = tokio_util::sync::CancellationToken::new();
+            let stop = token.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                stop.cancel();
+            });
+            let result = cli
+                .clone_repo(
+                    "https://example.com/a.git",
+                    &target,
+                    None,
+                    None,
+                    token,
+                    |_| {},
+                )
+                .await;
+            assert!(result.is_err(), "a cancelled clone is an error");
+            assert_eq!(
+                target.exists(),
+                existed,
+                "{name}: only a folder the clone began is removed"
+            );
+        }
     }
 
     #[tokio::test]

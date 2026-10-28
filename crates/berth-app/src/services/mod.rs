@@ -19,6 +19,7 @@ pub mod files;
 pub mod find_images;
 pub mod first_run;
 pub mod folders;
+pub mod git_deploy;
 pub mod group_ops;
 pub mod images;
 pub mod login_path;

@@ -11,6 +11,7 @@ pub mod delete_project;
 pub mod detected;
 pub mod edit_recreate;
 pub mod edit_resources;
+pub mod from_git;
 pub mod generate;
 pub mod new_project;
 pub mod open_folder;

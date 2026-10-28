@@ -1,0 +1,149 @@
+/* New project, From Git (P8-T5), and the Git panel of Project detail. No frame exists: the
+   sheet follows the New project sheet (new_project.css), the panel follows the project
+   header. Colours and sizes come only from tokens.css. */
+
+.fg-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.fg-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-12);
+}
+.fg-help {
+  margin: calc(-1 * var(--space-4)) 0 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+}
+.fg-progress {
+  padding: var(--space-8) 0 var(--space-4);
+}
+.fg-failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.fg-git-said {
+  margin: 0;
+  padding: var(--space-8) var(--space-12);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line);
+  overflow-wrap: anywhere;
+}
+.fg-fix {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+  margin: 0;
+  color: var(--color-ink);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.fg-fix svg {
+  flex: none;
+  margin-top: var(--space-2);
+  color: var(--color-info);
+}
+
+/* The Git panel under the project header. */
+.gp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin: var(--space-8) 0;
+  padding: var(--space-8) var(--space-12);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+.gp-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-12);
+}
+.gp-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--color-ink);
+  font-weight: var(--text-h3-weight);
+}
+.gp-repo {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+}
+.gp-commit {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  color: var(--color-ink);
+}
+.gp-new {
+  padding: 0 var(--space-8);
+  border-radius: var(--radius-full);
+  background: var(--color-info-subtle);
+  color: var(--color-info);
+  font-size: var(--text-label-size);
+  line-height: var(--size-control-sm);
+  white-space: nowrap;
+}
+.gp-incoming {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gp-commit-row {
+  display: flex;
+  gap: var(--space-12);
+  min-height: var(--size-row);
+  align-items: center;
+}
+.gp-hash {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  color: var(--color-ink-muted);
+}
+.gp-subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gp-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-12);
+}
+.gp-spacer {
+  flex: 1;
+}
+.gp-poll {
+  min-width: calc(160px * var(--text-scale, 1));
+}
+.gp-notice {
+  margin: 0;
+  color: var(--color-success);
+  font-size: var(--text-label-size);
+}
+.gp-muted {
+  color: var(--color-ink-muted);
+  font-size: var(--text-label-size);
+}

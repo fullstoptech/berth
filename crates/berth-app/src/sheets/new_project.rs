@@ -1,7 +1,7 @@
 //! The New project sheet (P5-T5, ⌘N): three ways to start. Open folder hands over to the folder
 //! browser. From editor writes a Compose file in the CodeMirror bundle and saves it into a folder
 //! the person chooses, through Review changes (nothing is written without that click). From Git
-//! is listed and disabled until P8-T5.
+//! clones a repository (P8-T5, `sheets/from_git.rs`) and goes on to the Detected sheet.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -38,6 +38,7 @@ const EDITOR_ID: &str = "new-project";
 pub enum Stage {
     Choose,
     Editor,
+    Git,
 }
 
 /// A scene or test opens the sheet on this page.
@@ -212,12 +213,13 @@ pub fn NewProjectSheet() -> Element {
                         button {
                             class: "np-choice",
                             r#type: "button",
-                            disabled: true,
-                            "data-tooltip": "Cloning from Git arrives with the Git support (P8-T5).",
+                            onclick: move |_| stage.set(Stage::Git),
                             span { class: "np-choice-icon", Icon { name: "git-branch", size: IconSize::Md } }
                             span { class: "np-choice-text",
                                 span { class: "np-choice-name", "From Git" }
-                                span { class: "np-choice-hint", "Clone a repository. Not available yet." }
+                                span { class: "np-choice-hint",
+                                    "Clone a repository, then deploy it. Berth can pull new commits later."
+                                }
                             }
                         }
                     }
@@ -232,6 +234,9 @@ pub fn NewProjectSheet() -> Element {
                 },
                 Stage::Editor => rsx! {
                     EditorStage { on_back: move |()| stage.set(Stage::Choose) }
+                },
+                Stage::Git => rsx! {
+                    crate::sheets::from_git::GitStage { on_back: move |()| stage.set(Stage::Choose) }
                 },
             }
         }

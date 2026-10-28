@@ -65,6 +65,7 @@ scene_modules! {
     engines,
     find_images,
     first_run,
+    from_git,
     generate,
     images,
     logs,
