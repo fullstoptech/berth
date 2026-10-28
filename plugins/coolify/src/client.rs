@@ -186,14 +186,20 @@ impl CoolifyClient {
     }
 
     /// `GET /applications/{uuid}/envs` — keys and flags only; the values
-    /// are dropped during decode (see [`EnvVar`]).
+    /// are dropped during decode (see [`EnvVar`]). A row without its key is
+    /// an answer Berth cannot show.
     pub async fn envs(
         &self,
         uuid: &str,
         cancel: &CancellationToken,
     ) -> Result<Vec<EnvVar>, ClientError> {
-        self.get_json(&format!("applications/{uuid}/envs"), &[], cancel)
-            .await
+        let envs: Vec<EnvVar> = self
+            .get_json(&format!("applications/{uuid}/envs"), &[], cancel)
+            .await?;
+        if envs.iter().any(|env| env.key.is_empty()) {
+            return Err(ClientError::Decode("missing field `key`".to_owned()));
+        }
+        Ok(envs)
     }
 
     /// The one-click reveal: same endpoint, values kept in
@@ -765,6 +771,27 @@ mod tests {
         let debug = format!("{got:?}");
         assert!(!debug.contains("fake-value-not-a-secret"), "{debug}");
         assert!(!debug.contains("production"), "{debug}");
+    }
+
+    #[tokio::test]
+    async fn client_envs_without_a_key_are_an_answer_berth_cannot_read() {
+        let server = server().await;
+        mount(
+            &server,
+            Mock::given(path("/api/v1/applications/app-uuid-0001/envs")).respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"[{"uuid":"env-1","is_runtime":true}]"#),
+            ),
+        )
+        .await;
+        let err = client(&server)
+            .envs("app-uuid-0001", &CancellationToken::new())
+            .await
+            .expect_err("a row without its key fails");
+        assert!(
+            matches!(&err, ClientError::Decode(detail) if detail == "missing field `key`"),
+            "{err:?}"
+        );
     }
 
     #[tokio::test]

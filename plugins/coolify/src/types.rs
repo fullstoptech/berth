@@ -182,7 +182,7 @@ pub struct ActionAck {
 
 /// Which resource family a start/stop/restart acts on; each maps to its
 /// own URL family in the spec.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ResourceKind {
     Application,
     Service,

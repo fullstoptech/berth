@@ -8,11 +8,18 @@
 //! Nothing but protocol lines is ever written to the writer. The token is
 //! requested from the host the first time a client is needed, held in a
 //! `SecretString`, and never put in a log line, a view or an error.
+//!
+//! What the instance supports is learned as the plugin uses it (`probe`):
+//! the version is read again when a view loads after `version_ttl` or after
+//! a run of errors, and an endpoint or action that turns out to be missing
+//! loses its buttons and tabs. Either change sends `view/invalidate`, so the
+//! host reloads the status banner and the views it shows.
 
 use std::collections::{BTreeMap, HashMap};
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use berth_plugin_protocol::{
     decode, encode, methods, Message, Notification, Request, Response, RpcError, Tone, View,
@@ -31,11 +38,14 @@ use crate::logs::{
     deployment_log_lines, failure_line, follow_application_logs, is_final_status, poll_deployment,
 };
 use crate::mcp::mcp_servers_payload;
-use crate::types::{Application, Deployment};
+use crate::probe::{Feature, Learned, Probe, VersionChange};
+use crate::types::{Application, Deployment, VersionInfo};
 use crate::views;
 
 /// The manifest's secret key the API token lives under.
 pub const TOKEN_KEY: &str = "coolify/token";
+/// The hidden view the host shows as the plugin's banner.
+pub const STATUS_VIEW: &str = "status";
 
 /// JSON-RPC codes this plugin answers with.
 pub const ERR_FAILED: i64 = -32000;
@@ -60,6 +70,8 @@ pub struct Timing {
     pub app_log_poll: Duration,
     /// How long to wait for the host to answer `host/secret.get`.
     pub secret_timeout: Duration,
+    /// How long a version read stands before a view load reads it again.
+    pub version_ttl: Duration,
 }
 
 impl Default for Timing {
@@ -68,6 +80,7 @@ impl Default for Timing {
             deployment_poll: Duration::from_secs(2),
             app_log_poll: Duration::from_secs(2),
             secret_timeout: Duration::from_secs(10),
+            version_ttl: Duration::from_secs(5),
         }
     }
 }
@@ -80,6 +93,9 @@ enum Fail {
     Token(String),
     #[error(transparent)]
     Client(#[from] ClientError),
+    /// The feature is missing on this instance; the text says which and why.
+    #[error("{0}")]
+    Unsupported(String),
     #[error("This plugin has no view called {0}.")]
     UnknownView(String),
     #[error("{0}")]
@@ -110,6 +126,21 @@ struct Shared {
     config: Mutex<Config>,
     client: tokio::sync::Mutex<Option<Arc<CoolifyClient>>>,
     streams: Mutex<HashMap<String, CancellationToken>>,
+    probe: Mutex<Probe>,
+    /// One version read at a time; the others wait and use its answer.
+    version_read: tokio::sync::Mutex<()>,
+}
+
+/// What a probed call was asked about, for telling a missing endpoint from
+/// a missing resource when it answers 404.
+#[derive(Debug, Clone, Copy)]
+enum Subject<'a> {
+    /// A list endpoint, or a resource the plugin has just read.
+    Known,
+    /// A resource by uuid: it exists when `GET /resources` lists it.
+    Resource(&'a str),
+    /// A deployment by uuid: it exists when `GET /deployments/{uuid}` reads.
+    Deployment(&'a str),
 }
 
 /// Fills in what a history row may omit from the application it was listed
@@ -244,8 +275,8 @@ impl Shared {
             .ok_or_else(|| Fail::Token("the host sent no value".into()))
     }
 
-    /// The client for the configured instance, built on first use (token
-    /// from the host, version read once and warned about).
+    /// The client for the configured instance, built on first use with the
+    /// token from the host.
     async fn client(&self) -> Result<Arc<CoolifyClient>, Fail> {
         let mut slot = self.client.lock().await;
         if let Some(client) = slot.as_ref() {
@@ -257,13 +288,126 @@ impl Shared {
             .ok_or(Fail::NotConfigured)?;
         let token = self.secret(TOKEN_KEY).await?;
         let client = Arc::new(CoolifyClient::new(&base_url, token)?);
-        if let Ok(version) = client.version(&self.cancel).await {
-            if let Some(warning) = &version.warning {
-                self.log("warn", &format!("Coolify {}: {warning}", version.raw));
-            }
-        }
         *slot = Some(Arc::clone(&client));
         Ok(client)
+    }
+
+    /// The client, with the version read again when the last read is older
+    /// than `version_ttl` (what every view load starts with).
+    async fn connected(&self) -> Result<Arc<CoolifyClient>, Fail> {
+        let client = self.client().await?;
+        // A version that cannot be read does not keep the view from loading.
+        let _ = self.check_version(&client, false).await;
+        Ok(client)
+    }
+
+    /// Reads the version when it is due, or now when `force`. A newer major
+    /// is warned about the first time it is seen; a different version than
+    /// before forgets what was learned and tells the host to reload, so the
+    /// banner follows an upgrade without a plugin restart. A failed read
+    /// keeps the last version known.
+    async fn check_version(
+        &self,
+        client: &CoolifyClient,
+        force: bool,
+    ) -> Result<VersionInfo, ClientError> {
+        let _one_at_a_time = self.version_read.lock().await;
+        let due = lock(&self.probe).version_due(Instant::now(), self.timing.version_ttl);
+        if !force && !due {
+            if let Some(known) = lock(&self.probe).version() {
+                return Ok(known.clone());
+            }
+        }
+        let read = client.version(&self.cancel).await;
+        let change = lock(&self.probe).set_version(read.as_ref().ok().cloned(), Instant::now());
+        if let Ok(version) = &read {
+            if change != VersionChange::Same {
+                if let Some(warning) = &version.warning {
+                    self.log("warn", &format!("Coolify {}: {warning}", version.raw));
+                }
+            }
+            if change == VersionChange::Changed {
+                self.notify(methods::INVALIDATE, json!({ "view": STATUS_VIEW }));
+            }
+        }
+        read
+    }
+
+    /// Runs one call of `feature`. One already known to be missing here is
+    /// not asked; a success records that it works; an error may show it is
+    /// missing (see [`Shared::learn`]), which fails with the reason.
+    async fn probed<T>(
+        &self,
+        client: &CoolifyClient,
+        feature: Feature,
+        subject: Subject<'_>,
+        call: impl Future<Output = Result<T, ClientError>>,
+    ) -> Result<T, Fail> {
+        if let Some(reason) = lock(&self.probe).unsupported_text(feature) {
+            return Err(Fail::Unsupported(reason));
+        }
+        match call.await {
+            Ok(value) => {
+                lock(&self.probe).succeeded(feature);
+                Ok(value)
+            }
+            Err(error) => match self.learn(client, feature, subject, &error).await {
+                Some(reason) => Err(Fail::Unsupported(reason)),
+                None => Err(Fail::Client(error)),
+            },
+        }
+    }
+
+    /// What a failed call of `feature` teaches: a run of errors from
+    /// features that worked reads the version at once; a 404 from one that
+    /// has not worked here marks it missing when its subject exists; an
+    /// answer without the fields Berth reads always does. A new mark tells
+    /// the host to reload. Returns the reason when the feature is missing.
+    async fn learn(
+        &self,
+        client: &CoolifyClient,
+        feature: Feature,
+        subject: Subject<'_>,
+        error: &ClientError,
+    ) -> Option<String> {
+        let mut learned = lock(&self.probe).failed(feature, error);
+        if learned == Learned::Recheck {
+            let _ = self.check_version(client, true).await;
+            learned = lock(&self.probe).classify(feature, error);
+        }
+        let missing = match learned {
+            Learned::Unsupported => true,
+            Learned::Missing => self.exists(client, subject).await,
+            Learned::Nothing | Learned::Recheck => false,
+        };
+        if !missing {
+            return None;
+        }
+        let (fresh, reason) = {
+            let mut probe = lock(&self.probe);
+            let fresh = probe.mark(feature, error);
+            (fresh, probe.unsupported_text(feature))
+        };
+        if fresh {
+            if let Some(reason) = &reason {
+                self.log("warn", reason);
+            }
+            self.notify(methods::INVALIDATE, json!({ "view": STATUS_VIEW }));
+        }
+        reason
+    }
+
+    /// Whether the resource a 404 was about exists, which makes the 404 the
+    /// endpoint's.
+    async fn exists(&self, client: &CoolifyClient, subject: Subject<'_>) -> bool {
+        match subject {
+            Subject::Known => true,
+            Subject::Resource(uuid) => client
+                .resources(&self.cancel)
+                .await
+                .is_ok_and(|all| all.iter().any(|r| r.uuid.as_deref() == Some(uuid))),
+            Subject::Deployment(uuid) => client.deployment(uuid, &self.cancel).await.is_ok(),
+        }
     }
 
     /// A rejected token may have been replaced; forget the client so the
@@ -323,6 +467,7 @@ impl Shared {
         let offer_mcp = config.mcp_enabled && config.base_url.is_some();
         *lock(&self.config) = config;
         *self.client.lock().await = None;
+        *lock(&self.probe) = Probe::default();
         if offer_mcp {
             let this = Arc::clone(self);
             tokio::spawn(async move { this.offer_mcp().await });
@@ -345,9 +490,14 @@ impl Shared {
 
     async fn view_load(&self, params: &Value) -> Result<Value, Fail> {
         let view = str_param(params, "view")?;
-        let view = match self.build_view(view).await {
+        let mut view = match self.build_view(view).await {
             Ok(view) => view,
             Err(fail @ (Fail::UnknownView(_) | Fail::BadParams(_))) => return Err(fail),
+            Err(Fail::Unsupported(reason)) => View::Message {
+                tone: Tone::Warning,
+                text: format!("{reason} The other Coolify views still work."),
+                action: None,
+            },
             Err(fail) => {
                 self.forget_if_rejected(&fail).await;
                 let tone = match fail {
@@ -361,6 +511,7 @@ impl Shared {
                 }
             }
         };
+        lock(&self.probe).prune(&mut view);
         serde_json::to_value(view).map_err(|e| Fail::BadParams(e.to_string()))
     }
 
@@ -397,13 +548,21 @@ impl Shared {
     /// lists only what is running now, so the history comes from each
     /// application's own list (`GET /deployments/applications/{uuid}`), asked
     /// a few at a time. An application whose history cannot be read is left
-    /// out and noted in the log; the rest still show.
+    /// out and noted in the log; the rest still show. When no application's
+    /// history reads, what the first error teaches is learned (an instance
+    /// without the endpoint shows the running deployments only).
     async fn recent_deployments(
         &self,
         client: &Arc<CoolifyClient>,
         applications: &[Application],
         running: Vec<Deployment>,
     ) -> Vec<Deployment> {
+        if lock(&self.probe)
+            .unsupported_text(Feature::History)
+            .is_some()
+        {
+            return merge_recent(running, Vec::new(), RECENT_DEPLOYMENTS);
+        }
         let gate = Arc::new(tokio::sync::Semaphore::new(HISTORY_CONCURRENCY));
         let mut lookups = tokio::task::JoinSet::new();
         for application in applications {
@@ -422,6 +581,7 @@ impl Shared {
         }
         let mut histories = Vec::new();
         let mut failed = 0_usize;
+        let mut first_error = None;
         while let Some(joined) = lookups.join_next().await {
             match joined {
                 Ok((uuid, Ok(history))) => {
@@ -435,8 +595,19 @@ impl Shared {
                             .collect::<Vec<_>>(),
                     );
                 }
-                Ok((_, Err(_))) | Err(_) => failed += 1,
+                Ok((_, Err(error))) => {
+                    failed += 1;
+                    first_error.get_or_insert(error);
+                }
+                Err(_) => failed += 1,
             }
+        }
+        if !histories.is_empty() {
+            lock(&self.probe).succeeded(Feature::History);
+        } else if let Some(error) = first_error {
+            // The applications came from the list: they exist.
+            self.learn(client, Feature::History, Subject::Known, &error)
+                .await;
         }
         if failed > 0 {
             self.log(
@@ -452,19 +623,46 @@ impl Shared {
         let unknown = || Fail::UnknownView(view.to_owned());
         match parts.as_slice() {
             ["resources"] => {
-                let client = self.client().await?;
-                Ok(views::resources_table(
-                    &client.resources(&self.cancel).await?,
-                ))
+                let client = self.connected().await?;
+                let resources = self
+                    .probed(
+                        &client,
+                        Feature::Resources,
+                        Subject::Known,
+                        client.resources(&self.cancel),
+                    )
+                    .await?;
+                Ok(views::resources_table(&resources))
             }
             ["servers"] => {
-                let client = self.client().await?;
-                Ok(views::servers_table(&client.servers(&self.cancel).await?))
+                let client = self.connected().await?;
+                let servers = self
+                    .probed(
+                        &client,
+                        Feature::Servers,
+                        Subject::Known,
+                        client.servers(&self.cancel),
+                    )
+                    .await?;
+                Ok(views::servers_table(&servers))
             }
             ["deployments"] => {
-                let client = self.client().await?;
-                let running = client.deployments(&self.cancel).await?;
-                let applications = client.applications(&self.cancel).await.unwrap_or_default();
+                let client = self.connected().await?;
+                // Without the running list the history still shows.
+                let running = match self
+                    .probed(
+                        &client,
+                        Feature::RunningDeployments,
+                        Subject::Known,
+                        client.deployments(&self.cancel),
+                    )
+                    .await
+                {
+                    Ok(running) => running,
+                    Err(Fail::Unsupported(_)) => Vec::new(),
+                    Err(other) => return Err(other),
+                };
+                let applications = self.applications(&client).await;
                 let deployments = self
                     .recent_deployments(&client, &applications, running)
                     .await;
@@ -473,40 +671,73 @@ impl Shared {
                     .await)
             }
             ["status"] => {
+                // Always read afresh: this is the banner.
                 let client = self.client().await?;
-                Ok(views::version_message(&client.version(&self.cancel).await?))
+                let version = self.check_version(&client, true).await?;
+                let unavailable = lock(&self.probe).summary();
+                Ok(views::version_message(&version, unavailable.as_deref()))
             }
             ["deployments", uuid] => {
-                let client = self.client().await?;
-                let deployments = client
-                    .application_deployments(uuid, None, Some(50), &self.cancel)
+                let client = self.connected().await?;
+                let deployments = self
+                    .probed(
+                        &client,
+                        Feature::History,
+                        Subject::Resource(uuid),
+                        client.application_deployments(uuid, None, Some(50), &self.cancel),
+                    )
                     .await?;
-                let applications = client.applications(&self.cancel).await.unwrap_or_default();
+                let applications = self.applications(&client).await;
                 Ok(self
                     .deployments_view(&client, &deployments, &applications)
                     .await)
             }
             ["application", uuid] => {
-                let client = self.client().await?;
-                let application = client.application(uuid, &self.cancel).await?;
+                let client = self.connected().await?;
+                let application = self
+                    .probed(
+                        &client,
+                        Feature::Application,
+                        Subject::Resource(uuid),
+                        client.application(uuid, &self.cancel),
+                    )
+                    .await?;
                 // The server is not on the application itself; its latest
                 // deployment names it. Best effort: the confirm still names
                 // the application and branch without it.
-                let server = client
-                    .application_deployments(uuid, None, Some(1), &self.cancel)
+                let server = self
+                    .probed(
+                        &client,
+                        Feature::History,
+                        Subject::Known,
+                        client.application_deployments(uuid, None, Some(1), &self.cancel),
+                    )
                     .await
                     .ok()
                     .and_then(|deployments| deployments.into_iter().find_map(|d| d.server_name));
                 Ok(views::application_detail(&application, server.as_deref()))
             }
             ["application", uuid, "envs"] => {
-                let client = self.client().await?;
-                Ok(views::envs_table(&client.envs(uuid, &self.cancel).await?))
+                let client = self.connected().await?;
+                let envs = self
+                    .probed(
+                        &client,
+                        Feature::Envs,
+                        Subject::Resource(uuid),
+                        client.envs(uuid, &self.cancel),
+                    )
+                    .await?;
+                Ok(views::envs_table(&envs))
             }
-            ["application", uuid, "logs"] => Ok(View::LogStream {
-                stream: format!("application/{uuid}/logs"),
-                title: "Application logs".to_owned(),
-            }),
+            ["application", uuid, "logs"] => {
+                if let Some(reason) = lock(&self.probe).unsupported_text(Feature::AppLogs) {
+                    return Err(Fail::Unsupported(reason));
+                }
+                Ok(View::LogStream {
+                    stream: format!("application/{uuid}/logs"),
+                    title: "Application logs".to_owned(),
+                })
+            }
             ["deployment", uuid, "logs"] => Ok(View::LogStream {
                 stream: format!("deployment/{uuid}/logs"),
                 title: "Deployment log".to_owned(),
@@ -515,11 +746,48 @@ impl Shared {
         }
     }
 
+    /// Every application, for joining rows and Redeploy; an instance where
+    /// the list cannot be read gives none (rows show with fewer details).
+    async fn applications(&self, client: &CoolifyClient) -> Vec<Application> {
+        self.probed(
+            client,
+            Feature::Applications,
+            Subject::Known,
+            client.applications(&self.cancel),
+        )
+        .await
+        .unwrap_or_default()
+    }
+
     async fn action_invoke(&self, params: &Value) -> Result<Value, Fail> {
         let action = str_param(params, "action")?;
         let action_params = params.get("params").cloned().unwrap_or(Value::Null);
         let client = self.client().await?;
-        let result = actions::invoke(&client, action, &action_params, &self.cancel).await?;
+        let call = actions::invoke(&client, action, &action_params, &self.cancel);
+        let uuid = action_params
+            .get("uuid")
+            .and_then(Value::as_str)
+            .filter(|uuid| !uuid.is_empty());
+        // Probed only when the params are whole, so a malformed request is
+        // never taken for a missing endpoint.
+        let result = match (Feature::of_action(action, &action_params), uuid) {
+            (Some(feature), Some(uuid)) => {
+                let subject = if feature == Feature::CancelDeployment {
+                    Subject::Deployment(uuid)
+                } else {
+                    Subject::Resource(uuid)
+                };
+                self.probed(&client, feature, subject, call)
+                    .await
+                    .map_err(|fail| match fail {
+                        Fail::Unsupported(reason) => Fail::Unsupported(format!(
+                            "{reason} Berth no longer offers it on this instance."
+                        )),
+                        other => other,
+                    })?
+            }
+            _ => call.await?,
+        };
         serde_json::to_value(result).map_err(|e| Fail::BadParams(e.to_string()))
     }
 
@@ -589,15 +857,31 @@ impl Shared {
         uuid: String,
         token: CancellationToken,
     ) {
+        let mut read_any = false;
         let end = follow_application_logs(
             &client,
             &uuid,
             APP_LOG_LINES,
             self.timing.app_log_poll,
             &token,
-            |lines| self.lines(&stream, lines, None),
+            |lines| {
+                read_any = true;
+                self.lines(&stream, lines, None);
+            },
         )
         .await;
+        if read_any {
+            lock(&self.probe).succeeded(Feature::AppLogs);
+        } else if !matches!(end, ClientError::Cancelled) {
+            if let Some(reason) = self
+                .learn(&client, Feature::AppLogs, Subject::Resource(&uuid), &end)
+                .await
+            {
+                lock(&self.streams).remove(&stream);
+                self.lines(&stream, vec![reason], Some("error"));
+                return;
+            }
+        }
         self.finish_stream(&stream, Some(end), "Could not read the logs");
     }
 
@@ -636,7 +920,19 @@ impl Shared {
             Err(Fail::NotConfigured) => return Ok(json!([])),
             Err(other) => return Err(other),
         };
-        let applications = client.applications(&self.cancel).await?;
+        let applications = match self
+            .probed(
+                &client,
+                Feature::Applications,
+                Subject::Known,
+                client.applications(&self.cancel),
+            )
+            .await
+        {
+            Ok(applications) => applications,
+            Err(Fail::Unsupported(_)) => return Ok(json!([])),
+            Err(other) => return Err(other),
+        };
         let badges: Vec<Value> = project_badges(&projects, &applications)
             .into_iter()
             .map(|badge| json!({ "id": badge.id, "text": badge.text, "tone": badge.tone }))
@@ -684,6 +980,8 @@ where
         config: Mutex::new(Config::default()),
         client: tokio::sync::Mutex::new(None),
         streams: Mutex::new(HashMap::new()),
+        probe: Mutex::new(Probe::default()),
+        version_read: tokio::sync::Mutex::new(()),
     });
 
     let mut lines = reader.lines();
