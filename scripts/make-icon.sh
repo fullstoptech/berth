@@ -4,7 +4,7 @@
 # Writes crates/berth-app/assets/icon/{berth.icns,icon.png,32x32.png,128x128.png,
 # 128x128@2x.png,256x256.png,512x512.png}. macOS only (sips, iconutil). The PNG must be
 # square and 1024 px wide, with the transparent margin Apple's grid asks for already in it.
-# Until the chosen artwork lands, run it on icon-placeholder-1024.png.
+# Source: assets/icon/icon-1024.png (Mooring 01 / r2-a, W1; design/icon/berth-icon.figcraft).
 set -euo pipefail
 
 if [ "$#" -ne 1 ]; then
