@@ -14,6 +14,9 @@ use berth_core::{
 
 use crate::{compose_edit, diff, RulesError};
 
+mod from_service;
+pub use from_service::{from_service, CUSTOM_CATEGORY};
+
 const PASSWORD_LEN: usize = 24;
 const ALPHABET: &[u8; 62] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 

@@ -25,6 +25,7 @@ thread_local! {
 }
 
 /// Remember the main window (called once from the tray hook, inside the App root).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn register_window(window: dioxus::desktop::DesktopContext) {
     WINDOW.with(|slot| *slot.borrow_mut() = Some(window));
 }

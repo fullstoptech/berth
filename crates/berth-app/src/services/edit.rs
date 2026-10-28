@@ -145,7 +145,12 @@ async fn pull(
     cancel: &CancellationToken,
 ) -> Result<(), String> {
     let reference = &spec.image.reference;
-    let mut stream = client.pull(reference, spec.platform.as_deref(), cancel.child_token());
+    let mut stream = client.pull(
+        reference,
+        spec.platform.as_deref(),
+        None,
+        cancel.child_token(),
+    );
     loop {
         tokio::select! {
             biased;

@@ -39,6 +39,40 @@ pub struct ImageSearchHit {
     pub stars: u32,
     pub official: bool,
 }
+/// One image build (AD43): a folder context or a Dockerfile written
+/// in the editor, built through the engine API.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BuildContext {
+    Folder(std::path::PathBuf),
+    /// Only the Dockerfile's text; the context is the file alone.
+    Inline(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildSpec {
+    pub context: BuildContext,
+    /// Dockerfile path inside a folder context; `None` = `Dockerfile`.
+    pub dockerfile: Option<String>,
+    pub tags: Vec<String>,
+    pub build_args: Vec<(String, String)>,
+    pub platform: Option<String>,
+}
+
+/// One line of build output, classified by the step parser.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BuildEvent {
+    /// `Step n/m : INSTRUCTION …`
+    Step {
+        index: u32,
+        total: u32,
+        text: String,
+    },
+    /// The failing step's error line.
+    Failed { text: String },
+    /// Anything else, verbatim.
+    Log(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PullProgress {
     pub layer: Option<String>,

@@ -168,6 +168,7 @@
   padding: 0 var(--space-8) var(--space-8);
 }
 .rn-actions { display: flex; gap: var(--space-8); }
+.rn-done { margin: 0; color: var(--color-ink); }
 
 /* Limits tab (screens/container_limits.rs) */
 .lp {

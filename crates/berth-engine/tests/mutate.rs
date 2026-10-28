@@ -172,7 +172,7 @@ async fn run_checks(client: &BollardEngine) -> Result<(), String> {
     let progress = tokio::time::timeout(
         Duration::from_secs(60),
         client
-            .pull("alpine:3", None, CancellationToken::new())
+            .pull("alpine:3", None, None, CancellationToken::new())
             .collect::<Vec<_>>(),
     )
     .await

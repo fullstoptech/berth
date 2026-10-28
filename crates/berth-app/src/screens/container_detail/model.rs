@@ -293,15 +293,12 @@ fn is_toggle(action: &str) -> bool {
     matches!(action, "container.start" | "container.stop")
 }
 
-/// The ⋯ menu: Edit, Duplicate, Recreate with latest image and Rename work
-/// (P3-T7); the later tasks' items stay present and disabled with the task
-/// that enables them (D34: disabled stays visible, with a reason).
+/// The ⋯ menu: Edit, Duplicate, Recreate with latest image and Rename
+/// (P3-T7), Save as image (P8-T4). A disabled item stays visible with its
+/// reason (D34).
 /// A Compose-managed container is never recreated outside Compose (AD17).
 #[must_use]
 pub fn header_menu(c: &Container, backing: crate::services::backing::Backing) -> Vec<MenuEntry> {
-    let later = |id: &str, label: &str, task: &str| {
-        MenuEntry::new(id, label).disabled(format!("Built in {task}"))
-    };
     // A mock engine cannot create or recreate: the entries that would end
     // in its raw error stay visible and say why.
     let creates = |entry: MenuEntry, action: &str| match backing.unsupported_action(action) {
@@ -323,7 +320,7 @@ pub fn header_menu(c: &Container, backing: crate::services::backing::Backing) ->
             )
         },
         MenuEntry::new("rename", "Rename…"),
-        later("save-image", "Save as image…", "P8-T4"),
+        MenuEntry::new("save-image", "Save as image…"),
         MenuEntry::new("copy-id", "Copy container ID")
             .icon("copy")
             .separator_before(),

@@ -435,8 +435,16 @@ fn ImageRowView(
 }
 
 #[component]
-fn Controls(counts: [usize; 2], matched: usize, total: usize, can_pull: bool) -> Element {
+fn Controls(
+    counts: [usize; 2],
+    matched: usize,
+    total: usize,
+    can_pull: bool,
+    engine: Option<EngineId>,
+) -> Element {
+    let mut state = use_context::<AppState>();
     let store = use_hook(|| try_consume_context::<ImageStore>().unwrap_or_default());
+    let services = try_consume_context::<Services>();
     let mut query = store.query;
     let mut rev = store.query_rev;
     let mut filter = store.filter;
@@ -478,6 +486,26 @@ fn Controls(counts: [usize; 2], matched: usize, total: usize, can_pull: bool) ->
                 },
             }
             span { class: "im-spacer" }
+            Button {
+                label: "Import image\u{2026}".to_string(),
+                variant: ButtonVariant::Secondary,
+                icon: "arrow-down-to-line",
+                disabled: !can_pull,
+                disabled_reason: (!can_pull).then(|| "No running engine to import to".to_string()),
+                onclick: move |_| {
+                    if let (Some(engine), Some(services)) = (engine.clone(), services.clone()) {
+                        crate::sheets::build_image::import_with_panel(state, store, services, engine);
+                    }
+                },
+            }
+            Button {
+                label: "Build image\u{2026}".to_string(),
+                variant: ButtonVariant::Secondary,
+                icon: "box",
+                disabled: !can_pull,
+                disabled_reason: (!can_pull).then(|| "No running engine to build on".to_string()),
+                onclick: move |_| crate::sheets::build_image::open(&mut state),
+            }
             Button {
                 label: "Pull image".to_string(),
                 variant: ButtonVariant::Primary,
@@ -763,7 +791,13 @@ pub fn ImagesScreen() -> Element {
             if tab == ImagesTab::Find {
                 FindImages {}
             } else {
-                Controls { counts, matched, total, can_pull: pull_engine.is_some() }
+                Controls {
+                    counts,
+                    matched,
+                    total,
+                    can_pull: pull_engine.is_some(),
+                    engine: pull_engine.as_ref().map(|e| e.id.clone()),
+                }
                 PullPanel { engine: pull_engine.clone() }
                 match screen {
                     ScreenState::Loading => rsx! {

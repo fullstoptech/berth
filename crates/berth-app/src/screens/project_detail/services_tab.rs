@@ -19,7 +19,7 @@ use crate::services::actions::ActionsService;
 use crate::services::stats::{use_row_stats, StatsKey, StatsService};
 use crate::state::{AppState, Section, Selection};
 use crate::ui::container_row::{ContainerRow, RowAction};
-use crate::ui::{EmptyState, InlineMessage, InlineTone, TableHeaderCell};
+use crate::ui::{EmptyState, InlineMessage, InlineTone, MenuEntry, TableHeaderCell};
 
 /// The containers of `project` in the order the tab lists them: service name,
 /// then container name, each without regard to case. A container belongs to
@@ -62,6 +62,24 @@ pub fn down_note(project: &Project, containers: &[Container]) -> Option<String> 
     }
 }
 
+/// The ⋯ menu of a row in this tab: the Containers table's entries, and for a container that is a
+/// service of the project (it has a service name) "Save as template…" (P8-T4) before the last group,
+/// which holds Copy container ID.
+#[must_use]
+pub fn service_menu(mut menu: Vec<MenuEntry>, is_service: bool) -> Vec<MenuEntry> {
+    if is_service {
+        let at = menu
+            .iter()
+            .position(|e| e.separator_before)
+            .unwrap_or(menu.len());
+        menu.insert(
+            at,
+            MenuEntry::new("save-template", "Save as template\u{2026}"),
+        );
+    }
+    menu
+}
+
 /// Open one container in the Containers section.
 fn open_container(state: &mut AppState, id: &ContainerId) {
     state.selection.set(Selection::Containers(vec![id.clone()]));
@@ -69,9 +87,14 @@ fn open_container(state: &mut AppState, id: &ContainerId) {
 }
 
 #[component]
-fn ServiceRowHost(id: ContainerId, menu_open: Signal<Option<ContainerId>>) -> Element {
+fn ServiceRowHost(
+    id: ContainerId,
+    project: ProjectId,
+    menu_open: Signal<Option<ContainerId>>,
+) -> Element {
     let mut state = use_context::<AppState>();
     let actions = try_consume_context::<ActionsService>();
+    let services = try_consume_context::<crate::services::Services>();
     let stats = try_consume_context::<StatsService>();
     let containers = state.containers.read();
     let listed = containers.iter().find(|c| c.id == id);
@@ -89,15 +112,18 @@ fn ServiceRowHost(id: ContainerId, menu_open: Signal<Option<ContainerId>>) -> El
     let projects = state.projects.read();
     let pending = state.pending.read();
     let open = menu_open.read().as_ref() == Some(&id);
+    let service_name = container.service.clone();
     let data = {
         let view = state_view_from(&state, &engines, &containers, &projects, &pending);
-        row_data(
+        let mut data = row_data(
             container,
             &view,
             engine_name(&engines, &container.engine),
             chrono::Utc::now(),
             open,
-        )
+        );
+        data.menu = service_menu(data.menu, service_name.is_some());
+        data
     };
     let pause_action = if container.state == ContainerState::Paused {
         ContainerAction::Unpause
@@ -142,6 +168,14 @@ fn ServiceRowHost(id: ContainerId, menu_open: Signal<Option<ContainerId>>) -> El
                         let Some(service) = menu_actions.as_ref() else { return };
                         if let Some((target, _)) = target_of(&state, &id) {
                             let _ = service.container(&mut state, &target, pause_action.clone());
+                        }
+                    }
+                    "save-template" => {
+                        let found = state.projects.peek().iter().find(|p| p.id == project).cloned();
+                        if let (Some(services), Some(project), Some(service)) =
+                            (services.as_ref(), found, service_name.clone())
+                        {
+                            crate::services::templates::save(&mut state, services, project, service);
                         }
                     }
                     "copy-id" => copy_to_clipboard(&id.0),
@@ -216,7 +250,7 @@ pub fn ServicesTab(
                     TableHeaderCell { label: "Status".to_string() }
                 }
                 for id in ids {
-                    ServiceRowHost { key: "{id.0}", id: id.clone(), menu_open }
+                    ServiceRowHost { key: "{id.0}", id: id.clone(), project: project.id.clone(), menu_open }
                 }
             }
         }

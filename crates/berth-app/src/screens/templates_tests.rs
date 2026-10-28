@@ -197,3 +197,62 @@ fn templates_screen_custom_group_is_empty_with_the_briefs_words() {
         all().len() + 1
     );
 }
+
+// ---------------------------------------------------------------------
+// P8-T4: custom templates and Delete
+// ---------------------------------------------------------------------
+
+#[test]
+fn custom_templates_only_the_users_own_rows_offer_delete() {
+    let mut list = all();
+    list.push(custom("custom-1", "Postgres with pgvector"));
+    let g = groups(&list, "");
+    let flags: Vec<(&str, bool)> = g
+        .iter()
+        .flat_map(|g| g.rows.iter())
+        .map(|r| (r.id.as_str(), r.custom))
+        .collect();
+    assert_eq!(
+        flags.iter().filter(|(_, custom)| *custom).count(),
+        1,
+        "{flags:?}"
+    );
+    assert!(flags.contains(&("custom-1", true)));
+    assert!(flags.contains(&("postgres", false)));
+}
+
+#[test]
+fn custom_templates_screen_has_a_delete_button_on_the_custom_row_only() {
+    let html = scene("Templates / list / 1440");
+    assert_eq!(
+        html.matches("aria-label=\"Delete Postgres with pgvector\"")
+            .count(),
+        1,
+        "{html}"
+    );
+    assert_eq!(
+        html.matches("aria-label=\"Delete ").count(),
+        1,
+        "no built-in row can be deleted"
+    );
+    assert!(!scene("Templates / custom empty / 1440").contains("aria-label=\"Delete "));
+    // Nothing is asked until the button is clicked.
+    assert!(!html.contains("confirm-dialog\" role=\"dialog\""), "{html}");
+}
+
+#[test]
+fn custom_templates_delete_asks_from_one_summary() {
+    let html = scene("Templates / delete confirm / 1440");
+    assert!(
+        html.contains("aria-label=\"Delete template Postgres with pgvector?\""),
+        "{html}"
+    );
+    // The button, the lines and the result all come from `delete_effect`.
+    let effect = crate::services::templates::delete_effect("Postgres with pgvector");
+    for line in &effect.lines {
+        assert!(html.contains(&line.text), "{}: {html}", line.text);
+    }
+    assert!(html.contains(">Delete template<"), "{html}");
+    assert!(html.contains(">Cancel<"), "{html}");
+    assert!(html.contains("btn-danger"), "{html}");
+}

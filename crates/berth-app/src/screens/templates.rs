@@ -1,7 +1,8 @@
 //! The Templates screen (P5-T9, brief 7.3; no frame, so it is built from the Networks header and
 //! table). A plain list grouped by category: name, version, image, ports and a one-line description,
 //! with "Add to project…" on each row. The built-in templates (D84) come first; the user's own
-//! follow under "Custom", with an empty state until P8-T4 saves some.
+//! (saved from a project's service, P8-T4) follow under "Custom", with an empty state until there
+//! are some, and a Delete button on each row that asks first.
 //!
 //! The view model is pure ([`groups`]); the component draws it and opens `Overlay::AddService`.
 
@@ -10,9 +11,12 @@ use dioxus::prelude::*;
 use berth_core::{Template, TemplateKind};
 
 use crate::services::plans::blocking;
-use crate::services::templates::{categories, default_ports, default_version};
-use crate::state::{AddServiceSeed, AppState, Overlay};
-use crate::ui::{Badge, BadgeKind, Button, ButtonVariant, ControlSize, EmptyState, SearchField};
+use crate::services::templates::{categories, default_ports, default_version, delete_effect};
+use crate::state::{AddServiceSeed, AppState, Overlay, Toast, ToastTone};
+use crate::ui::{
+    Badge, BadgeKind, Button, ButtonVariant, ConfirmDialog, ControlSize, EmptyState, IconButton,
+    IconButtonTone, SearchField,
+};
 
 /// The screen's CSS.
 pub const TEMPLATES_CSS: &str = include_str!("../../assets/css/templates.css");
@@ -31,6 +35,8 @@ pub struct TemplateRow {
     /// "5672, 15672"; empty when the template publishes nothing.
     pub ports: String,
     pub description: String,
+    /// Saved by the user: the row offers Delete.
+    pub custom: bool,
 }
 
 /// A group of rows under a heading.
@@ -52,6 +58,7 @@ fn row_of(t: &Template) -> TemplateRow {
             .collect::<Vec<_>>()
             .join(", "),
         description: t.description.clone(),
+        custom: t.kind == TemplateKind::Custom,
     }
 }
 
@@ -108,6 +115,10 @@ pub fn groups(templates: &[Template], filter: &str) -> Vec<Group> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeedTemplates(pub Vec<Template>);
 
+/// Scenes and tests open the Delete confirm of one custom template (by id) without a click.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DevConfirmDelete(pub String);
+
 /// Open the Add service sheet on one template.
 pub fn add_to_project(state: &mut AppState, template_id: &str) {
     state
@@ -121,9 +132,15 @@ pub fn add_to_project(state: &mut AppState, template_id: &str) {
 }
 
 #[component]
-fn TemplateRowView(row: TemplateRow) -> Element {
+fn TemplateRowView(row: TemplateRow, ondelete: EventHandler<String>) -> Element {
     let mut state = use_context::<AppState>();
+    let mut confirming = use_signal({
+        let open = try_consume_context::<DevConfirmDelete>().is_some_and(|d| d.0 == row.id);
+        move || open
+    });
     let id = row.id.clone();
+    let delete_id = row.id.clone();
+    let delete_name = row.name.clone();
     rsx! {
         div { class: "tp-row", role: "row", "aria-label": "{row.name}",
             div { class: "tp-cell tp-name", role: "cell",
@@ -152,6 +169,39 @@ fn TemplateRowView(row: TemplateRow) -> Element {
                     size: ControlSize::Sm,
                     onclick: move |_| add_to_project(&mut state, &id),
                 }
+                if row.custom {
+                    IconButton {
+                        icon: "trash-2",
+                        label: format!("Delete {}", row.name),
+                        tone: IconButtonTone::Danger,
+                        size: ControlSize::Sm,
+                        tooltip: Some("Delete".to_string()),
+                        onclick: move |_| confirming.set(true),
+                    }
+                }
+            }
+        }
+        if *confirming.read() {
+            // One summary draws the title's noun, the lines and the button ("Delete template").
+            div {
+                class: "overlay-scrim",
+                style: "z-index: 60;",
+                onclick: move |_| confirming.set(false),
+                onkeydown: move |e: KeyboardEvent| {
+                    if e.key() == Key::Escape {
+                        confirming.set(false);
+                    }
+                },
+                ConfirmDialog {
+                    title: format!("Delete template {delete_name}?"),
+                    effect: delete_effect(&delete_name),
+                    oncheck: move |_| {},
+                    oncancel: move |()| confirming.set(false),
+                    onconfirm: move |()| {
+                        confirming.set(false);
+                        ondelete.call(delete_id.clone());
+                    },
+                }
             }
         }
     }
@@ -162,6 +212,8 @@ pub fn TemplatesScreen() -> Element {
     let seed = try_consume_context::<SeedTemplates>();
     let services = try_consume_context::<crate::services::Services>();
     let seeded = seed.is_some();
+    let store = services.as_ref().map(|s| s.store.clone());
+    let mut toasts = use_context::<AppState>().toasts;
     let mut templates = use_signal({
         let seed = seed.clone();
         move || seed.map_or_else(berth_rules::templates::built_in, |s| s.0)
@@ -169,19 +221,58 @@ pub fn TemplatesScreen() -> Element {
     let mut filter = use_signal(String::new);
     let mut epoch = use_signal(|| 0_u32);
 
+    let load_store = store.clone();
     // The user's templates come from the store, read once off the UI thread; the built-in ones are
     // there from the first paint.
     use_effect(move || {
         if seeded {
             return;
         }
-        let store = services.as_ref().map(|s| s.store.clone());
+        let store = load_store.clone();
         spawn(async move {
             if let Some(all) =
                 blocking(move || crate::services::templates::all(store.as_deref())).await
             {
                 templates.set(all);
             }
+        });
+    });
+
+    // Delete is confirmed in the row; the store is written first, then the list drops the row.
+    let ondelete = EventHandler::new(move |id: String| {
+        let store = store.clone();
+        let name = templates
+            .peek()
+            .iter()
+            .find(|t| t.id == id)
+            .map(|t| t.name.clone())
+            .unwrap_or_default();
+        spawn(async move {
+            let stored = match store {
+                Some(store) => {
+                    let id = id.clone();
+                    blocking(move || crate::services::templates::delete(&store, &id))
+                        .await
+                        .unwrap_or_else(|| Err("Deleting the template did not finish.".to_string()))
+                }
+                None => Ok(()),
+            };
+            let (text, tone) = match stored {
+                Ok(()) => {
+                    templates.write().retain(|t| t.id != id);
+                    (
+                        crate::services::confirm::result_label(&delete_effect(&name), 1),
+                        ToastTone::Success,
+                    )
+                }
+                Err(reason) => (reason, ToastTone::Danger),
+            };
+            toasts.write().push(Toast {
+                id: uuid::Uuid::now_v7(),
+                text,
+                tone,
+                action: None,
+            });
         });
     });
 
@@ -255,7 +346,7 @@ pub fn TemplatesScreen() -> Element {
                                 }
                             }
                             for row in group.rows {
-                                TemplateRowView { key: "{row.id}", row }
+                                TemplateRowView { key: "{row.id}", row, ondelete }
                             }
                         }
                     }

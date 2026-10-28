@@ -48,7 +48,10 @@ pub use generation::{
     FoundKind, GenerationPlan, PlanSource, ServiceGuess, ServiceKind, StackGuess,
 };
 pub use ids::{Actor, ContainerId, EngineId, HarnessId, OwnerId, ProblemId, ProjectId, SessionId};
-pub use image::{Image, ImageDetail, ImageLayer, ImageSearchHit, PullProgress};
+pub use image::{
+    BuildContext, BuildEvent, BuildSpec, Image, ImageDetail, ImageLayer, ImageSearchHit,
+    PullProgress,
+};
 pub use network::{Network, NetworkSpec};
 pub use problem::{
     ColimaOp, EngineAction, Fix, FixEffect, FixSource, Problem, ProblemKind, ResourceRef, Severity,

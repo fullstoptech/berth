@@ -598,11 +598,7 @@ impl ToolCore {
                 .await
             }
             "images.pull" => self.images_pull(args).await,
-            "images.build" => Err(
-                "building images arrives with the engine's build support in a later phase (P8); \
-                 compose.up builds what a Compose service needs"
-                    .to_string(),
-            ),
+            "images.build" => self.images_build(args, session).await,
             "containers.remove" => {
                 let mut remove_args = args.clone();
                 if let Value::Object(map) = &mut remove_args {
@@ -1256,7 +1252,7 @@ impl ToolCore {
         let platform = get_str(args, "platform");
         let (engine, client) = self.pick_engine(get_str(args, "engine").as_deref())?;
         let cancel = CancellationToken::new();
-        let mut stream = client.pull(&reference, platform.as_deref(), cancel.clone());
+        let mut stream = client.pull(&reference, platform.as_deref(), None, cancel.clone());
         let mut events = 0_u32;
         while let Some(item) = stream.next().await {
             item.map_err(err)?;
@@ -1266,6 +1262,61 @@ impl ToolCore {
         out.engine = Some(engine);
         out.subject = Subject::Image(reference.clone());
         out.subject_name = reference;
+        Ok(out)
+    }
+
+    /// Builds an image from a folder of the project through the engine API
+    /// (AD43): the same `BuildSpec` the Build image sheet makes. The
+    /// context and the Dockerfile are locked inside the project folder
+    /// like `files.read` (no `..`, no absolute path, no symlink out).
+    async fn images_build(&self, args: &Value, session: &SessionId) -> ToolResult {
+        use berth_core::{BuildContext, BuildEvent, BuildSpec};
+        let tag = req_str(args, "tag")?;
+        let (folder, project) = self
+            .resolve_folder(get_str(args, "project").as_deref(), Some(session))
+            .await?;
+        let context_arg = get_str(args, "context").unwrap_or_else(|| ".".to_string());
+        let context = safe_join(&folder, &context_arg)?;
+        if !context.is_dir() {
+            return Err(format!("{context_arg} is not a folder"));
+        }
+        let dockerfile = get_str(args, "dockerfile");
+        if let Some(name) = &dockerfile {
+            safe_join(&context, name)?;
+        }
+        let spec = crate::services::images::check_build_spec(BuildSpec {
+            context: BuildContext::Folder(context),
+            dockerfile,
+            tags: vec![tag.clone()],
+            build_args: Vec::new(),
+            platform: None,
+        })?;
+        let engine_arg =
+            get_str(args, "engine").or_else(|| project.as_ref().map(|p| p.engine.0.clone()));
+        let (engine, client) = self.pick_engine(engine_arg.as_deref())?;
+        let mut stream = client.build_image(&spec, None, CancellationToken::new());
+        let mut steps = 0_u32;
+        let mut failure = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(BuildEvent::Step { .. }) => steps += 1,
+                Ok(BuildEvent::Failed { text }) => failure = Some(text),
+                Ok(BuildEvent::Log(_)) => {}
+                Err(e) => {
+                    return Err(format!(
+                        "build failed: {}",
+                        failure.unwrap_or_else(|| err(e))
+                    ))
+                }
+            }
+        }
+        let mut out = ToolOutput::plain(format!("Built {tag} from {context_arg} ({steps} steps)"));
+        out.engine = Some(engine);
+        out.subject = Subject::Image(tag.clone());
+        out.subject_name = tag;
+        if let Some(project) = &project {
+            out.project = Some(project.id.clone());
+        }
         Ok(out)
     }
 
@@ -2011,6 +2062,95 @@ mod tests {
         });
         let text = ok_text(call.await.expect("call"));
         assert!(text.contains("Removed shop-api-db-1"), "{text}");
+    }
+
+    /// Run a Change tool the user approves; the final response.
+    async fn approved(h: &mut Harness, tool: &str, args: Value) -> BridgeResponse {
+        let core = Arc::clone(&h.core);
+        let tool = tool.to_string();
+        let call = tokio::spawn(async move { core.handle(request(&tool, args)).await });
+        h.next_approval()
+            .await
+            .answer(Decision::Approved { typed_name: None });
+        call.await.expect("call task")
+    }
+
+    fn error_message(response: BridgeResponse) -> String {
+        match response {
+            BridgeResponse::Error { message, .. } => message,
+            other => panic!("expected an Error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn tools_images_build_builds_a_project_folder_and_reports_a_failing_step() {
+        let mut h = harness(Backing::Live);
+        let app = h._dir.path().join("app");
+        std::fs::create_dir_all(app.join("docker")).expect("dirs");
+        std::fs::write(
+            app.join("docker/Dev.dockerfile"),
+            "FROM alpine\nCOPY . /app\n",
+        )
+        .expect("dockerfile");
+
+        let text = ok_text(
+            approved(
+                &mut h,
+                "images.build",
+                json!({"context": "app", "dockerfile": "docker/Dev.dockerfile", "tag": "berthfx/app:dev"}),
+            )
+            .await,
+        );
+        assert!(text.contains("Built berthfx/app:dev"), "{text}");
+        let listed = ok_text(h.core.handle(request("images.list", json!({}))).await);
+        assert!(listed.contains("berthfx/app:dev"), "{listed}");
+
+        std::fs::write(app.join("Dockerfile"), "FROM alpine\nRUN sh -c 'exit 1'\n")
+            .expect("dockerfile");
+        let failure = error_message(
+            approved(
+                &mut h,
+                "images.build",
+                json!({"context": "app", "tag": "berthfx/broken:1"}),
+            )
+            .await,
+        );
+        assert!(failure.contains("non-zero code"), "{failure}");
+        let listed = ok_text(h.core.handle(request("images.list", json!({}))).await);
+        assert!(!listed.contains("berthfx/broken"), "{listed}");
+    }
+
+    #[tokio::test]
+    async fn tools_images_build_cannot_leave_the_project_folder() {
+        let mut h = harness(Backing::Live);
+        let outside = tempfile::tempdir().expect("outside");
+        std::fs::write(outside.path().join("Dockerfile"), "FROM alpine\n").expect("outside");
+        std::fs::write(h._dir.path().join("Dockerfile"), "FROM alpine\n").expect("inside");
+        let mut attempts = vec![
+            json!({"context": "..", "tag": "berthfx/x:1"}),
+            json!({"context": "../outside", "tag": "berthfx/x:1"}),
+            json!({"context": outside.path(), "tag": "berthfx/x:1"}),
+            json!({"dockerfile": "../Dockerfile", "tag": "berthfx/x:1"}),
+            json!({"dockerfile": outside.path().join("Dockerfile"), "tag": "berthfx/x:1"}),
+        ];
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(outside.path(), h._dir.path().join("link"))
+                .expect("symlink");
+            attempts.push(json!({"context": "link", "tag": "berthfx/x:1"}));
+        }
+        for args in attempts {
+            let message = error_message(approved(&mut h, "images.build", args.clone()).await);
+            assert!(
+                message.contains("outside the project folder"),
+                "{args}: {message}"
+            );
+        }
+        // Nothing was built by any of them, and the folder itself still builds.
+        let listed = ok_text(h.core.handle(request("images.list", json!({}))).await);
+        assert!(!listed.contains("berthfx/x"), "{listed}");
+        let text = ok_text(approved(&mut h, "images.build", json!({"tag": "berthfx/x:1"})).await);
+        assert!(text.contains("Built berthfx/x:1"), "{text}");
     }
 
     #[tokio::test]

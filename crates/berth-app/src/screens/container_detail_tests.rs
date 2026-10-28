@@ -613,17 +613,27 @@ fn inspector_stats_tab_mounts_the_stats_panel() {
 }
 
 #[test]
-fn inspector_header_menu_works_for_the_edit_items_and_defers_save_as_image() {
+fn inspector_header_menu_works_for_the_edit_items_and_save_as_image() {
     let mut loose = container("shop-api-worker-1");
     loose.labels.clear();
     let menu = header_menu(&loose, Backing::Live);
     let by_id = |id: &str| menu.iter().find(|e| e.id == id).expect(id).clone();
-    for id in ["edit", "duplicate", "recreate", "rename", "copy-id"] {
+    for id in [
+        "edit",
+        "duplicate",
+        "recreate",
+        "rename",
+        "save-image",
+        "copy-id",
+    ] {
         assert!(by_id(id).disabled_reason.is_none(), "{id} works");
     }
     assert_eq!(by_id("edit").kbd_letter.as_deref(), Some("E"));
-    let reason = by_id("save-image").disabled_reason.expect("disabled");
-    assert!(reason.starts_with("Built in P"), "{reason}");
+    assert_eq!(by_id("save-image").label, "Save as image\u{2026}");
+    // The mock engine can commit, so the item stays on under mock data too.
+    let mock = header_menu(&loose, Backing::Mock);
+    let item = mock.iter().find(|e| e.id == "save-image").expect("item");
+    assert!(item.disabled_reason.is_none());
 }
 
 #[test]

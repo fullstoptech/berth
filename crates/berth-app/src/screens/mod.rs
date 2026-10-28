@@ -25,6 +25,7 @@ pub mod project_detail;
 pub mod projects;
 mod projects_order;
 pub mod recent_activity;
+pub mod registries;
 pub mod settings;
 #[cfg(test)]
 pub(crate) mod table_tiers;

@@ -44,7 +44,8 @@ pub enum Overlay {
     CreateNetwork,
     EditResources(String),
     AddEngine,
-    AddRegistry,
+    /// The registry log-in sheet; `Some(id)` re-logs in to that row.
+    AddRegistry(Option<String>),
     BuildImage,
     /// Opens from Templates or Find images without a project, or from a project (AD33).
     AddService(AddServiceSeed),
@@ -193,6 +194,8 @@ pub struct AppState {
     pub volumes: Signal<Vec<berth_core::Volume>>,
     pub networks: Signal<Vec<berth_core::Network>>,
     pub problems: Signal<Vec<berth_core::Problem>>,
+    /// Registry rows from the store; passwords never enter state (P8-T2).
+    pub registries: Signal<Vec<berth_core::Registry>>,
     pub pending: Signal<std::collections::BTreeMap<PendingKey, PendingState>>,
     pub section: Signal<Section>,
     pub selection: Signal<Selection>,
@@ -227,6 +230,7 @@ pub fn use_app_state() -> AppState {
         volumes: use_signal(Vec::new),
         networks: use_signal(Vec::new),
         problems: use_signal(Vec::new),
+        registries: use_signal(Vec::new),
         pending: use_signal(std::collections::BTreeMap::new),
         section: use_signal(|| Section::Projects),
         selection: use_signal(|| Selection::None),

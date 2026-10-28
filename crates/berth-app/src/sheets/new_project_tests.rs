@@ -4,21 +4,19 @@ use super::*;
 use crate::scenes::render_scene_html;
 
 #[test]
-fn new_project_sheet_offers_three_ways_and_disables_git() {
+fn new_project_sheet_offers_three_ways_and_all_are_on() {
     let html = render_scene_html("New project / sheet / 1440").expect("scene renders");
     for text in [
         "aria-label=\"New project\"",
         ">Open folder<",
         ">From editor<",
         ">From Git<",
-        "Cloning from Git arrives with the Git support (P8-T5).",
     ] {
         assert!(html.contains(text), "missing {text:?}\n{html}");
     }
-    // Exactly the Git choice is disabled.
-    assert_eq!(
-        html.matches("np-choice\" type=\"button\" disabled").count(),
-        1,
+    // From Git works since P8-T5: no choice is disabled.
+    assert!(
+        !html.contains("np-choice\" type=\"button\" disabled"),
         "{html}"
     );
 }

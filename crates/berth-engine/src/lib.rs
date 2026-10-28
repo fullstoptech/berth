@@ -1,4 +1,6 @@
 pub mod bollard_engine;
+pub mod build_context;
+pub mod build_parse;
 pub mod client;
 pub mod colima;
 pub mod colima_parse;
@@ -9,6 +11,7 @@ pub mod git;
 pub mod mappers;
 pub mod mock;
 pub mod projects;
+pub mod remote;
 pub mod remove;
 pub mod timeouts;
 

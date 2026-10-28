@@ -1,0 +1,125 @@
+/* Registries screen + log-in sheet (P8-T2). No frame exists: the
+   header and table follow Templates'; the sheet follows Add engine's
+   card. Colours and sizes come only from tokens.css. */
+
+.registries-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-bottom: var(--space-24);
+  font-size: var(--text-body-size);
+}
+.rg-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--gutter) var(--space-12);
+  flex: none;
+}
+.rg-title {
+  margin: 0;
+  font-size: var(--text-h1-size);
+  line-height: var(--text-h1-line);
+  font-weight: var(--text-body-weight);
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.rg-header .badge-count {
+  height: var(--size-control-sm);
+  padding: 0 var(--space-8);
+  font-size: var(--text-body-size);
+  font-weight: var(--text-body-weight);
+  border-radius: var(--radius-md);
+}
+.rg-spacer {
+  flex: 1;
+}
+.rg-lede {
+  margin: 0;
+  padding: 0 var(--gutter) var(--space-12);
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.rg-list {
+  --rg-cols: minmax(calc(120px * var(--text-scale, 1)), 1fr) minmax(calc(180px * var(--text-scale, 1)), 2fr) calc(140px * var(--text-scale, 1)) calc(150px * var(--text-scale, 1)) calc(260px * var(--text-scale, 1));
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.rg-head,
+.rg-row {
+  display: grid;
+  grid-template-columns: var(--rg-cols);
+  column-gap: var(--space-12);
+  align-items: center;
+  padding: 0 calc(var(--gutter) - var(--space-8));
+  margin: 0 var(--space-8);
+  min-height: var(--row-height);
+}
+.rg-head {
+  color: var(--color-ink-muted);
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  border-bottom: 1px solid var(--color-line);
+}
+.rg-row {
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink);
+}
+.rg-row .rg-url {
+  font-family: var(--font-mono);
+  color: var(--color-ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rg-row .rg-actions {
+  display: flex;
+  gap: var(--space-8);
+  justify-content: flex-end;
+}
+.rg-empty {
+  padding: var(--space-24) var(--gutter);
+}
+
+/* Log-in sheet: Add engine's card. */
+.overlay-scrim:has(> .rl-sheet) {
+  padding-top: 120px;
+  background: color-mix(in srgb, var(--neutral-dark-50) 40%, transparent);
+}
+.rl-sheet {
+  box-sizing: border-box;
+  width: 520px;
+  max-width: calc(100vw - var(--space-32));
+  padding: var(--space-24);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-dialog);
+  color: var(--color-ink);
+}
+.rl-title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-body-lg-size);
+  line-height: var(--text-body-lg-line);
+  font-weight: var(--text-body-weight);
+}
+.rl-lede {
+  margin: 0 0 var(--space-16);
+  color: var(--color-ink-muted);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.rl-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.rl-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  margin-top: var(--space-16);
+}

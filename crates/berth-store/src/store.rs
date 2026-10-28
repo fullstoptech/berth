@@ -32,7 +32,18 @@ pub struct SessionRecord {
     pub updated: DateTime<Utc>,
 }
 
-const MIGRATIONS: &[(u32, &str)] = &[(1, include_str!("../migrations/0001_init.sql"))];
+/// One folder cloned from Git: where it is, the engine it deploys to and its
+/// `ProjectSource::Git`.
+pub type GitSourceRow = (
+    std::path::PathBuf,
+    berth_core::EngineId,
+    berth_core::ProjectSource,
+);
+
+const MIGRATIONS: &[(u32, &str)] = &[
+    (1, include_str!("../migrations/0001_init.sql")),
+    (2, include_str!("../migrations/0002_git_sources.sql")),
+];
 
 pub struct Store {
     conn: std::sync::Mutex<rusqlite::Connection>,
@@ -375,6 +386,66 @@ impl Store {
         let conn = self.lock()?;
         conn.execute("DELETE FROM templates WHERE id = ?1", [id])
             .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// The folders cloned from Git (P8-T5): `(folder, engine, source)` with
+    /// `source` always a `ProjectSource::Git`, ordered by folder.
+    pub fn git_sources(&self) -> Result<Vec<GitSourceRow>, StoreError> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT folder, engine, json FROM git_sources ORDER BY folder")
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(sql_err)?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (folder, engine, json) = row.map_err(sql_err)?;
+            out.push((
+                std::path::PathBuf::from(folder),
+                berth_core::EngineId(engine),
+                serde_json::from_str(&json)?,
+            ));
+        }
+        Ok(out)
+    }
+
+    /// Record (or update) a cloned folder's Git source.
+    pub fn set_git_source(
+        &self,
+        folder: &std::path::Path,
+        engine: &berth_core::EngineId,
+        source: &berth_core::ProjectSource,
+    ) -> Result<(), StoreError> {
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO git_sources (folder, engine, json) VALUES (?1, ?2, ?3)
+             ON CONFLICT(folder) DO UPDATE SET engine = excluded.engine, json = excluded.json",
+            rusqlite::params![
+                folder.to_string_lossy().into_owned(),
+                engine.0,
+                serde_json::to_string(source)?
+            ],
+        )
+        .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Forget a folder's Git source (the folder itself is not touched).
+    pub fn remove_git_source(&self, folder: &std::path::Path) -> Result<(), StoreError> {
+        let conn = self.lock()?;
+        conn.execute(
+            "DELETE FROM git_sources WHERE folder = ?1",
+            [folder.to_string_lossy()],
+        )
+        .map_err(sql_err)?;
         Ok(())
     }
 
@@ -761,6 +832,39 @@ mod tests {
     }
 
     #[test]
+    fn git_sources_round_trip_update_and_remove() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("berth.db");
+        let engine = berth_core::EngineId("colima:default".to_string());
+        let folder = std::path::Path::new("/Users/me/Dev/app");
+        let source = |commit: &str, auto: bool| berth_core::ProjectSource::Git {
+            repo: url::Url::parse("ssh://git@example.com/me/app.git").expect("url"),
+            branch: "main".to_string(),
+            last_commit: Some(commit.to_string()),
+            poll: Some(std::time::Duration::from_secs(300)),
+            auto_redeploy: auto,
+        };
+        {
+            let store = Store::open(&path).expect("open");
+            store
+                .set_git_source(folder, &engine, &source("abc1234", false))
+                .expect("set");
+            // The same folder again updates the row.
+            store
+                .set_git_source(folder, &engine, &source("def5678", true))
+                .expect("update");
+        }
+        // It survives a reopen (the migration is idempotent on an existing file).
+        let store = Store::open(&path).expect("reopen");
+        assert_eq!(
+            store.git_sources().expect("list"),
+            vec![(folder.to_path_buf(), engine, source("def5678", true))]
+        );
+        store.remove_git_source(folder).expect("remove");
+        assert!(store.git_sources().expect("empty").is_empty());
+    }
+
+    #[test]
     fn empty_store_lists_are_empty() {
         let store = Store::open_in_memory().expect("open");
         assert!(store.pins().expect("pins").is_empty());
@@ -768,6 +872,7 @@ mod tests {
         assert!(store.user_engines().expect("engines").is_empty());
         assert!(store.custom_templates().expect("templates").is_empty());
         assert!(store.registries().expect("registries").is_empty());
+        assert!(store.git_sources().expect("git sources").is_empty());
         assert!(store.sessions(None).expect("sessions").is_empty());
         assert!(store
             .activity_query(&ActivityFilter::default(), None, 5)

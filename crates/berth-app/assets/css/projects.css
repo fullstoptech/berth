@@ -485,3 +485,20 @@
 .projects-no-match {
   padding: var(--space-24) 0;
 }
+
+/* The project row: the deployed commit and the new-commit tag. */
+.project-commit {
+  margin-left: var(--space-6);
+  font-family: var(--font-mono);
+  font-size: var(--text-code-size);
+  color: var(--color-ink-muted);
+}
+.project-new-commits {
+  margin-left: var(--space-6);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-full);
+  background: var(--color-info-subtle);
+  color: var(--color-info);
+  font-size: var(--text-label-size);
+  white-space: nowrap;
+}

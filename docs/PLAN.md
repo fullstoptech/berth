@@ -151,7 +151,7 @@ Every decision below is final for v1. The workhorse implements them and never re
 | D49 | Git | The `git` CLI as a subprocess: `git -C <dir> status --porcelain=v2 --branch` for branch and dirty flag, `git remote get-url origin`, `clone --progress`, `fetch`, `log --oneline HEAD..@{u}`, `pull --ff-only`. No libgit2. |
 | D50 | Image search | Engine `/images/search` through `bollard::Docker::search_images`, plus Docker Hub `GET https://hub.docker.com/v2/repositories/<ns>/<repo>/tags?page_size=N` (fields `name`, `images[].architecture`, `images[].size`, `last_updated`, `digest`; checked 2026-10-24) and `GET https://hub.docker.com/v2/search/repositories/?query=` (fields `repo_name`, `short_description`, `star_count`, `pull_count`, `is_official`). Verified Publisher and Sponsored OSS badges need another Hub endpoint: P4-T2 verifies one or shows only Official and Community. HTTP 429 is the rate-limited state. |
 | D51 | Volume and container files | Volume browser and backup use a helper container `alpine:3` (pulled once after a confirm that names it and its size) with the volume mounted read-only; listing runs `stat -c '%n\|%s\|%Y\|%F'` through exec; download and backup use the archive API (`download_from_container`) gzipped with `flate2`. Container Files uses exec when a shell exists, else the archive API. Restore asks for the typed volume name. |
-| D52 | Build, push | Build runs `docker build --progress rawjson` (CLI, with `DOCKER_HOST`), parsed into steps so the failing step can be highlighted; P8-T3 verifies the flag and falls back to `--progress plain` parsing. Tag, push, import, export, commit use bollard (`tag_image`, `push_image`, `import_image`, `export_image`, `commit_container`). |
+| D52 | Build, push | Build runs through the engine API (bollard `build_image`) with the context tarred by Berth, parsed into steps so the failing step can be highlighted (AD43, 2026-10-28: this Mac's docker client has no buildx and no `--progress` flag — legacy builder verified at P8-T3 — and the API works the same on local, SSH and TCP engines; the original CLI plan is superseded). Tag, push, import, export, commit use bollard (`tag_image`, `push_image`, `import_image`, `export_image`, `commit_container`). |
 | D53 | Testing | `cargo nextest`. Unit tests next to code. Integration tests in each crate's `tests/`, run only with `BERTH_IT=1` against the fixture Compose projects on the local Colima engine (§8.1). Components and screens tested with `dioxus-ssr` 0.7. `insta` snapshots for mappers, detections, generated files and SSR scenes. Harness smoke tests run only with `BERTH_HARNESS_SMOKE=1` (they spend the owner's subscription). Coolify tests run against `wiremock`. |
 | D54 | Lints | `rustfmt` defaults. `cargo clippy --workspace --all-targets -- -D warnings`. `clippy::unwrap_used` and `clippy::expect_used` denied in library crates (allowed in tests via `clippy.toml`). `clippy::pedantic` denied in `berth-core`. |
 | D55 | Branches and commits | Branch `phase/N-name`, commit `P<N>-T<M>: <what>`, local tag `v0.N` at phase merge. Nothing is pushed without the owner's approval. |
@@ -523,6 +523,12 @@ pub struct ImageLayer { pub created_by: String, pub size: ByteSize, pub created:
 pub struct ImageDetail { pub image: Image, pub layers: Vec<ImageLayer>, pub env_keys: Vec<String>, pub exposed_ports: Vec<u16> }
 pub struct ImageSearchHit { pub name: String, pub description: String, pub stars: u32, pub official: bool }
 pub struct PullProgress { pub layer: Option<String>, pub status: String, pub current: Option<u64>, pub total: Option<u64> }
+// AD43 (2026-10-28, P8-T3): one image build through the engine API. BuildSpec carries build-arg
+// values, which may be secrets: never log a spec. Only the first tag rides in the build request;
+// the rest are tagged from it after a successful build.
+pub enum BuildContext { Folder(std::path::PathBuf), Inline(String) }   // Inline: the Dockerfile's text alone is the context
+pub struct BuildSpec { pub context: BuildContext, pub dockerfile: Option<String>, pub tags: Vec<String>, pub build_args: Vec<(String, String)>, pub platform: Option<String> }
+pub enum BuildEvent { Step { index: u32, total: u32, text: String }, Failed { text: String }, Log(String) }
 pub struct Volume {
     pub name: String, pub driver: String, pub size: Option<ByteSize>, pub mountpoint: String,
     pub used_by: Vec<ContainerId>, pub project: Option<ProjectId>, pub created: Option<DateTime<Utc>>,
@@ -819,6 +825,8 @@ pub struct UserEngine { pub id: berth_core::EngineId, pub name: String, pub kind
 pub struct EngineSnapshot { pub engine: berth_core::EngineId, pub taken: DateTime<Utc>, pub containers: Vec<berth_core::Container>, pub projects: Vec<berth_core::Project> }
 pub struct ActivityFilter { pub engine: Option<berth_core::EngineId>, pub project: Option<berth_core::ProjectId>, pub origin: Option<String>, pub failed_only: bool }
 pub struct SessionRecord { pub session: berth_core::AssistantSession, pub updated: DateTime<Utc> }
+/// AD45 (P8-T5): one folder cloned from Git: (folder, engine, ProjectSource::Git).
+pub type GitSourceRow = (std::path::PathBuf, berth_core::EngineId, berth_core::ProjectSource);
 
 pub struct Store { /* rusqlite::Connection behind std::sync::Mutex */ }
 impl Store {
@@ -850,10 +858,14 @@ impl Store {
     pub fn save_session(&self, s: &berth_core::AssistantSession) -> Result<(), StoreError>;
     pub fn plugin_config(&self, plugin: &str) -> Result<Option<serde_json::Value>, StoreError>;
     pub fn set_plugin_config(&self, plugin: &str, v: &serde_json::Value) -> Result<(), StoreError>;
+    // AD45 (P8-T5): per-folder Git source and the Auto-redeploy switch (both live in the stored ProjectSource::Git).
+    pub fn git_sources(&self) -> Result<Vec<GitSourceRow>, StoreError>;      // ordered by folder
+    pub fn set_git_source(&self, folder: &std::path::Path, engine: &berth_core::EngineId, source: &berth_core::ProjectSource) -> Result<(), StoreError>;   // upsert
+    pub fn remove_git_source(&self, folder: &std::path::Path) -> Result<(), StoreError>;   // the folder itself is not touched
 }
 ```
 
-Tables (migration `0001_init.sql`): `settings(key TEXT PK, json TEXT)`, `pins(folder TEXT PK, engine TEXT, added TEXT)`, `recent(folder TEXT PK, at TEXT)`, `snapshots(engine TEXT PK, taken TEXT, json TEXT)`, `activity(id TEXT PK, ts TEXT, engine TEXT, project TEXT NULL, origin TEXT, action TEXT, outcome TEXT, json TEXT)` with an index on `ts`, `engines(id TEXT PK, json TEXT)`, `templates(id TEXT PK, json TEXT)`, `registries(id TEXT PK, json TEXT)`, `sessions(id TEXT PK, project TEXT NULL, updated TEXT, json TEXT)`, `plugins(id TEXT PK, json TEXT)`, `schema_version(version INTEGER)`. No secret is ever written to any table.
+Tables (migration `0001_init.sql`): `settings(key TEXT PK, json TEXT)`, `pins(folder TEXT PK, engine TEXT, added TEXT)`, `recent(folder TEXT PK, at TEXT)`, `snapshots(engine TEXT PK, taken TEXT, json TEXT)`, `activity(id TEXT PK, ts TEXT, engine TEXT, project TEXT NULL, origin TEXT, action TEXT, outcome TEXT, json TEXT)` with an index on `ts`, `engines(id TEXT PK, json TEXT)`, `templates(id TEXT PK, json TEXT)`, `registries(id TEXT PK, json TEXT)`, `sessions(id TEXT PK, project TEXT NULL, updated TEXT, json TEXT)`, `plugins(id TEXT PK, json TEXT)`, `schema_version(version INTEGER)`; migration `0002_git_sources.sql` (AD45, P8-T5) adds `git_sources(folder TEXT PK, engine TEXT NOT NULL, json TEXT NOT NULL)`. No secret is ever written to any table.
 
 ### 6.5 Engines (`berth-engine`)
 
@@ -939,7 +951,7 @@ pub trait EngineClient: Send + Sync {
     async fn list_files(&self, target: &berth_core::FileTarget, path: &str) -> Result<Vec<berth_core::FileEntry>, EngineError>;
     fn download(&self, target: &berth_core::FileTarget, path: &str, cancel: Cancel) -> Bs<bytes::Bytes>;   // tar stream
     async fn upload(&self, target: &berth_core::FileTarget, dir: &str, tar: bytes::Bytes) -> Result<(), EngineError>;
-    fn pull(&self, reference: &str, platform: Option<&str>, cancel: Cancel) -> Bs<berth_core::PullProgress>;
+    fn pull(&self, reference: &str, platform: Option<&str>, credentials: Option<&RegistryAuth>, cancel: Cancel) -> Bs<berth_core::PullProgress>;   // AD42/AD43 (2026-10-27): RegistryAuth serves pull and push
     async fn remove_image(&self, id: &str, force: bool) -> Result<(), EngineError>;
     async fn search_images(&self, term: &str, limit: u32) -> Result<Vec<berth_core::ImageSearchHit>, EngineError>;
     async fn create_volume(&self, spec: &berth_core::VolumeSpec) -> Result<berth_core::Volume, EngineError>;
@@ -951,9 +963,10 @@ pub trait EngineClient: Send + Sync {
     async fn prune(&self, plan: &berth_core::PrunePlan, cancel: Cancel) -> Result<berth_core::PruneReport, EngineError>;
     // M4 (P8). Default bodies return EngineError::Unsupported until P8-T3/T4 implement them.
     async fn tag_image(&self, id: &str, repo: &str, tag: &str) -> Result<(), EngineError> { Err(EngineError::Unsupported("tag".into())) }
-    fn push(&self, reference: &str, auth: Option<RegistryAuth>, cancel: Cancel) -> Bs<berth_core::PullProgress> { unsupported_stream("push") }
+    fn push(&self, reference: &str, auth: Option<&RegistryAuth>, cancel: Cancel) -> Bs<berth_core::PullProgress> { unsupported_stream("push") }
+    fn build_image(&self, spec: &berth_core::BuildSpec, credentials: Option<&RegistryAuth>, cancel: Cancel) -> Bs<berth_core::BuildEvent> { unsupported_stream("build") }   // AD43: context tarred by the implementation (.dockerignore honoured); credentials keyed by server for private base images
     fn export_image(&self, id: &str, cancel: Cancel) -> Bs<bytes::Bytes> { unsupported_stream("export") }
-    async fn import_image(&self, tar: bytes::Bytes) -> Result<Vec<String>, EngineError> { Err(EngineError::Unsupported("import".into())) }
+    async fn import_image(&self, tar: bytes::Bytes) -> Result<Vec<String>, EngineError> { Err(EngineError::Unsupported("import".into())) }   // Ok: the names the load reported ("Loaded image: …")
     async fn commit(&self, id: &berth_core::ContainerId, repo: &str, tag: &str) -> Result<String, EngineError> { Err(EngineError::Unsupported("commit".into())) }
 }
 pub struct RegistryAuth { pub server: String, pub username: String, pub password: secrecy::SecretString }
@@ -987,6 +1000,25 @@ pub mod projects {  // pure
                  pins: &[berth_core::PinnedFolder], remote: bool) -> Vec<berth_core::Project>;
     pub fn status(services: &[berth_core::ServiceSummary]) -> berth_core::ProjectStatus;
     pub fn parse_git_status(porcelain_v2: &str) -> berth_core::GitInfo;
+}
+
+/// AD45 (P8-T5): `berth_engine::git` — the git CLI (binary from `berth_sys::SearchPath`; every call takes a CancellationToken and kills on drop).
+/// Pure arg builders: `status_args, remote_args, ssh_command(key), clone_args, fetch_args, pull_args, incoming_args, head_args`;
+/// pure parsers: `parse_clone_progress(line) -> Option<CloneProgress { phase, percent }>`, `parse_incoming(oneline_log) -> Vec<IncomingCommit { hash, subject }>`.
+/// SSH key = `git clone -c core.sshCommand="ssh -i <key> -o IdentitiesOnly=yes -o BatchMode=yes"` (kept in the repo's own git config; Berth never reads the key).
+pub struct GitCli { /* SearchPath */ }
+impl GitCli {
+    pub fn new(search: berth_sys::SearchPath) -> Self;
+    pub fn binary(&self) -> Option<std::path::PathBuf>;
+    pub async fn status(&self, dir: &Path, cancel: CancellationToken) -> Result<berth_core::GitInfo, EngineError>;
+    pub async fn remote_url(&self, dir: &Path, cancel: CancellationToken) -> Result<Option<String>, EngineError>;
+    pub async fn git_info(&self, dir: &Path, cancel: CancellationToken) -> Result<Option<berth_core::GitInfo>, EngineError>;   // None = not a repository
+    pub async fn clone_repo(&self, url: &str, dir: &Path, branch: Option<&str>, ssh_key: Option<&Path>, cancel: CancellationToken,
+                            on_progress: impl FnMut(CloneProgress) + Send) -> Result<(), EngineError>;   // removes dir only if this call created it and the clone did not finish
+    pub async fn fetch(&self, dir: &Path, cancel: CancellationToken) -> Result<(), EngineError>;
+    pub async fn pull_ff_only(&self, dir: &Path, cancel: CancellationToken) -> Result<(), EngineError>;   // never merges
+    pub async fn incoming(&self, dir: &Path, cancel: CancellationToken) -> Result<Vec<IncomingCommit>, EngineError>;   // HEAD..@{u}; no upstream = empty
+    pub async fn current_commit(&self, dir: &Path, cancel: CancellationToken) -> Result<Option<String>, EngineError>;
 }
 
 #[async_trait::async_trait]
@@ -1101,6 +1133,9 @@ pub mod templates {
     pub fn generate_password() -> String;                                            // 24 chars, [A-Za-z0-9]
     pub fn add_service_plan(root: &std::path::Path, compose_rel: &std::path::Path, compose_text: &str, env_text: Option<&str>, t: &berth_core::Template,   // compose_rel: the file may be docker-compose.yml
                             service: &str, inputs: &std::collections::BTreeMap<String, String>) -> Result<berth_core::GenerationPlan, RulesError>;   // service: the name to add (user may rename to avoid ServiceExists), AD33
+    /// Save as template (AD46, P8-T4): one image-based service of a compose file becomes a custom template (id, name, source = project label); project-bound keys dropped, host ports and named volumes become inputs, password-like env values become `${KEY:?set in .env}` plus a Password input. `Yaml` when the service has no `image` or the file does not parse; `NoService` when absent.
+    pub fn from_service(compose_text: &str, service: &str, id: &str, name: &str, source: &str) -> Result<berth_core::Template, RulesError>;   // AD46, P8-T4
+    pub const CUSTOM_CATEGORY: &str = "Custom";                                      // AD46, P8-T4
 }
 pub mod compose_edit {   // D32: text edits that keep comments
     pub fn add_service(text: &str, name: &str, block_yaml: &str) -> Result<String, RulesError>;
@@ -1383,6 +1418,7 @@ pub struct AppState {
     pub projects: Signal<Vec<berth_core::Project>>,
     pub images: Signal<Vec<berth_core::Image>>, pub volumes: Signal<Vec<berth_core::Volume>>, pub networks: Signal<Vec<berth_core::Network>>,
     pub problems: Signal<Vec<berth_core::Problem>>,
+    pub registries: Signal<Vec<berth_core::Registry>>,         // AD42 (2026-10-27): rows only; passwords live in the Keychain
     pub pending: Signal<std::collections::BTreeMap<PendingKey, PendingState>>,   // D34
     pub section: Signal<Section>, pub selection: Signal<Selection>, pub overlays: Signal<Vec<Overlay>>,
     pub bottom: Signal<BottomPanel>,                           // open, height, tab, terminal tabs
