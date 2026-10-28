@@ -107,6 +107,7 @@ fn overlay_title(overlay: &Overlay) -> &'static str {
         Overlay::DeleteProject(_) => "Delete project",
         Overlay::PluginEnable(_) => "Enable plugin",
         Overlay::PluginConfigure(_) => "Configure plugin",
+        Overlay::PluginAction(_) => "Plugin action",
     }
 }
 
@@ -155,6 +156,12 @@ pub fn overlay(overlay: &Overlay) -> Element {
         Overlay::NewProject => rsx! { crate::sheets::new_project::NewProjectSheet {} },
         Overlay::PluginConfigure(id) => rsx! {
             crate::sheets::plugin_configure::PluginConfigureSheet { key: "{id}", id: id.clone() }
+        },
+        Overlay::PluginAction(pending) => rsx! {
+            crate::screens::plugin_action::PluginActionDialog {
+                key: "{pending.plugin}/{pending.action.id}",
+                pending: pending.clone(),
+            }
         },
         Overlay::PluginEnable(id) => rsx! {
             crate::sheets::plugin_enable::PluginEnableSheet { key: "{id}", id: id.clone() }

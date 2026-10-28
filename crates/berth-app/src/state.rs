@@ -55,6 +55,9 @@ pub enum Overlay {
     PluginEnable(String),
     /// The Configure form of one plugin (plugin id; AD48, 2026-10-28).
     PluginConfigure(String),
+    /// A plugin action waiting for its confirmation (plugin id, the action
+    /// and the row it came from; AD52, 2026-10-28).
+    PluginAction(crate::services::plugin_views::PendingAction),
 }
 /// What the Add service sheet starts from: the project it adds to (none when opened from Templates or Find
 /// images), a built-in or custom template id, or an image reference (AD33).

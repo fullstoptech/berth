@@ -20,21 +20,20 @@ use dioxus::prelude::*;
 use berth_plugin_host::PluginState;
 use berth_plugin_protocol::{ActionSpec, Cell, Column, ConfigField, FieldKind, Row, Tone, View};
 
+use super::plugin_action::{request_action, select_row, FixWithHarness};
 use super::plugin_view_model::{
-    banner_tone, confirm_view, failing_seq, filter_rows, grid_template, log_rows, row_summary,
-    status_banner, time_text, tone_class, LogRow, RowSummary,
+    banner_tone, facets, failing_seq, filter_rows, grid_template, log_rows, row_context,
+    row_summary, status_banner, time_text, tone_class, LogRow, RowSummary,
 };
-use crate::services::plugin_views::{
-    PendingAction, PluginNav, PluginViewStore, ViewState, STATUS_VIEW,
-};
+use crate::services::plugin_views::{PluginViewStore, RowContext, ViewState, STATUS_VIEW};
 use crate::services::plugins::{PluginsService, PluginsView};
 use crate::state::AppState;
 use crate::ui::confirm_dialog::CONFIRM_DIALOG_CSS;
 use crate::ui::log_line::{LogLine, RowOpts};
 use crate::ui::{
-    Badge, BadgeKind, Banner, Button, ButtonVariant, CheckState, Checkbox, ControlSize, EmptyState,
-    Icon, IconSize, InlineMessage, InlineTone, Inspector, InspectorFrame, KeyValue, KeyValueList,
-    SearchField, Switch, TabItem, Tabs, TextField, VirtualTable,
+    Badge, BadgeKind, Banner, Button, ButtonVariant, ControlSize, EmptyState, Icon, IconSize,
+    InlineMessage, InlineTone, Inspector, InspectorFrame, KeyValue, KeyValueList, SearchField,
+    Switch, TabItem, Tabs, TextField, VirtualTable,
 };
 
 /// The screen's CSS.
@@ -46,27 +45,6 @@ const TABLE_VIEWPORT_PX: u32 = 1100;
 // ---------------------------------------------------------------------
 // Running actions
 // ---------------------------------------------------------------------
-
-/// A click on an action: ask first when the plugin gave it a `Confirm`, else
-/// run it.
-fn request_action(
-    store: PluginViewStore,
-    service: Option<&PluginsService>,
-    state: AppState,
-    plugin: &str,
-    action: &ActionSpec,
-) {
-    let pending = PendingAction {
-        plugin: plugin.to_string(),
-        action: action.clone(),
-    };
-    if action.confirm.is_some() {
-        let mut confirm = store.confirm;
-        confirm.set(Some(pending));
-    } else {
-        store.run_action(service, state, pending, BTreeMap::new());
-    }
-}
 
 fn action_variant(action: &ActionSpec, primary: bool) -> ButtonVariant {
     if action.danger {
@@ -89,6 +67,9 @@ fn ActionButtons(
     /// carries the warning.
     #[props(default)]
     quiet: bool,
+    /// The row the buttons belong to, handed to the action.
+    #[props(default)]
+    context: Option<RowContext>,
 ) -> Element {
     let store = use_context::<PluginViewStore>();
     let state = use_context::<AppState>();
@@ -96,17 +77,31 @@ fn ActionButtons(
         for (index, action) in actions.iter().enumerate() {
             {
                 let (plugin, action_clone) = (plugin.clone(), action.clone());
+                let context = context.clone();
+                // A row's plain buttons show on the hovered or selected row; a
+                // destructive one (Cancel) always shows.
+                let hover_only = quiet && !action.danger;
                 rsx! {
-                    Button {
+                    span {
                         key: "{action.id}",
+                        class: if hover_only { "pv-act pv-act-hover" } else { "pv-act" },
+                    Button {
                         label: action.label.clone(),
                         variant: if quiet { ButtonVariant::Secondary } else { action_variant(action, first_primary && index == 0) },
                         size,
                         onclick: move |e: MouseEvent| {
                             e.stop_propagation();
                             let service = try_consume_context::<Option<PluginsService>>().flatten();
-                            request_action(store, service.as_ref(), state, &plugin, &action_clone);
+                            request_action(
+                                store,
+                                service.as_ref(),
+                                state,
+                                &plugin,
+                                &action_clone,
+                                context.clone(),
+                            );
                         },
+                    }
                     }
                 }
             }
@@ -131,7 +126,6 @@ pub fn PluginViewScreen() -> Element {
         for key in [plugin.clone()] {
             PluginSection { key: "{key}", plugin: plugin.clone() }
         }
-        ConfirmHost {}
     }
 }
 
@@ -333,6 +327,8 @@ fn TableView(
     let state = use_context::<AppState>();
     let mut filter = use_signal(String::new);
     let mut epoch = use_signal(|| 0_u32);
+    let mut chips_hidden = use_signal(|| false);
+    let chips = facets(&columns, &rows);
     let selected = store.nav.read().row.clone();
 
     let total = rows.len();
@@ -362,21 +358,14 @@ fn TableView(
             } else {
                 "pv-row"
             };
+            let context = row_context(&columns, row);
             let select = {
-                let (id, open) = (row.id.clone(), row.open.clone());
+                let (context, open) = (context.clone(), row.open.clone());
                 let plugin = plugin.clone();
                 move |_| {
-                    if in_pane {
-                        return;
+                    if !in_pane {
+                        select_row(store, &plugin, &context, open.clone());
                     }
-                    let mut nav = store.nav;
-                    let view = nav.peek().view.clone();
-                    nav.set(PluginNav {
-                        plugin: plugin.clone(),
-                        view,
-                        row: Some(id.clone()),
-                        open: open.clone(),
-                    });
                 }
             };
             rsx! {
@@ -403,6 +392,7 @@ fn TableView(
                                 actions: row.actions.clone(),
                                 size: ControlSize::Sm,
                                 quiet: true,
+                                context: Some(context.clone()),
                             }
                         }
                     }
@@ -436,6 +426,23 @@ fn TableView(
                                 let next = *epoch.peek() + 1;
                                 epoch.set(next);
                             },
+                        }
+                    }
+                }
+            }
+            if !chips.is_empty() && !in_pane && !*chips_hidden.read() {
+                div { class: "pv-chips",
+                    for chip in chips.iter() {
+                        span { key: "{chip.label}", class: "pv-chip",
+                            Icon { name: "filter", size: IconSize::Sm }
+                            span { "{chip.label}: {chip.value}" }
+                            button {
+                                class: "pv-chip-x",
+                                r#type: "button",
+                                "aria-label": "Remove the {chip.label} filter",
+                                onclick: move |_| chips_hidden.set(true),
+                                Icon { name: "x", size: IconSize::Sm }
+                            }
                         }
                     }
                 }
@@ -495,18 +502,24 @@ fn TableView(
 // ---------------------------------------------------------------------
 
 /// What a selected row (or an action's result) opened, in the inspector's
-/// frame: a Detail draws its own header; anything else gets the row's.
+/// frame: a Detail draws its own header; anything else gets the row's, with
+/// the linked local folder, "Fix with <harness>" on a failed row and the
+/// row's buttons.
 #[component]
 fn Pane(plugin: String, main_view: String, row: Option<String>, open: String) -> Element {
     let store = use_context::<PluginViewStore>();
-    let summary = row.as_deref().and_then(|id| {
+    let found = row.as_deref().and_then(|id| {
         let ViewState::Ready(View::Table { columns, rows, .. }) =
             store.view(&plugin, &main_view)?
         else {
             return None;
         };
         let found = rows.iter().find(|r| r.id == id)?;
-        Some((row_summary(&columns, found), found.actions.clone()))
+        Some((
+            row_summary(&columns, found),
+            row_context(&columns, found),
+            found.actions.clone(),
+        ))
     });
     let opened_is_detail = matches!(
         store.view(&plugin, &open),
@@ -515,8 +528,8 @@ fn Pane(plugin: String, main_view: String, row: Option<String>, open: String) ->
     rsx! {
         Inspector { frame: InspectorFrame::Docked,
             div { class: "pv-pane",
-                if let (Some((summary, actions)), false) = (summary, opened_is_detail) {
-                    RowHeader { plugin: plugin.clone(), summary, actions }
+                if let (Some((summary, context, actions)), false) = (found, opened_is_detail) {
+                    RowHeader { plugin: plugin.clone(), summary, context, actions, open: open.clone() }
                 }
                 ViewBody { plugin: plugin.clone(), view: open, in_pane: true }
             }
@@ -525,7 +538,28 @@ fn Pane(plugin: String, main_view: String, row: Option<String>, open: String) ->
 }
 
 #[component]
-fn RowHeader(plugin: String, summary: RowSummary, actions: Vec<ActionSpec>) -> Element {
+fn RowHeader(
+    plugin: String,
+    summary: RowSummary,
+    context: RowContext,
+    actions: Vec<ActionSpec>,
+    open: String,
+) -> Element {
+    let state = use_context::<AppState>();
+    // A button that only opens the view already open has nothing to do here.
+    let actions: Vec<ActionSpec> = actions
+        .into_iter()
+        .filter(|a| crate::services::plugin_views::open_only(a) != Some(open.as_str()))
+        .collect();
+    let folder = context
+        .repository
+        .as_deref()
+        .and_then(|repo| {
+            crate::services::plugin_views::linked_project(&state.projects.read(), repo)
+                .and_then(|p| p.folder.clone())
+        })
+        .map(|f| berth_core::fmt::tilde(&f, &berth_sys::paths::home()));
+    let failed = context.failed;
     rsx! {
         div { class: "pv-row-header",
             div { class: "pv-row-title",
@@ -537,9 +571,17 @@ fn RowHeader(plugin: String, summary: RowSummary, actions: Vec<ActionSpec>) -> E
             if !summary.line.is_empty() {
                 p { class: "pv-muted", "{summary.line}" }
             }
-            if !actions.is_empty() {
-                div { class: "pv-pane-actions",
-                    ActionButtons { plugin, actions, size: ControlSize::Md }
+            if let Some(folder) = folder {
+                p { class: "pv-muted", "Linked folder {folder} \u{b7} git remote matches" }
+            }
+            div { class: "pv-pane-actions pv-pane-actions-col",
+                if failed {
+                    FixWithHarness { plugin: plugin.clone(), context: context.clone() }
+                }
+                if !actions.is_empty() {
+                    div { class: "pv-pane-actions",
+                        ActionButtons { plugin, actions, size: ControlSize::Md, context: Some(context) }
+                    }
                 }
             }
         }
@@ -698,7 +740,7 @@ fn FormView(
                         map.insert("values".to_string(), serde_json::json!(values.peek().clone()));
                     }
                     let service = try_consume_context::<Option<PluginsService>>().flatten();
-                    request_action(store, service.as_ref(), state, &plugin, &action);
+                    request_action(store, service.as_ref(), state, &plugin, &action, None);
                 },
             }
         }
@@ -797,7 +839,9 @@ fn LogStreamView(plugin: String, stream: String, title: String) -> Element {
         div { class: "pv-log",
             div { class: "pv-log-head",
                 h3 { class: "pv-log-title", "{title}" }
-                span { class: "pv-log-status {status_tone}", "{status_label}" }
+                if running {
+                    span { class: "pv-log-status {status_tone}", "{status_label}" }
+                }
             }
             if dropped > 0 {
                 p { class: "pv-muted", "The first {dropped} lines are not shown." }
@@ -819,139 +863,11 @@ fn LogStreamView(plugin: String, stream: String, title: String) -> Element {
                         opts: RowOpts {
                             tone,
                             time: true,
+                            seconds_only: true,
                             wrap: true,
                             ..RowOpts::default()
                         },
                         row,
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------
-// The confirm dialog
-// ---------------------------------------------------------------------
-
-#[component]
-fn ConfirmHost() -> Element {
-    let store = use_context::<PluginViewStore>();
-    let pending = store.confirm.read().clone();
-    rsx! {
-        if let Some(pending) = pending {
-            for key in [format!("{}/{}", pending.plugin, pending.action.id)] {
-                ConfirmCard { key: "{key}", pending: pending.clone() }
-            }
-        }
-    }
-}
-
-/// The dialog: the plugin's `Confirm` as rows, a warning box, the action's
-/// options as checkboxes and its notes, over a scrim. Esc and Cancel close it.
-#[component]
-fn ConfirmCard(pending: PendingAction) -> Element {
-    let store = use_context::<PluginViewStore>();
-    let state = use_context::<AppState>();
-    let Some(confirm) = pending.action.confirm.clone() else {
-        return rsx! {};
-    };
-    let view = confirm_view(&confirm);
-    let mut chosen = use_signal(|| {
-        pending
-            .action
-            .options
-            .iter()
-            .map(|o| (o.key.clone(), o.default))
-            .collect::<BTreeMap<String, bool>>()
-    });
-    let mut open = store.confirm;
-    let danger = pending.action.danger;
-    let title = view.title.clone();
-    let run = {
-        let pending = pending.clone();
-        move |_| {
-            let service = try_consume_context::<Option<PluginsService>>().flatten();
-            store.run_action(
-                service.as_ref(),
-                state,
-                pending.clone(),
-                chosen.peek().clone(),
-            );
-            open.set(None);
-        }
-    };
-    rsx! {
-        div {
-            class: "overlay-scrim pv-scrim",
-            tabindex: "-1",
-            onmounted: move |e| {
-                spawn(async move {
-                    let _ = e.set_focus(true).await;
-                });
-            },
-            onclick: move |_| open.set(None),
-            onkeydown: move |e| {
-                if e.key() == Key::Escape {
-                    e.stop_propagation();
-                    open.set(None);
-                }
-            },
-            div {
-                class: "confirm-dialog pv-confirm",
-                role: "dialog",
-                "aria-modal": "true",
-                "aria-label": "{title}",
-                onclick: move |e| e.stop_propagation(),
-                h2 { class: "confirm-title", "{title}" }
-                if !view.rows.is_empty() {
-                    dl { class: "confirm-rows",
-                        for (index, (label, value)) in view.rows.iter().enumerate() {
-                            div { key: "{index}", class: "confirm-row",
-                                dt { class: "confirm-row-label", "{label}" }
-                                dd { class: "confirm-row-text", "{value}" }
-                            }
-                        }
-                    }
-                }
-                for (index, warning) in view.warnings.iter().enumerate() {
-                    div { key: "{index}", class: "pv-warning tone-warning", role: "alert",
-                        Icon { name: "alert-triangle", size: IconSize::Sm }
-                        span { "{warning}" }
-                    }
-                }
-                for option in pending.action.options.iter() {
-                    {
-                        let key = option.key.clone();
-                        let on = chosen.read().get(&key).copied().unwrap_or(option.default);
-                        rsx! {
-                            div { key: "{option.key}", class: "confirm-option",
-                                Checkbox {
-                                    state: CheckState::from_bool(on),
-                                    label: option.label.clone(),
-                                    on_toggle: move |next: bool| {
-                                        chosen.write().insert(key.clone(), next);
-                                    },
-                                }
-                            }
-                        }
-                    }
-                }
-                for (index, note) in view.notes.iter().enumerate() {
-                    p { key: "{index}", class: "confirm-footer", "{note}" }
-                }
-                div { class: "confirm-actions",
-                    Button {
-                        label: "Cancel".to_string(),
-                        variant: ButtonVariant::Secondary,
-                        size: ControlSize::Md,
-                        onclick: move |_| open.set(None),
-                    }
-                    Button {
-                        label: view.button.clone(),
-                        variant: if danger { ButtonVariant::Danger } else { ButtonVariant::Primary },
-                        size: ControlSize::Md,
-                        onclick: run,
                     }
                 }
             }

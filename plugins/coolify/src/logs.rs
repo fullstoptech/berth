@@ -46,6 +46,25 @@ pub fn deployment_log_lines(deployment: &Deployment) -> Vec<String> {
     raw.lines().map(str::to_owned).collect()
 }
 
+/// Why a deployment failed, in one line: the first line of its log that says
+/// `error` (or an npm-style `ERR!`), without a leading `Error:`; the last line
+/// when none does. `None` for a deployment with no log.
+#[must_use]
+pub fn failure_line(deployment: &Deployment) -> Option<String> {
+    let lines = deployment_log_lines(deployment);
+    let says_error = |line: &&String| {
+        let lower = line.to_lowercase();
+        lower.contains("error") || lower.contains("err!")
+    };
+    let line = lines.iter().find(says_error).or_else(|| lines.last())?;
+    let line = line.trim();
+    let line = line
+        .strip_prefix("Error: ")
+        .or_else(|| line.strip_prefix("error: "))
+        .unwrap_or(line);
+    (!line.is_empty()).then(|| line.to_owned())
+}
+
 async fn sleep_or_cancel(
     interval: Duration,
     cancel: &CancellationToken,
@@ -156,6 +175,29 @@ pub async fn follow_application_logs(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn logs_failure_line_is_the_first_error_without_its_prefix() {
+        let deployment: Deployment = serde_json::from_str(
+            r#"{"logs":"[{\"output\":\"Step 3/6 RUN caddy validate\"},{\"output\":\"Error: Caddyfile:14: unknown directive\"},{\"output\":\"Error: second\"}]"}"#,
+        )
+        .expect("deployment decodes");
+        assert_eq!(
+            failure_line(&deployment).as_deref(),
+            Some("Caddyfile:14: unknown directive")
+        );
+        let quiet: Deployment =
+            serde_json::from_str(r#"{"logs":"one\ntwo"}"#).expect("deployment decodes");
+        assert_eq!(
+            failure_line(&quiet).as_deref(),
+            Some("two"),
+            "falls back to the last line"
+        );
+        assert_eq!(
+            failure_line(&serde_json::from_str::<Deployment>("{}").expect("empty deployment")),
+            None
+        );
+    }
+
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 

@@ -11,6 +11,7 @@ use berth_plugin_protocol::View;
 use chrono::TimeZone;
 
 use crate::services::plugin_views::{LogState, PendingAction, PluginNav, PluginViewStore, ViewState};
+use crate::state::Overlay;
 use crate::services::plugins::PluginsView;
 
 const RESOURCES: &str = include_str!("../../fixtures/plugin_views/coolify/resources.json");
@@ -63,6 +64,23 @@ fn recorded_log() -> LogState {
     }
 }
 
+/// The frames' "Linked folder ~/Dev/landing \u{b7} git remote matches": one mock
+/// project (its sidebar row unchanged) gets the folder and the remote that
+/// the Coolify application "landing" is deployed from.
+fn link_landing(state: &mut AppState) {
+    let mut projects = state.projects.write();
+    if let Some(project) = projects.iter_mut().find(|p| p.name == "docs-site") {
+        project.folder = Some(berth_sys::paths::home().join("Dev/landing"));
+        project.git = Some(berth_core::GitInfo {
+            branch: Some("main".to_string()),
+            dirty: false,
+            remote: Some("git@github.com:example/landing.git".to_string()),
+            ahead: 0,
+            behind: 0,
+        });
+    }
+}
+
 /// The section as the frames show it: the dark theme, the mock world's
 /// projects, Coolify enabled and its recorded views in the store, the failed
 /// deployment selected with its log open.
@@ -72,6 +90,8 @@ fn deployments_setup(state: &mut AppState) {
     state.section.set(Section::Plugin);
     let containers = state.containers.peek().clone();
     state.problems.set(mock_problems(&containers));
+    state.harnesses.set(super::first_run::frame_harnesses());
+    link_landing(state);
     if let Some(mut plugins) = try_consume_context::<PluginsView>() {
         plugins.entries.set(vec![enabled_entry()]);
     }
@@ -106,26 +126,29 @@ fn deployments(state: &mut AppState) {
     deployments_setup(state);
 }
 
-/// "Coolify / confirm redeploy / 1440": Deploy's own confirm, the one the
-/// plugin sends for the landing application (its action has the Force rebuild
-/// option), over the same screen.
+/// "Coolify / confirm redeploy / 1440": the failed deployment's own
+/// "Redeploy\u{2026}" confirm, as the plugin sent it with the row, over the same screen.
 #[allow(clippy::expect_used)] // checked-in recording
 fn confirm_redeploy(state: &mut AppState) {
     deployments_setup(state);
-    let View::Detail { actions, .. } = recorded(APPLICATION) else {
+    let View::Table { columns, rows, .. } = recorded(DEPLOYMENTS) else {
         return;
     };
-    let deploy = actions
-        .into_iter()
+    let failed = rows
+        .iter()
+        .find(|r| r.id == FAILED_ROW)
+        .expect("the recorded deployments list the failed one");
+    let redeploy = failed
+        .actions
+        .iter()
         .find(|a| a.id == "deploy")
-        .expect("the recorded application has Deploy");
-    if let Some(store) = try_consume_context::<PluginViewStore>() {
-        let mut confirm = store.confirm;
-        confirm.set(Some(PendingAction {
-            plugin: "coolify".to_string(),
-            action: deploy,
-        }));
-    }
+        .expect("the failed row offers Redeploy")
+        .clone();
+    state.overlays.write().push(Overlay::PluginAction(PendingAction {
+        plugin: "coolify".to_string(),
+        action: redeploy,
+        context: Some(crate::screens::plugin_view_model::row_context(&columns, failed)),
+    }));
 }
 
 pub(super) const SCENES: &[Scene] = &[

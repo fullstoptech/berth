@@ -10,11 +10,12 @@ use chrono::TimeZone;
 
 use super::*;
 use crate::scenes;
+use crate::screens::plugin_action::request_action;
 use crate::screens::plugin_view_model::{
-    banner_tone, confirm_view, failing_seq, filter_rows, grid_template, log_rows, row_summary,
-    status_banner, time_text,
+    banner_tone, confirm_view, facets, failing_seq, filter_rows, grid_template, log_rows,
+    row_context, row_summary, status_banner, time_text,
 };
-use crate::services::plugin_views::LogState;
+use crate::services::plugin_views::{LogState, RowContext};
 use crate::state::use_app_state;
 
 const DEPLOYMENTS: &str = "Coolify / deployments / 1440";
@@ -253,16 +254,17 @@ fn plugin_view_frame_deployments_adds_the_plugins_group_to_the_sidebar() {
 }
 
 #[test]
-fn plugin_view_frame_confirm_names_app_server_and_branch_and_offers_force_rebuild() {
+fn plugin_view_frame_confirm_reads_like_the_frame() {
     let html = markup(CONFIRM);
     let dialog = &html[html
-        .find("confirm-dialog pv-confirm")
+        .find("confirm-dialog confirm-dialog-wide")
         .expect("the dialog is drawn")..];
-    assert!(dialog.contains("Deploy landing?"), "{dialog}");
+    assert!(dialog.contains(">Redeploy landing?<"), "{dialog}");
     for (label, value) in [
-        ("Application", "landing"),
+        ("App", "landing"),
         ("Server", "hetzner-1"),
         ("Branch", "main"),
+        ("Commit", "c2a7e94 \u{b7} fix caddy upstream"),
     ] {
         assert!(
             dialog.contains(&format!(
@@ -271,13 +273,104 @@ fn plugin_view_frame_confirm_names_app_server_and_branch_and_offers_force_rebuil
             "{label} {value}: {dialog}"
         );
     }
-    assert!(dialog.contains("Force rebuild"), "{dialog}");
+    // The commit that failed warns, with the reason from its log.
+    assert!(dialog.contains("confirm-warning tone-warning"), "{dialog}");
+    assert!(
+        dialog.contains("This commit failed (Caddyfile:14: unknown directive"),
+        "{dialog}"
+    );
+    assert!(
+        dialog.contains("Force rebuild (ignore the build cache)"),
+        "{dialog}"
+    );
+    assert!(
+        dialog.contains("Keeps serving the current version until a new build passes."),
+        "{dialog}"
+    );
     assert!(dialog.contains("aria-modal=\"true\""), "{dialog}");
-    // The confirm button repeats the action; Cancel is beside it.
-    assert!(dialog.contains(">Cancel<"), "{dialog}");
-    assert!(dialog.contains(">Deploy<"), "{dialog}");
-    // The screen under it is still the Deployments table.
+    // A warned redeploy is a plain button, not the primary one.
+    assert!(
+        dialog.contains("btn btn-secondary size-md\" type=\"button\" aria-busy=\"false\"><span class=\"btn-label\">Redeploy anyway"),
+        "{dialog}"
+    );
+    // Cancel, the confirm button (worded for the failed commit) and Fix with.
+    for button in ["Cancel", "Redeploy anyway", "Fix with Claude Code"] {
+        assert!(
+            dialog.contains(&format!(">{button}<")),
+            "{button}: {dialog}"
+        );
+    }
+    assert!(dialog.contains("pv-fix-chevron"), "{dialog}");
+    // It is an overlay now: the scrim of the stack holds it, and the screen
+    // under it is still the Deployments table.
+    assert!(html.contains("overlay-scrim"), "{html}");
     assert!(html.contains("<h1 class=\"pv-title\">Deployments</h1>"));
+}
+
+#[test]
+fn plugin_view_frame_confirm_names_where_fix_with_works() {
+    let html = markup(CONFIRM);
+    assert!(
+        html.contains("Fix with Claude Code opens ~/Dev/landing (git remote matches)."),
+        "{html}"
+    );
+}
+
+#[test]
+fn plugin_view_frame_deployments_row_buttons_show_on_the_selected_row_and_cancel_always() {
+    let html = markup(DEPLOYMENTS);
+    // The in-progress row's Cancel is not hidden until hover.
+    assert!(
+        html.contains("<span class=\"pv-act\"><button class=\"btn btn-secondary size-sm\" type=\"button\" aria-busy=\"false\"><span class=\"btn-label\">Cancel deployment"),
+        "{html}"
+    );
+    // The failed row has Redeploy\u{2026} and Logs; every plain row button hides until hover.
+    let selected = &html[html.find("pv-row pv-selected").expect("selected row")..];
+    let row = &selected[..selected
+        .find("</div></div></div>")
+        .unwrap_or(selected.len())];
+    assert!(row.contains(">Redeploy\u{2026}<"), "{row}");
+    assert!(row.contains(">Logs<"), "{row}");
+    assert_eq!(count(row, "pv-act pv-act-hover"), 2, "{row}");
+}
+
+#[test]
+fn plugin_view_frame_deployments_pane_links_the_folder_and_offers_fix_and_redeploy() {
+    let html = markup(DEPLOYMENTS);
+    let pane = &html[html.find("<aside").expect("the pane")..];
+    assert!(
+        pane.contains("Linked folder ~/Dev/landing \u{b7} git remote matches"),
+        "{pane}"
+    );
+    // Fix with the harness, first; then Redeploy; no Logs button (the log is open).
+    let fix = pane
+        .find("Fix with Claude Code")
+        .expect("Fix with is offered");
+    let redeploy = pane
+        .find(">Redeploy\u{2026}<")
+        .expect("Redeploy is offered");
+    assert!(fix < redeploy, "{pane}");
+    assert!(!pane.contains(">Logs<"), "{pane}");
+    // The scene runs no assistant, so the button says why it cannot.
+    assert!(pane.contains("The assistant is not connected"), "{pane}");
+    // The caption and the times are the frame's.
+    assert!(
+        pane.contains("<h3 class=\"pv-log-title\">Deployment log</h3>"),
+        "{pane}"
+    );
+    assert!(pane.contains(">14:30:41</span>"), "no milliseconds: {pane}");
+    assert!(!pane.contains(">14:30:41."), "{pane}");
+}
+
+#[test]
+fn plugin_view_frame_deployments_has_the_server_chip_with_a_remove_button() {
+    let html = markup(DEPLOYMENTS);
+    assert!(html.contains("pv-chip"), "{html}");
+    assert!(html.contains("<span>Server: hetzner-1</span>"), "{html}");
+    assert!(
+        html.contains("aria-label=\"Remove the Server filter\""),
+        "{html}"
+    );
 }
 
 #[test]
@@ -390,9 +483,10 @@ fn plugin_view_log_stream_draws_rows_and_marks_the_failure() {
     assert_eq!(count(&html, "class=\"log-row"), 3, "{html}");
     assert_eq!(count(&html, "log-row log-error"), 2, "{html}");
     assert!(
-        html.contains("pv-log-status tone-danger\">Failed<"),
-        "{html}"
+        !html.contains("pv-log-status"),
+        "a finished log says nothing about itself: {html}"
     );
+    assert!(html.contains(">14:30:41</span>"), "{html}");
     assert!(html.contains("id=\"pv-log-demo-stream\""), "{html}");
 }
 
@@ -827,4 +921,185 @@ fn plugin_view_project_row_shows_the_badge_a_plugin_gave_it() {
 fn plugin_view_project_row_without_a_badge_shows_none() {
     let html = project_row_html(false);
     assert!(!html.contains("project-plugin-badge"), "{html}");
+}
+
+// -- rows, chips and actions -------------------------------------------------------
+
+#[test]
+fn plugin_view_row_context_reads_title_repository_stream_and_failure() {
+    let View::Table {
+        columns, mut rows, ..
+    } = table()
+    else {
+        unreachable!()
+    };
+    rows[1].open = Some("deployment/d1/logs".to_string());
+    rows[1].cells.insert(
+        "repository".to_string(),
+        Cell::Text("example/landing".to_string()),
+    );
+    let failed = row_context(&columns, &rows[1]);
+    assert_eq!(failed.row, "b");
+    assert_eq!(failed.title, "beta");
+    assert_eq!(failed.repository.as_deref(), Some("example/landing"));
+    assert_eq!(failed.stream.as_deref(), Some("deployment/d1/logs"));
+    assert!(failed.failed, "its badge is danger");
+    let fine = row_context(&columns, &rows[0]);
+    assert!(!fine.failed);
+    assert_eq!(fine.repository, None);
+    assert_eq!(fine.stream, None, "a row that opens no log has no stream");
+    // The repository is for linking, not for the muted line.
+    assert!(!row_summary(&columns, &rows[1])
+        .line
+        .contains("example/landing"));
+}
+
+#[test]
+fn plugin_view_a_fact_every_row_shares_is_a_chip_and_a_varying_one_is_not() {
+    let View::Table {
+        columns, mut rows, ..
+    } = table()
+    else {
+        unreachable!()
+    };
+    for row in &mut rows {
+        row.cells
+            .insert("server".to_string(), Cell::Text("hetzner-1".to_string()));
+        row.cells
+            .insert("zone".to_string(), Cell::Text(row.id.clone()));
+    }
+    let chips = facets(&columns, &rows);
+    assert_eq!(chips.len(), 1, "{chips:?}");
+    assert_eq!(chips[0].label, "Server");
+    assert_eq!(chips[0].value, "hetzner-1");
+    // A column is not a facet, and an empty table has none.
+    assert!(facets(&columns, &[]).is_empty());
+}
+
+#[component]
+fn ActionProbe(action: ActionSpec, context: Option<RowContext>) -> Element {
+    let state = use_app_state();
+    use_context_provider(|| state);
+    let store = crate::services::plugin_views::provide_plugin_view_store();
+    use_hook(|| {
+        request_action(store, None, state, "demo", &action, context.clone());
+    });
+    let overlays = state.overlays.read();
+    let shown = match overlays.last() {
+        Some(crate::state::Overlay::PluginAction(p)) => format!("overlay:{}", p.action.id),
+        Some(_) => "other overlay".to_string(),
+        None => "no overlay".to_string(),
+    };
+    let nav = store.nav.read();
+    rsx! { span { "{shown}|{nav.open:?}|{nav.row:?}" } }
+}
+
+fn probe_action(action: ActionSpec, context: Option<RowContext>) -> String {
+    let mut dom = VirtualDom::new_with_props(ActionProbe, ActionProbeProps { action, context });
+    let _ = dom.rebuild_to_vec();
+    dioxus_ssr::render(&dom)
+}
+
+fn row_ctx() -> RowContext {
+    RowContext {
+        row: "dep-1".to_string(),
+        title: "landing".to_string(),
+        repository: None,
+        stream: None,
+        failed: false,
+    }
+}
+
+#[test]
+fn plugin_view_an_action_with_a_confirm_opens_the_plugin_action_overlay() {
+    let confirm = Confirm {
+        title: "Stop it?".to_string(),
+        lines: vec!["App: landing".to_string()],
+        button: "Stop".to_string(),
+    };
+    let html = probe_action(action("stop", "Stop", true, Some(confirm)), None);
+    assert!(html.contains("overlay:stop"), "{html}");
+}
+
+#[test]
+fn plugin_view_an_action_that_only_opens_a_view_opens_it_and_keeps_the_row() {
+    let mut logs = action("open-logs", "Logs", false, None);
+    logs.params = serde_json::json!({ "open": "deployment/d1/logs" });
+    let html = probe_action(logs, Some(row_ctx()));
+    assert!(
+        html.contains("no overlay"),
+        "no dialog and no plugin call: {html}"
+    );
+    assert!(
+        html.contains("Some(&#34;deployment/d1/logs&#34;)"),
+        "{html}"
+    );
+    assert!(
+        html.contains("Some(&#34;dep-1&#34;)"),
+        "the row stays selected: {html}"
+    );
+}
+
+#[test]
+fn plugin_view_an_action_without_a_confirm_asks_nothing() {
+    let html = probe_action(action("start", "Start", false, None), None);
+    assert!(html.contains("no overlay"), "{html}");
+}
+
+fn dialog_html(failed: bool) -> String {
+    #[component]
+    fn Dialog(failed: bool) -> Element {
+        let state = use_app_state();
+        use_context_provider(|| state);
+        crate::services::plugin_views::provide_plugin_view_store();
+        let mut redeploy = action(
+            "deploy",
+            "Redeploy\u{2026}",
+            false,
+            Some(Confirm {
+                title: "Redeploy landing?".to_string(),
+                lines: vec![
+                    "App: landing".to_string(),
+                    "Commit: c2a7e94 \u{b7} fix".to_string(),
+                    "Keeps serving the current version.".to_string(),
+                ],
+                button: "Redeploy".to_string(),
+            }),
+        );
+        redeploy.options = vec![ActionOption {
+            key: "force".to_string(),
+            label: "Force rebuild".to_string(),
+            default: false,
+        }];
+        let mut context = row_ctx();
+        context.failed = failed;
+        rsx! {
+            crate::screens::plugin_action::PluginActionDialog {
+                pending: crate::services::plugin_views::PendingAction {
+                    plugin: "demo".to_string(),
+                    action: redeploy,
+                    context: Some(context),
+                },
+            }
+        }
+    }
+    let mut dom = VirtualDom::new_with_props(Dialog, DialogProps { failed });
+    let _ = dom.rebuild_to_vec();
+    strip_styles(dioxus_ssr::render(&dom))
+}
+
+#[test]
+fn plugin_view_the_dialog_of_a_good_commit_says_redeploy_and_has_no_fix_button() {
+    let html = dialog_html(false);
+    assert!(html.contains("btn btn-primary"), "{html}");
+    assert!(html.contains(">Redeploy<"), "{html}");
+    assert!(!html.contains("Fix with"), "{html}");
+    assert!(!html.contains("confirm-warning"), "{html}");
+    assert!(html.contains("Force rebuild"), "{html}");
+}
+
+#[test]
+fn plugin_view_the_dialog_of_a_failed_row_offers_fix_with() {
+    let html = dialog_html(true);
+    assert!(html.contains("pv-fix"), "{html}");
 }

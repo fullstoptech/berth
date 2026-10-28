@@ -1407,6 +1407,7 @@ pub enum Overlay {          // stacked; Esc closes the top one
     CleanUp(berth_core::EngineId), CreateVolume, CreateNetwork, EditResources(String), AddEngine, AddRegistry,
     BuildImage, AddService(AddServiceSeed), DeleteProject(berth_core::ProjectId),   // AD33 (2026-10-25): AddService opens from Templates/Find images without a project; DeleteProject has two checkboxes
     PluginEnable(String), PluginConfigure(String),   // AD48 (2026-10-28): plugin id; the permission request sheet and the Configure form
+    PluginAction(PendingAction),   // AD52 (2026-10-28): a plugin action asking first; PendingAction { plugin: String, action: berth_plugin_protocol::ActionSpec, context: Option<RowContext> } (services/plugin_views.rs), drawn with ConfirmDialog from the action's Confirm
 }
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AddServiceSeed { pub project: Option<berth_core::ProjectId>, pub template: Option<String>, pub image: Option<String> }

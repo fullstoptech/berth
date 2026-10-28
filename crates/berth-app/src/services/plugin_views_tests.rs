@@ -413,3 +413,141 @@ fn plugin_views_palette_group_is_added_for_a_typed_query_after_the_other_results
     assert_eq!(with_plugin_commands(base.clone(), &all, ""), base);
     assert_eq!(with_plugin_commands(base.clone(), &all, "zzz"), base);
 }
+
+// -- rows, links and the confirm as one summary --------------------------------
+
+fn spec(id: &str, params: Value) -> ActionSpec {
+    ActionSpec {
+        id: id.to_string(),
+        label: id.to_string(),
+        danger: false,
+        params,
+        confirm: None,
+        options: Vec::new(),
+    }
+}
+
+#[test]
+fn plugin_views_an_action_with_only_an_open_param_opens_a_view_itself() {
+    let logs = spec("open-logs", json!({ "open": "deployment/d1/logs" }));
+    assert_eq!(open_only(&logs), Some("deployment/d1/logs"));
+    // Anything else in the params means the plugin has work to do.
+    assert_eq!(
+        open_only(&spec("x", json!({ "open": "v", "uuid": "u" }))),
+        None
+    );
+    assert_eq!(open_only(&spec("x", json!({ "uuid": "u" }))), None);
+    assert_eq!(open_only(&spec("x", json!({ "open": 5 }))), None);
+    assert_eq!(open_only(&spec("x", Value::Null)), None);
+}
+
+#[test]
+fn plugin_views_repositories_read_the_same_however_they_are_written() {
+    for remote in [
+        "https://github.com/Example/Landing.git",
+        "git@github.com:example/landing.git",
+        "ssh://git@host.example/example/landing",
+        "example/landing",
+        "https://github.com/example/landing/",
+    ] {
+        assert_eq!(
+            normalize_repo(remote).as_deref(),
+            Some("example/landing"),
+            "{remote}"
+        );
+    }
+    assert_eq!(normalize_repo("landing"), None);
+    assert_eq!(normalize_repo("a/b/c"), None);
+}
+
+#[test]
+fn plugin_views_a_project_is_linked_by_its_remote_and_needs_a_folder() {
+    let mut linked = project("landing", Some("git@github.com:example/landing.git"));
+    linked.folder = Some(std::path::PathBuf::from("/Users/dev/landing"));
+    let mut folderless = project("other", Some("git@github.com:example/other.git"));
+    folderless.folder = None;
+    let projects = [folderless, linked];
+    assert_eq!(
+        linked_project(&projects, "example/landing").map(|p| p.name.as_str()),
+        Some("landing")
+    );
+    assert!(
+        linked_project(&projects, "example/other").is_none(),
+        "no folder, no link"
+    );
+    assert!(linked_project(&projects, "example/missing").is_none());
+}
+
+#[test]
+fn plugin_views_the_confirm_is_one_effect_summary_the_button_reads_from() {
+    let confirm = berth_plugin_protocol::Confirm {
+        title: "Redeploy landing?".to_string(),
+        lines: vec!["App: landing".to_string(), "Branch: main".to_string()],
+        button: "Redeploy anyway".to_string(),
+    };
+    let effect = plugin_effect(&confirm);
+    assert_eq!(effect.verb, "Redeploy anyway");
+    assert_eq!(effect.count, 1);
+    let texts: Vec<&str> = effect.lines.iter().map(|l| l.text.as_str()).collect();
+    assert_eq!(texts, ["App: landing", "Branch: main"]);
+}
+
+// -- Fix with <harness> -------------------------------------------------------
+
+fn harness() -> berth_core::Harness {
+    berth_core::Harness {
+        id: berth_core::HarnessId("claude-code".to_string()),
+        name: "Claude Code".to_string(),
+        binary: std::path::PathBuf::from("/bin/claude"),
+        version: None,
+        transport: berth_core::HarnessTransport::ClaudeStreamJson,
+        available: true,
+    }
+}
+
+#[test]
+fn plugin_views_fix_with_attaches_the_failed_log_and_the_project_never_env() {
+    use crate::services::assistant_entry::{plugin_log_entry, LOG_LINES_CAP};
+    let mut linked = project("landing", Some("git@github.com:example/landing.git"));
+    linked.folder = Some(std::path::PathBuf::from("/Users/dev/landing"));
+    linked.compose_files = vec![std::path::PathBuf::from("/Users/dev/landing/compose.yaml")];
+    let lines: Vec<String> = (0..LOG_LINES_CAP + 10)
+        .map(|i| format!("line {i}"))
+        .collect();
+    let entry = plugin_log_entry(&linked, &harness(), "Coolify", "landing", &lines)
+        .expect("a project with a folder");
+    assert_eq!(entry.request.project, linked.id);
+    assert!(entry.origin.contains("Coolify"), "{}", entry.origin);
+    assert!(
+        entry.prompt.contains("deployment of landing failed"),
+        "{}",
+        entry.prompt
+    );
+    let berth_core::ContextItem::Logs {
+        name, lines: kept, ..
+    } = &entry.context[0]
+    else {
+        panic!("the log comes first: {:?}", entry.context);
+    };
+    assert!(
+        name.contains("Coolify") && name.contains("landing"),
+        "{name}"
+    );
+    assert_eq!(kept.len(), LOG_LINES_CAP, "capped like every log");
+    assert_eq!(
+        kept.last().map(String::as_str),
+        Some("line 409"),
+        "the newest lines"
+    );
+    assert!(
+        entry.context.iter().all(|item| !matches!(
+            item,
+            berth_core::ContextItem::File(_) | berth_core::ContextItem::Inspect(_)
+        )),
+        "{:?}",
+        entry.context
+    );
+    // A project with no folder on this Mac cannot be opened.
+    linked.folder = None;
+    assert!(plugin_log_entry(&linked, &harness(), "Coolify", "landing", &lines).is_none());
+}

@@ -200,6 +200,8 @@
   gap: var(--space-12);
   padding: var(--space-12);
   min-width: 0;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 .pv-row-header,
 .pv-detail {
@@ -251,8 +253,10 @@
 .pv-log {
   display: flex;
   flex-direction: column;
+  flex: 1;
   gap: var(--space-8);
   min-width: 0;
+  min-height: 0;
 }
 .pv-log-head {
   display: flex;
@@ -270,8 +274,7 @@
   font-size: var(--text-caption-size);
 }
 .pv-log-list {
-  flex: none;
-  max-height: 520px;
+  flex: 1;
   min-height: calc(120px * var(--text-scale, 1));
   background: var(--color-surface-sunken);
   border: 1px solid var(--color-line);
@@ -279,33 +282,91 @@
   padding: var(--space-8) 0;
 }
 
-/* The confirm dialog (rows and buttons are confirm_dialog.css's; the frame's
-   dialog is 478 px wide and starts 221 px down). */
-.pv-confirm.confirm-dialog {
-  width: 478px;
+/* Row buttons: a plain one shows on the hovered or selected row. */
+.pv-row:not(:hover):not(.pv-selected) .pv-act-hover {
+  visibility: hidden;
 }
-.overlay-scrim:has(> .pv-confirm) {
-  padding-top: 221px;
+.pv-act {
+  display: inline-flex;
 }
-.pv-warning {
+
+/* Scope chips under a table's title ("Server: hetzner-1") */
+.pv-chips {
   display: flex;
-  align-items: flex-start;
   gap: var(--space-8);
-  margin-top: var(--space-16);
-  padding: var(--space-8) var(--space-12);
-  border-radius: var(--radius-md);
-  background: var(--tone-subtle);
-  border: 1px solid var(--dot-color);
-  font-size: var(--text-body-size);
-  line-height: var(--text-body-line);
-}
-.pv-warning > span {
-  color: var(--color-ink);
-}
-.pv-warning .icon {
+  padding: 0 var(--gutter) var(--space-12);
   flex: none;
-  margin-top: var(--space-2);
 }
-.pv-confirm .confirm-rows + .pv-warning {
-  margin-top: var(--space-16);
+.pv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  height: var(--size-control-sm);
+  padding: 0 var(--space-4) 0 var(--space-8);
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-ink);
+  font-size: var(--text-label-size);
+}
+.pv-chip .icon {
+  color: var(--color-ink-muted);
+}
+.pv-chip-x {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+.pv-chip-x:hover {
+  color: var(--color-ink);
+  background: var(--color-surface-hover);
+}
+
+/* "Fix with <harness>": a primary button with an attached chevron */
+.pv-fix {
+  position: relative;
+  display: inline-flex;
+}
+.pv-fix .btn {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.pv-fix-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-control-md);
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--color-line);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--color-accent-fill);
+  color: var(--color-on-accent-fill);
+  cursor: pointer;
+}
+.pv-fix-chevron:hover:not(:disabled) {
+  background: var(--color-accent-fill-hover);
+}
+.pv-fix-chevron:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.pv-fix-chevron:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.pv-fix-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  margin-top: var(--space-4);
+}
+.pv-pane-actions-col {
+  flex-direction: column;
+  align-items: flex-start;
 }

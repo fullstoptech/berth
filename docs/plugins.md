@@ -195,7 +195,13 @@ it uses for its own screens.
   the row: its first cell is the title, its first badge the status, and its
   other cells (except right-aligned columns, then any cell that is not a
   column) make one muted line.
-- `actions` (optional) are the row's `ActionSpec`s, below.
+- `actions` (optional) are the row's `ActionSpec`s, below. Plain buttons show
+  on the hovered or selected row, a `danger` one always.
+- A cell whose key is not a column is an extra fact about the row. A
+  `repository` cell (`owner/repo`) lets Berth link a local project by its git
+  remote (shown as "Linked folder …" and used by "Fix with <assistant>"); any
+  other extra text cell with the same value on every row is shown as a chip
+  under the title ("Server: hetzner-1").
 - `group` (optional) puts the row under a group heading; `groups` fixes the
   group order. `empty` is the text shown when there are no rows.
 
@@ -231,7 +237,9 @@ An `ActionSpec` is
 
 - Berth renders it as a button or menu item labelled `label`.
 - `danger: true` marks a destructive action.
-- `params` is free-form JSON handed back to `action/invoke` untouched.
+- `params` is free-form JSON handed back to `action/invoke` untouched. An
+  action whose params are only `{ "open": "<view>" }` is not sent to the
+  plugin: Berth opens that view in the pane (a "Logs" button).
 - `confirm` is `{title, lines, button}`: Berth shows this confirmation before
   invoking, so name everything the action touches (app, server, branch) in
   `lines`. Destructive actions should always confirm. A line of the form

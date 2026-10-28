@@ -10,7 +10,7 @@ use berth_logs::{LogView, RowModel};
 use berth_plugin_protocol::{Badge, Cell, Column, Confirm, Row, Tone, View};
 use chrono::{DateTime, TimeZone, Utc};
 
-use crate::services::plugin_views::{LogState, MAX_LOG_LINES};
+use crate::services::plugin_views::{LogState, RowContext, MAX_LOG_LINES};
 use crate::ui::log_line::{row_tone, RowTone};
 use crate::ui::BannerTone;
 
@@ -153,6 +153,61 @@ pub fn status_banner(view: &View) -> Option<(BannerTone, String)> {
     }
 }
 
+/// A scope chip under a table's title ("Server: hetzner-1"): a fact every row
+/// shares, taken from a cell that is not a column (a plugin's extra facts
+/// about its rows). A fact with more than one value makes no chip.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Facet {
+    pub label: String,
+    pub value: String,
+}
+
+#[must_use]
+pub fn facets(columns: &[Column], rows: &[Row]) -> Vec<Facet> {
+    let mut keys: Vec<&String> = rows
+        .iter()
+        .flat_map(|r| r.cells.keys())
+        .filter(|k| *k != "repository" && columns.iter().all(|c| c.key != **k))
+        .collect();
+    keys.sort();
+    keys.dedup();
+    keys.into_iter()
+        .filter_map(|key| {
+            let mut values = rows.iter().map(|r| match r.cells.get(key) {
+                Some(Cell::Text(text)) if !text.is_empty() => Some(text.as_str()),
+                _ => None,
+            });
+            let first = values.next().flatten()?;
+            values.all(|v| v == Some(first)).then(|| Facet {
+                label: key
+                    .chars()
+                    .next()
+                    .map(|c| c.to_uppercase().chain(key.chars().skip(1)).collect())
+                    .unwrap_or_default(),
+                value: first.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// What an action or a harness entry needs to know about a row.
+#[must_use]
+pub fn row_context(columns: &[Column], row: &Row) -> RowContext {
+    let summary = row_summary(columns, row);
+    RowContext {
+        row: row.id.clone(),
+        title: summary.title,
+        repository: match row.cells.get("repository") {
+            Some(Cell::Text(repo)) if !repo.is_empty() => Some(repo.clone()),
+            _ => None,
+        },
+        stream: row.open.clone().filter(|open| open.ends_with("/logs")),
+        failed: summary
+            .badge
+            .is_some_and(|badge| badge.tone == Tone::Danger),
+    }
+}
+
 /// The header of a selected row, drawn above the view the row opens: its
 /// first cell is the title, its first badge the status, and the other cells
 /// (except right-aligned numbers) make one muted line.
@@ -187,7 +242,10 @@ pub fn row_summary(columns: &[Column], row: &Row) -> RowSummary {
     // Cells that are not columns are the plugin's extra facts about the row
     // (a deployment's server): they close the line.
     for (key, cell) in &row.cells {
-        if columns.iter().all(|c| c.key != *key) && !matches!(cell, Cell::Badge(_)) {
+        if key != "repository"
+            && columns.iter().all(|c| c.key != *key)
+            && !matches!(cell, Cell::Badge(_))
+        {
             let text = cell_text(cell);
             if !text.is_empty() {
                 parts.push(text.to_string());

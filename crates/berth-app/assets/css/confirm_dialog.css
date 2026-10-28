@@ -66,3 +66,32 @@
   gap: var(--space-8);
   margin-top: var(--space-16);
 }
+
+/* A warning under the rows (plugin actions, AD52): the frame's amber box. */
+.confirm-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+  margin-top: var(--space-16);
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-md);
+  background: var(--tone-subtle);
+  border: 1px solid var(--dot-color);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line);
+}
+.confirm-warning > span {
+  color: var(--color-ink);
+}
+.confirm-warning .icon {
+  flex: none;
+  margin-top: var(--space-2);
+}
+
+/* The plugin action's dialog is wider and sits a little higher (its frame). */
+.confirm-dialog-wide {
+  width: 478px;
+}
+.overlay-scrim:has(> .confirm-dialog-wide) {
+  padding-top: 221px;
+}

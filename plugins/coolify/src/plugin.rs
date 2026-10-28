@@ -9,7 +9,7 @@
 //! requested from the host the first time a client is needed, held in a
 //! `SecretString`, and never put in a log line, a view or an error.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -28,9 +28,10 @@ use crate::actions;
 use crate::badges::{project_badges, ProjectRef};
 use crate::client::{ClientError, CoolifyClient};
 use crate::logs::{
-    deployment_log_lines, follow_application_logs, is_final_status, poll_deployment,
+    deployment_log_lines, failure_line, follow_application_logs, is_final_status, poll_deployment,
 };
 use crate::mcp::mcp_servers_payload;
+use crate::types::Deployment;
 use crate::views;
 
 /// The manifest's secret key the API token lives under.
@@ -41,6 +42,8 @@ pub const ERR_FAILED: i64 = -32000;
 pub const ERR_METHOD_NOT_FOUND: i64 = -32601;
 pub const ERR_INVALID_PARAMS: i64 = -32602;
 
+/// Failed deployments whose logs are read to say why, per view.
+const MAX_FAILURE_LOOKUPS: usize = 5;
 /// How many log lines one application-log poll asks Coolify for.
 const APP_LOG_LINES: u32 = 200;
 
@@ -311,6 +314,31 @@ impl Shared {
         serde_json::to_value(view).map_err(|e| Fail::BadParams(e.to_string()))
     }
 
+    /// The deployments table with each row's application joined in and, for
+    /// the failed ones, why they failed (best effort: a lookup that fails
+    /// only leaves a row with fewer details).
+    async fn deployments_view(&self, client: &CoolifyClient, deployments: &[Deployment]) -> View {
+        let applications = client.applications(&self.cancel).await.unwrap_or_default();
+        let mut failures = BTreeMap::new();
+        let failed = deployments
+            .iter()
+            .filter(|d| d.status.as_deref().is_some_and(|s| s.contains("fail")))
+            .filter_map(|d| d.deployment_uuid.as_deref())
+            .take(MAX_FAILURE_LOOKUPS);
+        for uuid in failed {
+            if let Some(reason) = client
+                .deployment(uuid, &self.cancel)
+                .await
+                .ok()
+                .as_ref()
+                .and_then(failure_line)
+            {
+                failures.insert(uuid.to_owned(), reason);
+            }
+        }
+        views::deployments_table(deployments, &applications, &failures)
+    }
+
     async fn build_view(&self, view: &str) -> Result<View, Fail> {
         let parts: Vec<&str> = view.split('/').collect();
         let unknown = || Fail::UnknownView(view.to_owned());
@@ -327,9 +355,8 @@ impl Shared {
             }
             ["deployments"] => {
                 let client = self.client().await?;
-                Ok(views::deployments_table(
-                    &client.deployments(&self.cancel).await?,
-                ))
+                let deployments = client.deployments(&self.cancel).await?;
+                Ok(self.deployments_view(&client, &deployments).await)
             }
             ["status"] => {
                 let client = self.client().await?;
@@ -337,11 +364,10 @@ impl Shared {
             }
             ["deployments", uuid] => {
                 let client = self.client().await?;
-                Ok(views::deployments_table(
-                    &client
-                        .application_deployments(uuid, None, Some(50), &self.cancel)
-                        .await?,
-                ))
+                let deployments = client
+                    .application_deployments(uuid, None, Some(50), &self.cancel)
+                    .await?;
+                Ok(self.deployments_view(&client, &deployments).await)
             }
             ["application", uuid] => {
                 let client = self.client().await?;
@@ -366,7 +392,7 @@ impl Shared {
             }),
             ["deployment", uuid, "logs"] => Ok(View::LogStream {
                 stream: format!("deployment/{uuid}/logs"),
-                title: "Deployment logs".to_owned(),
+                title: "Deployment log".to_owned(),
             }),
             _ => Err(unknown()),
         }

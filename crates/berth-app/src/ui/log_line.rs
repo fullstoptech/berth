@@ -49,6 +49,8 @@ pub struct RowOpts {
     pub tone: RowTone,
     /// Timestamp column on.
     pub time: bool,
+    /// The time reads `HH:MM:SS`, without the milliseconds (a narrow log).
+    pub seconds_only: bool,
     /// Container column on (merged views).
     pub container: bool,
     /// Raw: JSON lines are not collapsed.
@@ -244,6 +246,11 @@ pub fn LogLine(
             if opts.time {
                 {
                     let (shown, utc) = time_cell(&row, &Local);
+                    let shown = if opts.seconds_only {
+                        shown.split('.').next().unwrap_or_default().to_string()
+                    } else {
+                        shown
+                    };
                     rsx! {
                         span { class: "log-ts", title: utc, "{shown}" }
                     }

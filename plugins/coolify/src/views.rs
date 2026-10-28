@@ -8,7 +8,9 @@ use std::collections::BTreeMap;
 
 use berth_plugin_protocol::{Badge, Cell, Column, Row, Tone, View};
 
-use crate::actions::{application_actions, deployment_actions, resource_actions};
+use crate::actions::{
+    application_actions, deployment_actions, redeploy_actions, resource_actions, Redeploy,
+};
 use crate::types::{Application, Deployment, EnvVar, Resource, ResourceKind, Server, VersionInfo};
 
 fn column(key: &str, label: &str) -> Column {
@@ -217,8 +219,15 @@ pub fn servers_table(servers: &[Server]) -> View {
 }
 
 /// Deployments table (running now, or one application's history).
+/// `applications` resolves each row's application (its uuid and branch, for
+/// Redeploy, and its repository, which lets Berth link a local folder);
+/// `failures` maps a failed deployment's uuid to why it failed.
 #[must_use]
-pub fn deployments_table(deployments: &[Deployment]) -> View {
+pub fn deployments_table(
+    deployments: &[Deployment],
+    applications: &[Application],
+    failures: &BTreeMap<String, String>,
+) -> View {
     View::Table {
         title: "Deployments".to_owned(),
         columns: vec![
@@ -268,7 +277,31 @@ pub fn deployments_table(deployments: &[Deployment]) -> View {
                         .as_ref()
                         .map(|uuid| format!("deployment/{uuid}/logs")),
                 );
-                row.actions = deployment_actions(deployment);
+                let application = applications.iter().find(|a| {
+                    a.id.is_some() && a.id == deployment.application_id
+                        || a.name.is_some() && a.name == deployment.application_name
+                });
+                if let Some(repository) = application.and_then(|a| a.git_repository.as_ref()) {
+                    // Not a column: Berth links a local project by it.
+                    row.cells
+                        .insert("repository".to_owned(), Cell::Text(repository.clone()));
+                }
+                row.actions = if crate::logs::is_final_status(deployment.status.as_deref()) {
+                    let failure = deployment
+                        .deployment_uuid
+                        .as_ref()
+                        .and_then(|uuid| failures.get(uuid))
+                        .map(String::as_str);
+                    redeploy_actions(
+                        deployment,
+                        &Redeploy {
+                            application,
+                            failure,
+                        },
+                    )
+                } else {
+                    deployment_actions(deployment)
+                };
                 row
             })
             .collect(),
@@ -454,7 +487,8 @@ mod tests {
             r#"{"deployment_uuid":"dep-1","commit":"0123456789abcdef","status":"in_progress","application_name":"landing"}"#,
         )
         .expect("deployment decodes");
-        let View::Table { rows, .. } = deployments_table(&[deployment]) else {
+        let View::Table { rows, .. } = deployments_table(&[deployment], &[], &BTreeMap::new())
+        else {
             panic!("expected a table");
         };
         assert_eq!(rows[0].cells["commit"], Cell::Mono("0123456".to_owned()));
@@ -466,7 +500,9 @@ mod tests {
             r#"{"deployment_uuid":"d1","commit":"c2a7e94aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","commit_message":"fix caddy upstream","status":"in_progress","is_webhook":true,"application_name":"landing","server_name":"hetzner-1","created_at":"2026-10-24T09:28:00.000000Z","updated_at":"2026-10-24T09:28:54.000000Z"}"#,
         )
         .expect("deployment decodes");
-        let View::Table { columns, rows, .. } = deployments_table(&[deployment]) else {
+        let View::Table { columns, rows, .. } =
+            deployments_table(&[deployment], &[], &BTreeMap::new())
+        else {
             panic!("expected a table");
         };
         let keys: Vec<&str> = columns.iter().map(|c| c.key.as_str()).collect();
@@ -584,12 +620,38 @@ mod tests {
         .expect("fixture decodes");
         let mut running = deployments[0].clone();
         running.status = Some("in_progress".to_owned());
-        let View::Table { rows, .. } = deployments_table(&[running, deployments[0].clone()]) else {
+        let View::Table { rows, .. } =
+            deployments_table(&[running, deployments[0].clone()], &[], &BTreeMap::new())
+        else {
             panic!("expected a table");
         };
         assert_eq!(rows[0].actions.len(), 1);
         assert_eq!(rows[0].actions[0].id, "cancel-deployment");
-        assert!(rows[1].actions.is_empty());
+        assert!(
+            rows[1].actions.iter().all(|a| a.id != "cancel-deployment"),
+            "a finished deployment cannot be cancelled"
+        );
+    }
+
+    #[test]
+    fn views_deployment_rows_carry_the_repository_and_redeploy_when_the_application_is_known() {
+        let app: Application =
+            serde_json::from_str(include_str!("../../../fixtures/coolify/application.json"))
+                .expect("fixture decodes");
+        let deployments: Vec<Deployment> = serde_json::from_str(include_str!(
+            "../../../fixtures/coolify/app-deployments.json"
+        ))
+        .expect("fixture decodes");
+        let View::Table { rows, .. } = deployments_table(&deployments, &[app], &BTreeMap::new())
+        else {
+            panic!("expected a table");
+        };
+        assert_eq!(
+            rows[0].cells["repository"],
+            Cell::Text("example/landing".to_owned())
+        );
+        let ids: Vec<&str> = rows[0].actions.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(ids, ["deploy", "open-logs"]);
     }
 
     #[test]

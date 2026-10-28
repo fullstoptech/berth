@@ -40,6 +40,7 @@ const SERVERS: &str = include_str!("../../../fixtures/coolify/servers.json");
 const APPLICATION: &str = include_str!("../../../fixtures/coolify/application.json");
 const APP_DEPLOYMENTS: &str = include_str!("../../../fixtures/coolify/app-deployments.json");
 const DEPLOYMENTS: &str = include_str!("../../../fixtures/coolify/scene-deployments.json");
+const APPLICATIONS: &str = include_str!("../../../fixtures/coolify/scene-applications.json");
 const FAILED_DEPLOYMENT: &str =
     include_str!("../../../fixtures/coolify/scene-deployment-landing-failed.json");
 
@@ -117,7 +118,7 @@ async fn coolify() -> MockServer {
     get(&server, "resources", RESOURCES).await;
     get(&server, "servers", SERVERS).await;
     get(&server, "deployments", DEPLOYMENTS).await;
-    get(&server, "applications", &format!("[{APPLICATION}]")).await;
+    get(&server, "applications", APPLICATIONS).await;
     get(&server, "applications/app-uuid-0001", APPLICATION).await;
     get(
         &server,
@@ -233,6 +234,47 @@ async fn coolify_views_resources_and_deployments_load_through_the_service() {
         "{:?}",
         failed.cells["status"]
     );
+    // The failed row's buttons: Redeploy\u{2026} with the frame's confirm, and Logs.
+    let labels: Vec<&str> = failed.actions.iter().map(|a| a.label.as_str()).collect();
+    assert_eq!(labels, ["Redeploy\u{2026}", "Logs"]);
+    let confirm = confirm_view(
+        failed.actions[0]
+            .confirm
+            .as_ref()
+            .expect("Redeploy confirms"),
+    );
+    assert_eq!(confirm.title, "Redeploy landing?");
+    assert_eq!(confirm.button, "Redeploy anyway");
+    let shown: BTreeMap<&str, &str> = confirm
+        .rows
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    assert_eq!(shown["App"], "landing");
+    assert_eq!(shown["Server"], "hetzner-1");
+    assert_eq!(shown["Branch"], "main");
+    assert_eq!(shown["Commit"], "c2a7e94 \u{b7} fix caddy upstream");
+    assert_eq!(
+        confirm.warnings,
+        ["This commit failed (Caddyfile:14: unknown directive 'reverse_proxy_x'). Redeploying it will likely fail again."]
+    );
+    assert_eq!(
+        failed.cells["repository"],
+        Cell::Text("example/landing".to_string())
+    );
+    // A finished deployment offers the same buttons without the warning.
+    let finished = rows
+        .iter()
+        .find(|r| r.id == "dep-uuid-0105")
+        .expect("a finished row");
+    let finished_confirm = confirm_view(
+        finished.actions[0]
+            .confirm
+            .as_ref()
+            .expect("Redeploy confirms"),
+    );
+    assert_eq!(finished_confirm.button, "Redeploy");
+    assert!(finished_confirm.warnings.is_empty(), "{finished_confirm:?}");
     rig.service.shutdown().await;
 }
 
@@ -250,7 +292,7 @@ async fn coolify_views_deploy_confirm_names_app_server_and_branch() {
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    assert_eq!(rows["Application"], "landing");
+    assert_eq!(rows["App"], "landing");
     assert_eq!(rows["Server"], "hetzner-1");
     assert_eq!(rows["Branch"], "main");
     assert_eq!(shown.button, "Deploy");

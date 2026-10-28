@@ -18,12 +18,14 @@ pub const ACTION_START: &str = "start";
 pub const ACTION_STOP: &str = "stop";
 pub const ACTION_RESTART: &str = "restart";
 pub const ACTION_CANCEL_DEPLOYMENT: &str = "cancel-deployment";
+/// A row button that only opens a view (its params are `{ "open": view }`).
+pub const ACTION_OPEN_LOGS: &str = "open-logs";
 
 /// The `force` option key on the Deploy action ("Force rebuild").
 pub const OPTION_FORCE_REBUILD: &str = "force";
 
 fn confirm_lines(app_name: &str, server_name: Option<&str>, branch: Option<&str>) -> Vec<String> {
-    let mut lines = vec![format!("Application: {app_name}")];
+    let mut lines = vec![format!("App: {app_name}")];
     if let Some(server) = server_name {
         lines.push(format!("Server: {server}"));
     }
@@ -50,6 +52,97 @@ fn spec(
     }
 }
 
+fn force_rebuild_option() -> ActionOption {
+    ActionOption {
+        key: OPTION_FORCE_REBUILD.to_owned(),
+        label: "Force rebuild (ignore the build cache)".to_owned(),
+        default: false,
+    }
+}
+
+/// What a deployment row says about the commit it redeploys.
+#[derive(Debug, Clone, Default)]
+pub struct Redeploy<'a> {
+    /// The application the deployment belongs to (its uuid is the deploy target).
+    pub application: Option<&'a Application>,
+    /// Why the deployment failed, read from its log, when it did.
+    pub failure: Option<&'a str>,
+}
+
+/// The two buttons of a finished deployment's row: "Redeploy…" (a Deploy of
+/// that application, confirming app, server, branch and commit, with a
+/// warning when the commit is the one that failed) and "Logs" (an action whose
+/// params are only `{ "open": view }`: Berth opens the view itself).
+/// Empty when the application is not known, since Deploy needs its uuid.
+#[must_use]
+pub fn redeploy_actions(deployment: &Deployment, redeploy: &Redeploy<'_>) -> Vec<ActionSpec> {
+    let deployment_uuid = deployment.deployment_uuid.clone().unwrap_or_default();
+    let mut out = Vec::new();
+    if let Some(app_uuid) = redeploy.application.and_then(|a| a.uuid.clone()) {
+        let name = deployment
+            .application_name
+            .as_deref()
+            .or_else(|| redeploy.application.and_then(|a| a.name.as_deref()))
+            .unwrap_or("application");
+        let branch = redeploy.application.and_then(|a| a.git_branch.as_deref());
+        let mut lines = confirm_lines(name, deployment.server_name.as_deref(), branch);
+        let short: String = deployment
+            .commit
+            .as_deref()
+            .map(|sha| sha.chars().take(7).collect())
+            .unwrap_or_default();
+        if !short.is_empty() {
+            lines.push(match deployment.commit_message.as_deref() {
+                Some(message) if !message.is_empty() => format!("Commit: {short} \u{b7} {message}"),
+                _ => format!("Commit: {short}"),
+            });
+        }
+        let failed = deployment
+            .status
+            .as_deref()
+            .is_some_and(|s| s.contains("fail"));
+        if failed {
+            lines.push(match redeploy.failure {
+                Some(reason) => format!(
+                    "Warning: This commit failed ({reason}). Redeploying it will likely fail again."
+                ),
+                None => {
+                    "Warning: This commit failed. Redeploying it will likely fail again.".to_owned()
+                }
+            });
+        }
+        lines.push("Keeps serving the current version until a new build passes.".to_owned());
+        let mut deploy = spec(
+            ACTION_DEPLOY,
+            "Redeploy\u{2026}",
+            false,
+            serde_json::json!({ "uuid": app_uuid, "kind": "application" }),
+            Some(Confirm {
+                title: format!("Redeploy {name}?"),
+                lines,
+                button: if failed {
+                    "Redeploy anyway"
+                } else {
+                    "Redeploy"
+                }
+                .to_owned(),
+            }),
+        );
+        deploy.options.push(force_rebuild_option());
+        out.push(deploy);
+    }
+    if !deployment_uuid.is_empty() {
+        out.push(spec(
+            ACTION_OPEN_LOGS,
+            "Logs",
+            false,
+            serde_json::json!({ "open": format!("deployment/{deployment_uuid}/logs") }),
+            None,
+        ));
+    }
+    out
+}
+
 /// Deploy / Start / Stop / Restart for one application. `server_name` is
 /// resolved by the caller (views know the servers list); the confirm still
 /// names app and branch without it.
@@ -74,11 +167,7 @@ pub fn application_actions(
             button: "Deploy".to_owned(),
         }),
     );
-    deploy.options.push(ActionOption {
-        key: OPTION_FORCE_REBUILD.to_owned(),
-        label: "Force rebuild".to_owned(),
-        default: false,
-    });
+    deploy.options.push(force_rebuild_option());
 
     vec![
         deploy,
@@ -292,8 +381,85 @@ mod tests {
         assert!(joined.contains("main"), "{joined}");
         assert_eq!(deploy.options.len(), 1);
         assert_eq!(deploy.options[0].key, OPTION_FORCE_REBUILD);
-        assert_eq!(deploy.options[0].label, "Force rebuild");
+        assert_eq!(
+            deploy.options[0].label,
+            "Force rebuild (ignore the build cache)"
+        );
         assert!(!deploy.options[0].default);
+    }
+
+    fn failed_deployment() -> Deployment {
+        serde_json::from_str(include_str!(
+            "../../../fixtures/coolify/deployment-failed.json"
+        ))
+        .expect("fixture decodes")
+    }
+
+    #[test]
+    fn actions_redeploy_of_a_failed_commit_names_commit_and_warns_with_the_reason() {
+        let app = landing();
+        let specs = redeploy_actions(
+            &failed_deployment(),
+            &Redeploy {
+                application: Some(&app),
+                failure: Some("Caddyfile:14: unknown directive"),
+            },
+        );
+        assert_eq!(specs.len(), 2);
+        let deploy = &specs[0];
+        assert_eq!(deploy.label, "Redeploy\u{2026}");
+        assert_eq!(deploy.params["uuid"], "app-uuid-0001");
+        let confirm = deploy.confirm.as_ref().expect("redeploy confirms");
+        assert_eq!(confirm.title, "Redeploy landing?");
+        assert_eq!(confirm.button, "Redeploy anyway");
+        assert_eq!(confirm.lines[0], "App: landing");
+        assert!(
+            confirm.lines.contains(&"Server: hetzner-1".to_owned()),
+            "{:?}",
+            confirm.lines
+        );
+        assert!(confirm.lines.contains(&"Branch: main".to_owned()));
+        assert!(confirm
+            .lines
+            .contains(&"Commit: fedcba9 \u{b7} WIP".to_owned()));
+        assert!(
+            confirm
+                .lines
+                .iter()
+                .any(|l| l.starts_with("Warning: This commit failed (Caddyfile:14")),
+            "{:?}",
+            confirm.lines
+        );
+        assert_eq!(deploy.options[0].key, OPTION_FORCE_REBUILD);
+    }
+
+    #[test]
+    fn actions_redeploy_of_a_good_commit_has_no_warning_and_says_redeploy() {
+        let app = landing();
+        let mut finished = failed_deployment();
+        finished.status = Some("finished".to_owned());
+        let specs = redeploy_actions(
+            &finished,
+            &Redeploy {
+                application: Some(&app),
+                failure: None,
+            },
+        );
+        let confirm = specs[0].confirm.as_ref().expect("confirm");
+        assert_eq!(confirm.button, "Redeploy");
+        assert!(!confirm.lines.iter().any(|l| l.starts_with("Warning:")));
+    }
+
+    #[test]
+    fn actions_logs_button_only_opens_the_deployments_log_and_redeploy_needs_the_application() {
+        let specs = redeploy_actions(&failed_deployment(), &Redeploy::default());
+        assert_eq!(specs.len(), 1, "no application, no Redeploy");
+        assert_eq!(specs[0].id, ACTION_OPEN_LOGS);
+        assert_eq!(
+            specs[0].params,
+            serde_json::json!({ "open": "deployment/dep-uuid-00ff/logs" })
+        );
+        assert!(specs[0].confirm.is_none());
     }
 
     #[test]

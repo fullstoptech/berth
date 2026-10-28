@@ -85,7 +85,7 @@
           "confirm": {
             "title": "Stop landing?",
             "lines": [
-              "Application: landing"
+              "App: landing"
             ],
             "button": "Stop"
           },
@@ -102,7 +102,7 @@
           "confirm": {
             "title": "Restart landing?",
             "lines": [
-              "Application: landing"
+              "App: landing"
             ],
             "button": "Restart"
           },
@@ -162,7 +162,7 @@
           "confirm": {
             "title": "Stop landing-db?",
             "lines": [
-              "Application: landing-db"
+              "App: landing-db"
             ],
             "button": "Stop"
           },
@@ -179,7 +179,7 @@
           "confirm": {
             "title": "Restart landing-db?",
             "lines": [
-              "Application: landing-db"
+              "App: landing-db"
             ],
             "button": "Restart"
           },
@@ -239,7 +239,7 @@
           "confirm": {
             "title": "Stop wiki?",
             "lines": [
-              "Application: wiki"
+              "App: wiki"
             ],
             "button": "Stop"
           },
@@ -256,7 +256,7 @@
           "confirm": {
             "title": "Restart wiki?",
             "lines": [
-              "Application: wiki"
+              "App: wiki"
             ],
             "button": "Restart"
           },

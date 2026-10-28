@@ -497,11 +497,107 @@ pub struct PluginNav {
     pub open: Option<String>,
 }
 
-/// An action waiting for the user's confirmation.
+/// What a table row knows that an action or a harness entry needs: the row it
+/// came from, a title for the assistant, the repository Berth links a local
+/// project by, and the log stream the row opens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowContext {
+    pub row: String,
+    /// The row's first cell ("landing"): what the assistant is told it is about.
+    pub title: String,
+    /// `owner/repo` from the row's `repository` cell.
+    pub repository: Option<String>,
+    /// The log stream (`deployment/<uuid>/logs`) the row opens, when it is one.
+    pub stream: Option<String>,
+    /// The row's status badge says danger.
+    pub failed: bool,
+}
+
+/// An action waiting for the user's confirmation (`Overlay::PluginAction`,
+/// AD52), or about to run.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PendingAction {
     pub plugin: String,
     pub action: ActionSpec,
+    pub context: Option<RowContext>,
+}
+
+/// An action whose params are only `{ "open": view }` opens that view and
+/// calls no plugin (the "Logs" row button).
+#[must_use]
+pub fn open_only(action: &ActionSpec) -> Option<&str> {
+    let map = action.params.as_object()?;
+    if map.len() != 1 {
+        return None;
+    }
+    map.get("open")?.as_str()
+}
+
+/// `owner/repo`, lower-cased, from a git remote or a repository name:
+/// `https://github.com/Owner/Repo.git`, `git@github.com:owner/repo` and a bare
+/// `owner/repo` all read the same. The same rule the Coolify plugin links
+/// projects by.
+#[must_use]
+pub fn normalize_repo(remote: &str) -> Option<String> {
+    let trimmed = remote.trim().trim_end_matches('/').trim_end_matches(".git");
+    let path = if let Some((_, rest)) = trimmed.split_once("://") {
+        rest.split_once('/')?.1
+    } else if let Some((_, rest)) = trimmed.split_once('@') {
+        rest.split_once(':')?.1
+    } else {
+        trimmed
+    };
+    let mut parts = path.split('/').filter(|p| !p.is_empty());
+    let (owner, repo) = (parts.next()?, parts.next()?);
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(format!(
+        "{}/{}",
+        owner.to_ascii_lowercase(),
+        repo.to_ascii_lowercase()
+    ))
+}
+
+/// The local project whose git remote names `repository` (a row's
+/// `repository` cell) and that has a folder on this machine.
+#[must_use]
+pub fn linked_project<'a>(
+    projects: &'a [berth_core::Project],
+    repository: &str,
+) -> Option<&'a berth_core::Project> {
+    let wanted = normalize_repo(repository)?;
+    projects.iter().find(|p| {
+        p.folder.is_some()
+            && p.git
+                .as_ref()
+                .and_then(|g| g.remote.as_deref())
+                .and_then(normalize_repo)
+                .is_some_and(|remote| remote == wanted)
+    })
+}
+
+/// The confirm as one `EffectSummary`: its verb is the button's text and its
+/// lines are the plugin's lines, so the dialog's button and text are read from
+/// the one value (D33).
+#[must_use]
+pub fn plugin_effect(confirm: &berth_plugin_protocol::Confirm) -> berth_core::EffectSummary {
+    berth_core::EffectSummary {
+        verb: confirm.button.clone(),
+        noun_one: String::new(),
+        noun_many: String::new(),
+        count: 1,
+        bytes: None,
+        lines: confirm
+            .lines
+            .iter()
+            .map(|text| berth_core::EffectLine {
+                kind: berth_core::EffectKind::Changes,
+                text: text.clone(),
+            })
+            .collect(),
+        typed_name: None,
+    }
 }
 
 /// The signals plugin screens read. Provided once from the App root (and a
@@ -511,7 +607,6 @@ pub struct PluginViewStore {
     pub views: Signal<BTreeMap<ViewKey, ViewState>>,
     pub logs: Signal<BTreeMap<ViewKey, LogState>>,
     pub nav: Signal<PluginNav>,
-    pub confirm: Signal<Option<PendingAction>>,
     /// Badges by project id.
     pub badges: Signal<BTreeMap<String, ProjectBadge>>,
 }
@@ -523,7 +618,6 @@ pub fn provide_plugin_view_store() -> PluginViewStore {
             views: Signal::new(BTreeMap::new()),
             logs: Signal::new(BTreeMap::new()),
             nav: Signal::new(PluginNav::default()),
-            confirm: Signal::new(None),
             badges: Signal::new(BTreeMap::new()),
         })
     })
@@ -652,14 +746,16 @@ impl PluginViewStore {
             let plugin = pending.plugin.clone();
             match invoke_action(&service, &plugin, &pending.action, &chosen).await {
                 Ok(result) => {
-                    toast(state, result.message.clone(), ToastTone::Success);
+                    if !result.message.is_empty() {
+                        toast(state, result.message.clone(), ToastTone::Success);
+                    }
                     for view in &result.invalidate {
                         store.reload(Some(&service), &plugin, view);
                     }
                     if let Some(open) = result.open {
                         let mut nav = store.nav;
                         let mut next = nav.peek().clone();
-                        next.row = None;
+                        next.row = pending.context.as_ref().map(|c| c.row.clone());
                         next.open = Some(open);
                         nav.set(next);
                     }
@@ -712,6 +808,7 @@ pub fn run_command(state: &mut AppState, command: &PluginCommand) {
                     confirm: None,
                     options: Vec::new(),
                 },
+                context: None,
             };
             store.run_action(service.as_ref(), *state, pending, BTreeMap::new());
         }
