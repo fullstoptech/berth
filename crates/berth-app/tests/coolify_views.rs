@@ -16,14 +16,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use berth_app::screens::plugin_view_model::{confirm_view, failing_seq, log_rows};
+use berth_app::screens::plugin_view_model::{confirm_view, failing_seq, log_rows, status_banner};
 use berth_app::services::plugin_views::{
-    action_params, badge_requests, follow_log, load_badges, load_view, palette_commands,
-    sidebar_groups, CommandKind, LogState, ViewState,
+    action_params, badge_requests, follow_log, invoke_action, load_badges, load_view,
+    palette_commands, sidebar_groups, CommandKind, LogState, ViewState, STATUS_VIEW,
 };
 use berth_app::services::plugins::{plugin_dirs_from, ConfigUpdate, PluginsDeps, PluginsService};
+use berth_app::ui::BannerTone;
 use berth_plugin_host::{Backoff, PluginState};
-use berth_plugin_protocol::{Cell, View};
+use berth_plugin_protocol::{methods, Cell, View};
 use berth_store::{InMemorySecretStore, Store};
 use secrecy::SecretString;
 use serde_json::{json, Value};
@@ -157,7 +158,7 @@ async fn coolify_with_history(history: &[(&str, &str)]) -> MockServer {
 /// the app binary's directory, enabled and configured through the service.
 struct Rig {
     _root: tempfile::TempDir,
-    _server: MockServer,
+    server: MockServer,
     service: PluginsService,
     app_dir: PathBuf,
 }
@@ -199,7 +200,7 @@ impl Rig {
             .expect("configure");
         Self {
             _root: root,
-            _server: server,
+            server,
             service,
             app_dir,
         }
@@ -211,7 +212,34 @@ impl Rig {
             other => panic!("{view}: {other:?}"),
         }
     }
+
+    /// The banner the section shows above the plugin's views.
+    async fn banner(&self) -> Option<(BannerTone, String)> {
+        status_banner(&self.view(STATUS_VIEW).await)
+    }
+
+    /// Waits for the plugin's next `view/invalidate`, the notice on which
+    /// the app reloads every view it holds, the banner included.
+    async fn invalidated(
+        notes: &mut tokio::sync::broadcast::Receiver<berth_plugin_protocol::Notification>,
+    ) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match notes.recv().await {
+                    Ok(note) if note.method == methods::INVALIDATE => return,
+                    Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(e) => panic!("notifications ended: {e}"),
+                }
+            }
+        })
+        .await
+        .expect("the plugin invalidates its views");
+    }
 }
+
+/// `Timing::default().version_ttl` in `plugins/coolify/src/plugin.rs`: the
+/// bundled binary reads the version again on a view load after this long.
+const VERSION_TTL: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 async fn coolify_views_the_bundled_plugin_is_found_next_to_the_app_binary() {
@@ -431,6 +459,85 @@ async fn coolify_views_a_project_with_the_apps_remote_gets_its_badge() {
     let badges = load_badges(&rig.service, &requests).await;
     let badge = badges.get("landing-folder").expect("badge for the project");
     assert_eq!(badge.text, "Deployed on Coolify: running");
+    rig.service.shutdown().await;
+}
+
+#[tokio::test]
+async fn coolify_views_an_instance_upgraded_mid_session_shows_the_banner_on_the_next_view_load() {
+    let rig = Rig::start().await;
+    let mut notes = rig
+        .service
+        .notifications("coolify")
+        .expect("the plugin runs");
+    assert_eq!(rig.banner().await, None, "4.5 needs no banner");
+    rig.view("resources").await;
+    // Coolify is upgraded to a newer major while Berth runs.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("5.0.0"))
+        .with_priority(1)
+        .mount(&rig.server)
+        .await;
+    tokio::time::sleep(VERSION_TTL + Duration::from_millis(200)).await;
+    rig.view("resources").await;
+    Rig::invalidated(&mut notes).await;
+    assert_eq!(
+        rig.banner().await,
+        Some((
+            BannerTone::Warning,
+            "Coolify 5.0.0 — Built for Coolify 4.5; some actions may fail".to_string()
+        ))
+    );
+    rig.service.shutdown().await;
+}
+
+#[tokio::test]
+async fn coolify_views_a_deploy_endpoint_that_answers_404_hides_only_deploy() {
+    // The rig serves no POST route, so Deploy answers 404 while the
+    // application itself is listed.
+    let rig = Rig::start().await;
+    let mut notes = rig
+        .service
+        .notifications("coolify")
+        .expect("the plugin runs");
+    let View::Detail { actions, .. } = rig.view("application/app-uuid-0001").await else {
+        panic!("an application is a detail");
+    };
+    let deploy = actions
+        .iter()
+        .find(|a| a.id == "deploy")
+        .expect("Deploy")
+        .clone();
+    let refused = invoke_action(&rig.service, "coolify", &deploy, &BTreeMap::new())
+        .await
+        .expect_err("the instance has no deploy endpoint");
+    assert!(
+        refused.contains("does not offer Deploy (POST /deploy answered 404)"),
+        "{refused}"
+    );
+    Rig::invalidated(&mut notes).await;
+
+    let View::Detail { actions, tabs, .. } = rig.view("application/app-uuid-0001").await else {
+        panic!("an application is a detail");
+    };
+    let ids: Vec<&str> = actions.iter().map(|a| a.id.as_str()).collect();
+    assert_eq!(ids, ["start", "stop", "restart"]);
+    assert_eq!(tabs.len(), 3, "every tab stays");
+    // The deployments table keeps its rows and their Logs; Redeploy goes.
+    let View::Table { rows, .. } = rig.view("deployments").await else {
+        panic!("deployments is a table");
+    };
+    assert_eq!(rows.len(), 12);
+    let failed = rows.iter().find(|r| r.id == FAILED).expect("failed row");
+    let labels: Vec<&str> = failed.actions.iter().map(|a| a.label.as_str()).collect();
+    assert_eq!(labels, ["Logs"]);
+    assert_eq!(
+        rig.banner().await,
+        Some((
+            BannerTone::Warning,
+            "Coolify v4.5.0 — Not available on this Coolify instance: Deploy.".to_string()
+        ))
+    );
     rig.service.shutdown().await;
 }
 

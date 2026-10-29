@@ -1,0 +1,27 @@
+# Berth bundle configuration (PLAN §12 item 1, D63, D64).
+# `dx bundle --platform macos --release -p berth-app` reads this file.
+# Signing and notarization are NOT configured here: scripts/release.sh signs with
+# BERTH_SIGN_IDENTITY only when the owner sets it (P10-T2, P10-T5).
+
+[application]
+name = "Berth"
+
+[bundle]
+identifier = "dev.berth.app"
+publisher = "Emmanuel Badu Sarpong"
+icon = [
+    "assets/icon/berth.icns",
+    "assets/icon/32x32.png",
+    "assets/icon/128x128.png",
+    "assets/icon/128x128@2x.png",
+    "assets/icon/256x256.png",
+    "assets/icon/512x512.png",
+]
+category = "DeveloperTool"
+copyright = "Copyright (c) 2026 Emmanuel Badu Sarpong"
+short_description = "A desktop Docker manager for Colima on macOS."
+long_description = "Berth shows every container by the project folder it came from. It manages Colima profiles, images, volumes and networks, reads logs, opens terminals, and works with Claude Code and other coding harnesses through reviewed, approved changes."
+
+[bundle.macos]
+minimum_system_version = "14.0"
+entitlements = "../../packaging/macos/Berth.entitlements"

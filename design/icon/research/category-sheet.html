@@ -1,0 +1,101 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Berth category silhouette sheet</title>
+<style>
+  body{margin:0;background:#f4f4f2;font:12px/1.35 -apple-system,Helvetica,Arial,sans-serif;color:#222}
+  h1{font-size:15px;margin:14px 16px 2px}
+  p.sub{margin:0 16px 10px;color:#666;font-size:11px}
+  #grid{display:grid;grid-template-columns:repeat(5,300px);gap:10px;padding:0 16px 16px}
+  .cell{background:#fff;border:1px solid #ddd;border-radius:6px;padding:8px;height:238px;box-sizing:border-box}
+  .name{font-weight:600;font-size:12px}
+  .tag{color:#777;font-size:10px;height:26px}
+  .row{display:flex;gap:12px;align-items:flex-start;margin-top:2px}
+  canvas{display:block}
+  .big{width:128px;height:128px}
+  .small{display:flex;gap:12px;align-items:center;margin-top:8px}
+  .small span{font-size:10px;color:#777}
+  .sw{display:flex;gap:3px;margin-top:6px}
+  .sw i{display:block;width:30px;height:10px;border:1px solid #0002}
+</style></head><body>
+<h1>Berth category silhouette sheet (internal comparison only, never shipped)</h1>
+<p class="sub">Each icon at 128 px, as a thresholded black silhouette (Otsu luminance split of opaque pixels; transparent = white), and at 32 px (colour and silhouette). Sources and dates in category.md. Loaded 2026-10-28.</p>
+<div id="grid"></div>
+<script>
+const ITEMS = [
+ {n:"Docker Desktop", t:"official mark (site favicon) - not the Dock tile", f:"src/docker-site-icon.png"},
+ {n:"OrbStack", t:"orbstack.dev site icon-square256", f:"src/orbstack.png"},
+ {n:"Podman Desktop", t:"repo buildResources/icon.png", f:"src/podman-desktop.png"},
+ {n:"Rancher Desktop", t:"repo resources/icons/logo-square-512", f:"src/rancher-desktop.png"},
+ {n:"Portainer", t:"repo apple-touch-icon (web UI, no Mac app)", f:"src/portainer.png"},
+ {n:"Colima", t:"README logo; no app icon", f:"src/colima.png"},
+ {n:"Lima", t:"website wordmark; no app icon", f:"src/lima.svg"},
+ {n:"Kitematic (legacy)", t:"archived repo util/kitematic.png", f:"src/kitematic.png"},
+ {n:"TablePlus", t:"site apple-touch-icon 180", f:"src/tableplus.png"},
+ {n:"Tower", t:"git-tower.com download-modal icon", f:"src/tower.png"},
+ {n:"Fork", t:"local /Applications/Fork.app AppIcon.icns", f:"local/fork.png"},
+ {n:"Proxyman", t:"local /Applications/Proxyman.app AppIcon.icns", f:"local/proxyman.png"},
+];
+const grid = document.getElementById('grid');
+const report = {};
+function load(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(src);i.src=src;});}
+function draw(img, size, filt){
+  const c=document.createElement('canvas'); c.width=c.height=size; const x=c.getContext('2d',{willReadFrequently:true});
+  x.imageSmoothingQuality='high';
+  const s=Math.min(size/img.naturalWidth,size/img.naturalHeight);
+  const w=img.naturalWidth*s,h=img.naturalHeight*s;
+  x.drawImage(img,(size-w)/2,(size-h)/2,w,h);
+  return c;
+}
+function lum(r,g,b){return 0.2126*r+0.7152*g+0.0722*b}
+function otsu(vals){ // vals: array of 0..255
+  const h=new Array(256).fill(0); vals.forEach(v=>h[Math.round(v)]++);
+  const tot=vals.length; let sum=0; for(let i=0;i<256;i++)sum+=i*h[i];
+  let sB=0,wB=0,best=0,th=128;
+  for(let t=0;t<256;t++){wB+=h[t]; if(!wB)continue; const wF=tot-wB; if(!wF)break; sB+=t*h[t];
+    const mB=sB/wB,mF=(sum-sB)/wF,v=wB*wF*(mB-mF)*(mB-mF); if(v>best){best=v;th=t;}}
+  return th;
+}
+function silhouette(srcCanvas, th){
+  const size=srcCanvas.width; const c=document.createElement('canvas'); c.width=c.height=size;
+  const x=c.getContext('2d'); const d=srcCanvas.getContext('2d').getImageData(0,0,size,size);
+  const o=x.createImageData(size,size);
+  for(let i=0;i<d.data.length;i+=4){
+    const a=d.data[i+3]/255; const r=d.data[i],g=d.data[i+1],b=d.data[i+2];
+    // composite over white, then threshold
+    const R=r*a+255*(1-a),G=g*a+255*(1-a),B=b*a+255*(1-a);
+    const black = a>0.5 && lum(R,G,B)<th ? 0:255;
+    o.data[i]=o.data[i+1]=o.data[i+2]=black; o.data[i+3]=255;
+  }
+  x.putImageData(o,0,0); return c;
+}
+function colours(c){
+  const size=c.width; const d=c.getContext('2d').getImageData(0,0,size,size).data; const m={}; let n=0;
+  for(let i=0;i<d.length;i+=4){ if(d[i+3]<200)continue; const r=d[i],g=d[i+1],b=d[i+2];
+    const k=(r>>5)+','+(g>>5)+','+(b>>5); (m[k]=m[k]||{c:0,r:0,g:0,b:0}); const e=m[k]; e.c++;e.r+=r;e.g+=g;e.b+=b; n++; }
+  return Object.values(m).sort((a,b)=>b.c-a.c).slice(0,4).map(e=>{
+    const h=v=>Math.round(v/e.c).toString(16).padStart(2,'0'); return '#'+h(e.r)+h(e.g)+h(e.b)+' '+Math.round(100*e.c/n)+'%';});
+}
+(async()=>{
+  for(const it of ITEMS){
+    const img=await load(it.f);
+    const big=draw(img,256), sm=draw(img,64);
+    const vals=[]; const bd=big.getContext('2d').getImageData(0,0,256,256).data;
+    for(let i=0;i<bd.length;i+=4){const a=bd[i+3]/255; if(a<0.5)continue; vals.push(lum(bd[i]*a+255*(1-a),bd[i+1]*a+255*(1-a),bd[i+2]*a+255*(1-a)));}
+    const th=otsu(vals);
+    const sBig=silhouette(big,th), sSm=silhouette(sm,th);
+    const cs=colours(big);
+    report[it.n]={otsu:th,colours:cs,natural:[img.naturalWidth,img.naturalHeight]};
+    const cell=document.createElement('div'); cell.className='cell';
+    cell.innerHTML='<div class="name"></div><div class="tag"></div><div class="row"></div><div class="small"></div><div class="sw"></div>';
+    cell.querySelector('.name').textContent=it.n; cell.querySelector('.tag').textContent=it.t;
+    const row=cell.querySelector('.row');
+    for(const c of [big,sBig]){c.className='big'; c.style.width='128px'; c.style.height='128px'; row.appendChild(c);}
+    const s=cell.querySelector('.small');
+    for(const c of [sm,sSm]){c.style.width='32px'; c.style.height='32px'; s.appendChild(c);}
+    const sp=document.createElement('span'); sp.textContent='32 px colour / silhouette'; s.appendChild(sp);
+    cs.forEach(t=>{const i=document.createElement('i'); i.style.background=t.split(' ')[0]; i.title=t; cell.querySelector('.sw').appendChild(i);});
+    grid.appendChild(cell);
+  }
+  const pre=document.createElement('pre'); pre.id='report'; pre.style.display='none'; pre.textContent=JSON.stringify(report,null,1); document.body.appendChild(pre);
+  document.title='done';
+})().catch(e=>{document.title='ERR '+e});
+</script></body></html>

@@ -21,7 +21,8 @@ use crate::services::networks::{self as net, BUILT_IN_REASON};
 use crate::state::{AppState, EngineScope, Overlay, PendingKey, PendingState, Section, Selection};
 use crate::ui::{
     Badge, BadgeKind, Button, ButtonVariant, CellAlign, ControlSize, EmptyState, IconButton,
-    IconButtonTone, InlineMessage, InlineTone, SearchField, SortDirection, TableHeaderCell,
+    IconButtonTone, InlineMessage, InlineTone, InspectorToggle, SearchField, SortDirection,
+    TableHeaderCell,
 };
 
 /// The screen's CSS: the hand-written rules and the generated column tiers.
@@ -518,6 +519,7 @@ pub fn NetworksScreen() -> Element {
                     icon: "plus",
                     onclick: move |_| state.overlays.write().push(Overlay::CreateNetwork),
                 }
+                InspectorToggle {}
             }
             if !failed.is_empty() {
                 div { class: "nw-notes",

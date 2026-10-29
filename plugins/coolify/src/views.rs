@@ -400,20 +400,28 @@ pub fn envs_table(envs: &[EnvVar]) -> View {
     }
 }
 
-/// The version as a message view; the newer-major warning rides along.
+/// The version as a message view (the plugin's banner); the newer-major
+/// warning and what the instance turned out not to offer ride along, either
+/// one making it a warning.
 #[must_use]
-pub fn version_message(version: &VersionInfo) -> View {
-    match &version.warning {
-        Some(warning) => View::Message {
-            tone: Tone::Warning,
-            text: format!("Coolify {} — {warning}", version.raw),
-            action: None,
-        },
-        None => View::Message {
+pub fn version_message(version: &VersionInfo, unavailable: Option<&str>) -> View {
+    let notes: Vec<&str> = version
+        .warning
+        .as_deref()
+        .into_iter()
+        .chain(unavailable)
+        .collect();
+    if notes.is_empty() {
+        return View::Message {
             tone: Tone::Info,
             text: format!("Coolify {}", version.raw),
             action: None,
-        },
+        };
+    }
+    View::Message {
+        tone: Tone::Warning,
+        text: format!("Coolify {} — {}", version.raw, notes.join(". ")),
+        action: None,
     }
 }
 
@@ -656,15 +664,52 @@ mod tests {
 
     #[test]
     fn views_version_message_carries_the_warning() {
-        let view = version_message(&VersionInfo {
-            raw: "5.0.0".to_owned(),
-            major: Some(5),
-            warning: Some("Built for Coolify 4.5; some actions may fail".to_owned()),
-        });
+        let view = version_message(
+            &VersionInfo {
+                raw: "5.0.0".to_owned(),
+                major: Some(5),
+                warning: Some("Built for Coolify 4.5; some actions may fail".to_owned()),
+            },
+            None,
+        );
         let View::Message { tone, text, .. } = view else {
             panic!("expected a message");
         };
         assert_eq!(tone, Tone::Warning);
         assert!(text.contains("Built for Coolify 4.5"), "{text}");
+    }
+
+    #[test]
+    fn views_version_message_names_what_the_instance_does_not_offer() {
+        let current = VersionInfo {
+            raw: "v4.5.0".to_owned(),
+            major: Some(4),
+            warning: None,
+        };
+        let View::Message { tone, text, .. } = version_message(&current, None) else {
+            panic!("expected a message");
+        };
+        assert_eq!((tone, text.as_str()), (Tone::Info, "Coolify v4.5.0"));
+        let unavailable = "Not available on this Coolify instance: Deploy.";
+        let View::Message { tone, text, .. } = version_message(&current, Some(unavailable)) else {
+            panic!("expected a message");
+        };
+        assert_eq!(tone, Tone::Warning);
+        assert_eq!(
+            text,
+            "Coolify v4.5.0 — Not available on this Coolify instance: Deploy."
+        );
+        let newer = VersionInfo {
+            raw: "5.0.0".to_owned(),
+            major: Some(5),
+            warning: Some("Built for Coolify 4.5; some actions may fail".to_owned()),
+        };
+        let View::Message { text, .. } = version_message(&newer, Some(unavailable)) else {
+            panic!("expected a message");
+        };
+        assert_eq!(
+            text,
+            "Coolify 5.0.0 — Built for Coolify 4.5; some actions may fail. Not available on this Coolify instance: Deploy."
+        );
     }
 }

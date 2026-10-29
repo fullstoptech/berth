@@ -330,6 +330,26 @@ pub fn import_with_panel(
     });
 }
 
+/// What the Export save panel is asked for: the title, the suggested file
+/// name and the folder it opens in. The folder is always Downloads, never
+/// the last-used one (which was the Build context's project folder).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportPanelRequest {
+    pub title: String,
+    pub file_name: String,
+    pub directory: std::path::PathBuf,
+}
+
+/// The Export save panel's request for `image`, opening in `downloads`.
+#[must_use]
+pub fn export_panel_request(image: &str, downloads: std::path::PathBuf) -> ExportPanelRequest {
+    ExportPanelRequest {
+        title: format!("Export {image}"),
+        file_name: export_file_name(image),
+        directory: downloads,
+    }
+}
+
 /// Ask where to save `image` (a reference, or an id when it has no tag) in a
 /// save panel and write its archive there.
 pub fn export_with_panel(
@@ -340,9 +360,11 @@ pub fn export_with_panel(
     image: String,
 ) {
     spawn(async move {
+        let request = export_panel_request(&image, berth_sys::paths::downloads_dir());
         let Some(target) = rfd::AsyncFileDialog::new()
-            .set_title(format!("Export {image}"))
-            .set_file_name(export_file_name(&image))
+            .set_title(request.title)
+            .set_file_name(request.file_name)
+            .set_directory(request.directory)
             .save_file()
             .await
         else {

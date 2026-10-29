@@ -29,6 +29,15 @@ fn fast() -> Timing {
         deployment_poll: Duration::from_millis(5),
         app_log_poll: Duration::from_millis(5),
         secret_timeout: Duration::from_secs(2),
+        version_ttl: Duration::from_secs(60),
+    }
+}
+
+/// `fast()` with the version read again on every view load.
+fn rereading() -> Timing {
+    Timing {
+        version_ttl: Duration::ZERO,
+        ..fast()
     }
 }
 
@@ -204,6 +213,62 @@ impl Respond for Sequence {
         let at = self.next.fetch_add(1, Ordering::SeqCst);
         json_body(&self.bodies[at.min(self.bodies.len() - 1)])
     }
+}
+
+/// Answers with the (status, body) pairs in order, repeating the last, and
+/// counts the requests.
+struct Statuses {
+    answers: Vec<(u16, String)>,
+    next: Arc<AtomicUsize>,
+}
+
+impl Statuses {
+    fn new(answers: &[(u16, &str)]) -> (Self, Arc<AtomicUsize>) {
+        let next = Arc::new(AtomicUsize::new(0));
+        let answers = answers
+            .iter()
+            .map(|(status, body)| (*status, (*body).to_owned()))
+            .collect();
+        (
+            Self {
+                answers,
+                next: Arc::clone(&next),
+            },
+            next,
+        )
+    }
+}
+
+impl Respond for Statuses {
+    fn respond(&self, _request: &HttpRequest) -> ResponseTemplate {
+        let at = self.next.fetch_add(1, Ordering::SeqCst);
+        let (status, body) = &self.answers[at.min(self.answers.len() - 1)];
+        ResponseTemplate::new(*status)
+            .insert_header("content-type", "application/json")
+            .set_body_string(body.clone())
+    }
+}
+
+/// Serves `GET /api/v1/{route}` from `answers`; the count is of requests.
+async fn get_in_turn(
+    server: &MockServer,
+    route: &str,
+    answers: &[(u16, &str)],
+) -> Arc<AtomicUsize> {
+    let (responder, count) = Statuses::new(answers);
+    Mock::given(method("GET"))
+        .and(path(format!("/api/v1/{route}")))
+        .respond_with(responder)
+        .mount(server)
+        .await;
+    count
+}
+
+fn ids(values: &Value) -> Vec<&str> {
+    values
+        .as_array()
+        .map(|items| items.iter().filter_map(|i| i["id"].as_str()).collect())
+        .unwrap_or_default()
 }
 
 fn config(server: &MockServer) -> Value {
@@ -740,4 +805,236 @@ async fn plugin_binary_speaks_the_protocol_over_real_stdio() {
         .expect("exits after shutdown")
         .expect("status");
     assert!(status.success());
+}
+
+#[tokio::test]
+async fn plugin_an_upgrade_seen_on_a_view_load_warns_and_invalidates_the_status() {
+    let server = MockServer::start().await;
+    get_in_turn(&server, "version", &[(200, "v4.5.0"), (200, "5.0.0")]).await;
+    get(&server, "servers", "[]").await;
+    let mut host = Host::start(Some(TOKEN), rereading());
+    host.initialize(config(&server)).await;
+    host.view("servers").await;
+    assert!(
+        host.notifications
+            .iter()
+            .all(|n| n.method != methods::INVALIDATE),
+        "the first version read changes nothing"
+    );
+    // The instance is upgraded while the plugin runs.
+    host.view("servers").await;
+    let invalidate = host.notification(methods::INVALIDATE).await;
+    assert_eq!(invalidate.params["view"], "status");
+    assert!(
+        log_text(&host).contains("Coolify 5.0.0: Built for Coolify 4.5"),
+        "{}",
+        log_text(&host)
+    );
+    let status = host.view("status").await;
+    assert_eq!(status["tone"], "warning", "{status}");
+    assert_eq!(
+        status["text"],
+        "Coolify 5.0.0 — Built for Coolify 4.5; some actions may fail"
+    );
+    host.shutdown().await;
+}
+
+#[tokio::test]
+async fn plugin_view_loads_share_one_version_read_until_the_interval_passes() {
+    let server = MockServer::start().await;
+    let reads = get_in_turn(&server, "version", &[(200, "v4.5.0")]).await;
+    get(&server, "servers", "[]").await;
+    let timing = Timing {
+        version_ttl: Duration::from_millis(300),
+        ..fast()
+    };
+    let mut host = Host::start(Some(TOKEN), timing);
+    host.initialize(config(&server)).await;
+    host.view("servers").await;
+    host.view("servers").await;
+    assert_eq!(reads.load(Ordering::SeqCst), 1, "within the interval");
+    tokio::time::sleep(Duration::from_millis(350)).await;
+    host.view("servers").await;
+    assert_eq!(reads.load(Ordering::SeqCst), 2, "after the interval");
+    host.shutdown().await;
+}
+
+#[tokio::test]
+async fn plugin_a_run_of_404s_from_an_endpoint_that_worked_reads_the_version_at_once() {
+    let server = MockServer::start().await;
+    let reads = get_in_turn(&server, "version", &[(200, "v4.5.0"), (200, "5.0.0")]).await;
+    get_in_turn(&server, "servers", &[(200, "[]"), (404, "{}")]).await;
+    // The interval is long: only the error run can bring the second read.
+    let mut host = Host::start(Some(TOKEN), fast());
+    host.initialize(config(&server)).await;
+    host.view("servers").await;
+    let first_404 = host.view("servers").await;
+    assert_eq!(first_404["tone"], "danger", "{first_404}");
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+    let second_404 = host.view("servers").await;
+    assert_eq!(reads.load(Ordering::SeqCst), 2, "the run read the version");
+    // The new version forgot that the server list worked; asked again, it
+    // is missing on this instance and the view says so instead of failing.
+    assert_eq!(second_404["tone"], "warning", "{second_404}");
+    assert_eq!(
+        second_404["text"],
+        "This Coolify instance does not offer the server list (GET /servers answered 404). The other Coolify views still work."
+    );
+    host.notification(methods::INVALIDATE).await;
+    let status = host.view("status").await;
+    assert_eq!(
+        status["text"],
+        "Coolify 5.0.0 — Built for Coolify 4.5; some actions may fail. Not available on this Coolify instance: the server list."
+    );
+    host.shutdown().await;
+}
+
+#[tokio::test]
+async fn plugin_an_action_that_answers_404_is_hidden_and_the_rest_stays() {
+    let server = MockServer::start().await;
+    get(&server, "version", "v4.5.0").await;
+    get(&server, "resources", RESOURCES).await;
+    get(&server, "applications/app-uuid-0001", APPLICATION).await;
+    get(&server, "applications", &format!("[{APPLICATION}]")).await;
+    get(
+        &server,
+        "deployments/applications/app-uuid-0001",
+        APP_DEPLOYMENTS,
+    )
+    .await;
+    // No route for POST /deploy: wiremock answers 404.
+    let mut host = Host::start(Some(TOKEN), fast());
+    host.initialize(config(&server)).await;
+    let before = host.view("application/app-uuid-0001").await;
+    assert_eq!(
+        ids(&before["actions"]),
+        ["deploy", "start", "stop", "restart"]
+    );
+    let response = host
+        .call(
+            methods::ACTION_INVOKE,
+            json!({ "action": "deploy", "params": { "uuid": "app-uuid-0001", "kind": "application" } }),
+        )
+        .await;
+    let error = response.error.expect("deploy fails");
+    assert_eq!(
+        error.message,
+        "This Coolify instance does not offer Deploy (POST /deploy answered 404). Berth no longer offers it on this instance."
+    );
+    host.notification(methods::INVALIDATE).await;
+    let after = host.view("application/app-uuid-0001").await;
+    assert_eq!(
+        ids(&after["actions"]),
+        ["start", "stop", "restart"],
+        "only Deploy goes"
+    );
+    assert_eq!(ids(&after["tabs"]), ["deployments", "logs", "env"]);
+    let history = host.view("deployments/app-uuid-0001").await;
+    // The rows' Redeploy (a Deploy) goes too; their Logs stays.
+    let rows = history["rows"].as_array().expect("rows");
+    assert!(!rows.is_empty());
+    for row in rows {
+        assert!(
+            ids(&row["actions"]).iter().all(|id| *id != "deploy"),
+            "no Redeploy: {row}"
+        );
+    }
+    assert!(
+        rows.iter()
+            .any(|row| ids(&row["actions"]).contains(&"open-logs")),
+        "Logs stays"
+    );
+    let status = host.view("status").await;
+    assert_eq!(
+        status["text"],
+        "Coolify v4.5.0 — Not available on this Coolify instance: Deploy."
+    );
+    host.shutdown().await;
+}
+
+#[tokio::test]
+async fn plugin_an_action_404_for_a_resource_that_is_gone_hides_nothing() {
+    let server = MockServer::start().await;
+    get(&server, "version", "v4.5.0").await;
+    get(&server, "resources", RESOURCES).await;
+    let mut host = Host::start(Some(TOKEN), fast());
+    host.initialize(config(&server)).await;
+    let response = host
+        .call(
+            methods::ACTION_INVOKE,
+            json!({ "action": "deploy", "params": { "uuid": "app-uuid-gone", "kind": "application" } }),
+        )
+        .await;
+    let error = response.error.expect("deploy fails");
+    assert_eq!(error.message, "not found on this Coolify instance");
+    let status = host.view("status").await;
+    assert_eq!(status["tone"], "info", "{status}");
+    host.shutdown().await;
+}
+
+#[tokio::test]
+async fn plugin_envs_without_their_keys_drop_the_env_tab_only() {
+    let server = MockServer::start().await;
+    get(&server, "version", "v4.5.0").await;
+    get(&server, "resources", RESOURCES).await;
+    get(&server, "applications/app-uuid-0001", APPLICATION).await;
+    get(
+        &server,
+        "deployments/applications/app-uuid-0001",
+        APP_DEPLOYMENTS,
+    )
+    .await;
+    get(
+        &server,
+        "applications/app-uuid-0001/envs",
+        r#"[{"uuid":"env-1","is_runtime":true}]"#,
+    )
+    .await;
+    let mut host = Host::start(Some(TOKEN), fast());
+    host.initialize(config(&server)).await;
+    let envs = host.view("application/app-uuid-0001/envs").await;
+    assert_eq!(envs["tone"], "warning", "{envs}");
+    assert!(
+        envs["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("does not offer environment variables"),
+        "{envs}"
+    );
+    let detail = host.view("application/app-uuid-0001").await;
+    assert_eq!(ids(&detail["tabs"]), ["deployments", "logs"]);
+    assert_eq!(
+        ids(&detail["actions"]),
+        ["deploy", "start", "stop", "restart"]
+    );
+    host.shutdown().await;
+}
+
+#[tokio::test]
+async fn plugin_without_a_history_endpoint_the_deployments_show_what_runs() {
+    let server = MockServer::start().await;
+    get(&server, "version", "v4.5.0").await;
+    get(
+        &server,
+        "deployments",
+        include_str!("../../../fixtures/coolify/deployments.json"),
+    )
+    .await;
+    get(&server, "applications", &format!("[{APPLICATION}]")).await;
+    // No route for GET /deployments/applications/{uuid}: 404.
+    let mut host = Host::start(Some(TOKEN), fast());
+    host.initialize(config(&server)).await;
+    let first = host.view("deployments").await;
+    assert_eq!(first["kind"], "table", "{first}");
+    assert_eq!(first["rows"].as_array().map(Vec::len), Some(1));
+    host.notification(methods::INVALIDATE).await;
+    let status = host.view("status").await;
+    assert_eq!(
+        status["text"],
+        "Coolify v4.5.0 — Not available on this Coolify instance: deployment history."
+    );
+    // An application's Deployments tab says why instead of failing.
+    let tab = host.view("deployments/app-uuid-0001").await;
+    assert_eq!(tab["tone"], "warning", "{tab}");
+    host.shutdown().await;
 }

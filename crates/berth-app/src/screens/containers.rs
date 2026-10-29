@@ -31,10 +31,10 @@ use crate::ui::container_row::{
     ContainerRow, ContainerRowData, Meter, PortLink, RowAction, RowButton,
 };
 use crate::ui::{
-    count_label, scope_includes, Badge, BadgeKind, Banner, BannerTone, BulkAction, BulkBar, Button,
-    ButtonVariant, CellAlign, ControlSize, EmptyState, GroupHeaderRow, IconButton, InlineMessage,
-    InlineTone, Menu, MenuEntry, SearchField, Select, SelectOption, SkeletonRows, SortDirection,
-    TableHeaderCell, VirtualTable,
+    count_label, scope_includes, Badge, BadgeKind, Banner, BannerTone, BulkAction, BulkBar,
+    CellAlign, ControlSize, EmptyState, GroupHeaderRow, IconButton, InlineMessage, InlineTone,
+    InspectorToggle, Menu, MenuEntry, SearchField, Select, SelectOption, SkeletonRows,
+    SortDirection, TableHeaderCell, VirtualTable,
 };
 
 /// The screen's CSS. Rendered with the screen (`style` element) so the
@@ -1579,7 +1579,6 @@ pub fn ContainersScreen() -> Element {
     // The inspector takes the table's room only docked at the right (AD21);
     // overlaid, hidden or at the bottom the table has the full width.
     let docked_inspector = crate::ui::dock::inspector_docked();
-    let overlay_inspector = crate::ui::dock::inspector_is_overlay();
     let show_uptime = !docked_inspector;
     let show_engine = matches!(scope, EngineScope::All);
     let bulk_ids: Option<Vec<ContainerId>> = match &*state.selection.read() {
@@ -1724,16 +1723,7 @@ pub fn ContainersScreen() -> Element {
                         },
                     }
                 }
-                div {
-                    class: if overlay_inspector { "ct-inspector-toggle ct-inspector-toggle-on" } else { "ct-inspector-toggle" },
-                    Button {
-                        label: "Inspector".to_string(),
-                        icon: "file-text",
-                        variant: ButtonVariant::Secondary,
-                        size: ControlSize::Md,
-                        onclick: move |_| crate::keys::dispatch(&mut state, "global.toggle_inspector"),
-                    }
-                }
+                InspectorToggle {}
             }
             }
             if bulk_ids.is_none() && !chip_list.is_empty() {

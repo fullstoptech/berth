@@ -47,5 +47,6 @@ fn networks_create(state: &mut AppState) {
 pub(super) const SCENES: &[Scene] = &[
     Scene::dev("Networks / default / 1440", networks_default),
     Scene::dev("Networks / selected / 1440", networks_selected),
+    Scene::dev("Networks / selected / 1024", networks_selected),
     Scene::dev("Networks / create / 1440", networks_create),
 ];

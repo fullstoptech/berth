@@ -12,6 +12,9 @@ pub fn EmptyState(
     action_label: Option<String>,
     hint: Option<String>,
     onaction: Option<EventHandler<()>>,
+    /// The action is shown but cannot be clicked (it is already running).
+    #[props(default)]
+    action_disabled: bool,
 ) -> Element {
     rsx! {
         div { class: "empty-state",
@@ -24,6 +27,8 @@ pub fn EmptyState(
                 button {
                     class: "empty-state-action",
                     r#type: "button",
+                    disabled: action_disabled,
+                    "aria-busy": if action_disabled { "true" } else { "false" },
                     onclick: move |_| {
                         if let Some(handler) = onaction {
                             handler.call(());
@@ -80,6 +85,27 @@ mod tests {
         assert!(html.contains("No projects yet"), "{html}");
         assert!(html.contains("Open folder"), "{html}");
         assert!(html.contains("/icons.svg#folder"), "{html}");
+    }
+
+    #[test]
+    fn feedback_empty_state_ssr_action_can_be_disabled_while_it_runs() {
+        let html = dioxus_ssr::render_element(rsx! {
+            EmptyState {
+                title: "Starting Colima default".to_string(),
+                body: "Wait.".to_string(),
+                action_label: Some("Starting".to_string()),
+                action_disabled: true,
+            }
+        });
+        assert!(html.contains("disabled"), "{html}");
+        let live = dioxus_ssr::render_element(rsx! {
+            EmptyState {
+                title: "Start".to_string(),
+                body: "Go.".to_string(),
+                action_label: Some("Start".to_string()),
+            }
+        });
+        assert!(!live.contains("disabled"), "{live}");
     }
 
     #[test]

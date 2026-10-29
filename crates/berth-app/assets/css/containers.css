@@ -52,16 +52,6 @@
   width: 200px;
   flex: none;
 }
-/* When the window cannot dock the inspector (under 1200 px, or the main
-   area would drop under 640 px) it is an overlay: this button opens it. */
-.ct-inspector-toggle {
-  display: none;
-  flex: none;
-}
-.ct-inspector-toggle.ct-inspector-toggle-on {
-  display: block;
-}
-
 /* Filter chips */
 .ct-chips {
   display: flex;

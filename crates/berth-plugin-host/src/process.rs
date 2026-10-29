@@ -187,6 +187,20 @@ fn resolve_executable(
     plugin: &InstalledPlugin,
     path: &std::ffi::OsStr,
 ) -> Result<std::path::PathBuf, PluginError> {
+    // A manifest shipped as a sealed resource of the app bundle names an
+    // executable in the bundle's Contents/MacOS; nothing runs from Resources
+    // (AD70).
+    if let Some(macos) = crate::discover::bundle_macos_dir(&plugin.dir) {
+        let in_macos = macos.join(&plugin.manifest.executable);
+        return if in_macos.is_file() {
+            Ok(in_macos)
+        } else {
+            Err(PluginError::Exited(format!(
+                "executable not found: {}",
+                in_macos.display()
+            )))
+        };
+    }
     let joined = plugin.dir.join(&plugin.manifest.executable);
     if joined.is_file() {
         return Ok(joined);
@@ -638,6 +652,74 @@ impl Drop for PluginHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn installed(dir: std::path::PathBuf, executable: &str) -> InstalledPlugin {
+        InstalledPlugin {
+            manifest: berth_plugin_protocol::Manifest {
+                id: "coolify".into(),
+                name: "Coolify".into(),
+                version: "1".into(),
+                protocol: berth_plugin_protocol::PROTOCOL_VERSION,
+                executable: executable.into(),
+                permissions: Vec::new(),
+                contributes: Vec::new(),
+                config: Vec::new(),
+                secrets: Vec::new(),
+            },
+            dir,
+            state: PluginState::Disabled,
+            granted: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_resources_manifest_resolves_its_executable_in_contents_macos() {
+        let tmp = tempfile::tempdir().unwrap();
+        let contents = tmp.path().join("Berth.app/Contents");
+        let dir = contents.join("Resources/plugins/coolify");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(contents.join("MacOS")).unwrap();
+        std::fs::write(contents.join("MacOS/berth-coolify"), "x").unwrap();
+        // A decoy in Resources must never be chosen.
+        std::fs::write(dir.join("berth-coolify"), "decoy").unwrap();
+        let found =
+            resolve_executable(&installed(dir, "berth-coolify"), std::ffi::OsStr::new("")).unwrap();
+        assert_eq!(found, contents.join("MacOS/berth-coolify"));
+        assert!(!found.starts_with(contents.join("Resources")));
+    }
+
+    #[test]
+    fn a_resources_manifest_never_falls_back_to_resources_or_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let contents = tmp.path().join("Berth.app/Contents");
+        let dir = contents.join("Resources/plugins/coolify");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(contents.join("MacOS")).unwrap();
+        std::fs::write(dir.join("berth-coolify"), "decoy").unwrap();
+        let on_path = tmp.path().join("bin");
+        std::fs::create_dir_all(&on_path).unwrap();
+        let p = on_path.join("berth-coolify");
+        std::fs::write(&p, "x").unwrap();
+        std::fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let err = resolve_executable(&installed(dir, "berth-coolify"), on_path.as_os_str())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Contents/MacOS/berth-coolify"), "{err}");
+    }
+
+    #[test]
+    fn a_manifest_outside_a_bundle_resolves_next_to_the_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("plugins/coolify");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("berth-coolify"), "x").unwrap();
+        let found = resolve_executable(
+            &installed(dir.clone(), "berth-coolify"),
+            std::ffi::OsStr::new(""),
+        )
+        .unwrap();
+        assert_eq!(found, dir.join("berth-coolify"));
+    }
 
     #[test]
     fn default_backoff_is_the_task_schedule() {

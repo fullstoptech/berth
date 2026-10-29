@@ -88,16 +88,3 @@
 .pi-notes li { padding-left: var(--space-16); position: relative; }
 .pi-notes li::before { content: "\2192"; position: absolute; left: 0; }
 .pi-fail { display: flex; flex-direction: column; gap: var(--space-4); }
-
-/* `.bottom-panel button` (shell.css) resets every button inside the panel, and the inspector
-   docked at the bottom lives there too: restate the shared Button's looks one level up, as
-   terminal.css does. */
-.pi .btn { padding: 0 var(--space-12); border-radius: var(--radius-md); }
-.pi .btn-primary { background: var(--color-accent-fill); color: var(--color-on-accent-fill); }
-.pi .btn-primary:hover:not(:disabled) { background: var(--color-accent-fill-hover); }
-.pi .btn-primary:active:not(:disabled) { background: var(--color-accent-fill-pressed); }
-.pi .btn-secondary { background: var(--color-surface); border-color: var(--color-line-strong); }
-.pi .btn-secondary:hover:not(:disabled) { background: var(--color-surface-hover); }
-.pi .btn-secondary:active:not(:disabled) { background: var(--color-surface-pressed); }
-.pi .btn:disabled { color: var(--color-ink-disabled); cursor: default; }
-.pi .btn-primary:disabled { background: var(--color-surface-hover); }

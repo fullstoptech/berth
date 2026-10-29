@@ -42,16 +42,29 @@ pub enum Connection {
     Ready,
     /// No engine has answered yet: problems are not known.
     Connecting,
+    /// Discovery finished and found no engine (no Colima, no context, no
+    /// user engine): nothing is checking, so nothing spins.
+    NoEngine,
     /// The scoped engine is stopped: nothing on it can be checked.
     EngineStopped,
     /// Colima is starting the scoped engine (frame "Engines / starting").
     EngineStarting,
 }
 
-pub fn connection(engines: &[berth_core::Engine], scope: &EngineScope) -> Connection {
+/// `discovered` is true once engine discovery has reported (even an empty
+/// list); until then an empty list only means "not looked yet".
+pub fn connection(
+    engines: &[berth_core::Engine],
+    scope: &EngineScope,
+    discovered: bool,
+) -> Connection {
     use berth_core::EngineState as S;
     if engines.is_empty() {
-        return Connection::Connecting;
+        return if discovered {
+            Connection::NoEngine
+        } else {
+            Connection::Connecting
+        };
     }
     let EngineScope::One(id) = scope else {
         return Connection::Ready;
@@ -69,11 +82,19 @@ pub fn connection(engines: &[berth_core::Engine], scope: &EngineScope) -> Connec
 /// "colima/default · Docker 28.4.0 · 4 CPU · 8 GB · 15 running". An engine
 /// that is not running says its state instead of numbers it cannot know,
 /// and one that has not answered yet says "Connecting…".
-pub fn engine_summary(engines: &[berth_core::Engine], scope: &EngineScope) -> String {
+pub fn engine_summary(
+    engines: &[berth_core::Engine],
+    scope: &EngineScope,
+    discovered: bool,
+) -> String {
     if engines.is_empty() {
-        return "Looking for engines\u{2026}".to_string();
+        return if discovered {
+            "No engine found \u{b7} Finish setup".to_string()
+        } else {
+            "Looking for engines\u{2026}".to_string()
+        };
     }
-    if connection(engines, scope) == Connection::Connecting {
+    if connection(engines, scope, discovered) == Connection::Connecting {
         return "Connecting\u{2026}".to_string();
     }
     match scope {
@@ -134,8 +155,17 @@ pub fn ProblemsChip(
 ) -> Element {
     let mut state = use_context::<AppState>();
     let count = state.problems.read().len();
-    let connection = connection(&state.engines.read(), &state.engine_scope.read());
+    let connection = connection(
+        &state.engines.read(),
+        &state.engine_scope.read(),
+        *state.engines_discovered.read(),
+    );
     let (label, icon_name, state_class) = match connection {
+        Connection::NoEngine => (
+            "No engine".to_string(),
+            "alert-triangle",
+            " problems-chip-none problems-chip-noengine",
+        ),
         Connection::Connecting => (
             "Checking\u{2026}".to_string(),
             "loader",
@@ -188,7 +218,11 @@ pub fn ProblemsChip(
 #[component]
 pub fn StatusBar() -> Element {
     let state = use_context::<AppState>();
-    let summary = engine_summary(&state.engines.read(), &state.engine_scope.read());
+    let summary = engine_summary(
+        &state.engines.read(),
+        &state.engine_scope.read(),
+        *state.engines_discovered.read(),
+    );
     rsx! {
         footer { class: "statusbar",
             span { class: "statusbar-summary", role: "status", "{summary}" }

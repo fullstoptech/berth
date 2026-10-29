@@ -665,6 +665,7 @@ impl Applier {
                 }
                 state.engines.set(engines);
                 state.engine_scope.set(scope);
+                state.engines_discovered.set(true);
             }
             EngineUpdate::Snapshots(snapshots) => {
                 if snapshots.is_empty() {
@@ -1778,6 +1779,21 @@ mod tests {
         let shown = read_containers(&dom, &state);
         assert_eq!(shown.len(), 1);
         assert_eq!(shown[0].name, "kept");
+    }
+
+    #[test]
+    fn services_an_empty_discovery_marks_discovery_finished() {
+        let (dom, mut state) = harness();
+        let mut applier = Applier::new(Vec::new());
+        assert!(!dom.in_runtime(|| *state.engines_discovered.peek()));
+        apply(
+            &dom,
+            &mut applier,
+            &mut state,
+            EngineUpdate::EnginesDiscovered(Vec::new()),
+        );
+        assert!(dom.in_runtime(|| *state.engines_discovered.peek()));
+        assert!(dom.in_runtime(|| state.engines.peek().is_empty()));
     }
 
     #[tokio::test]

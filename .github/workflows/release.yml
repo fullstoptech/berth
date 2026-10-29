@@ -1,0 +1,121 @@
+# Release build of Berth: an unsigned or signed, notarized DMG (PLAN §12, P10-T2).
+# Written, not run. Nothing here publishes anything: the DMG is attached to the workflow run as
+# an artifact, and to a GitHub release only when the run was started by a v* tag.
+# Signing is skipped unless the secrets named below exist in the repository.
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DX_VERSION: 0.7.10
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    timeout-minutes: 90
+    permissions:
+      contents: write # create the release asset on a v* tag
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustc --version
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: release-${{ runner.os }}-
+
+      - name: Cache dx
+        id: dx-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/dx
+          key: dx-${{ runner.os }}-${{ env.DX_VERSION }}
+
+      - name: Install dx
+        if: steps.dx-cache.outputs.cache-hit != 'true'
+        run: cargo install dioxus-cli --version "$DX_VERSION" --locked
+
+      - name: Import the signing certificate
+        id: signing
+        env:
+          BERTH_CERT_P12_BASE64: ${{ secrets.BERTH_CERT_P12_BASE64 }}
+          BERTH_CERT_PASSWORD: ${{ secrets.BERTH_CERT_PASSWORD }}
+          BERTH_SIGN_IDENTITY_NAME: ${{ secrets.BERTH_SIGN_IDENTITY }}
+        run: |
+          if [ -z "$BERTH_CERT_P12_BASE64" ] || [ -z "$BERTH_SIGN_IDENTITY_NAME" ]; then
+            echo "No signing secrets: building unsigned."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/berth-release.keychain-db"
+          keychain_password="$(uuidgen)"
+          echo "$BERTH_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$BERTH_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Store the notarytool profile
+        id: notary
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          APPLE_ID: ${{ secrets.BERTH_NOTARY_APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.BERTH_NOTARY_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.BERTH_NOTARY_APP_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_TEAM_ID" ] || [ -z "$APPLE_APP_PASSWORD" ]; then
+            echo "No notarization secrets: signing without notarizing."
+            echo "notarize=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          xcrun notarytool store-credentials berth-ci \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+          echo "notarize=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build the DMG
+        env:
+          BERTH_SIGN_IDENTITY: ${{ steps.signing.outputs.signed == 'true' && secrets.BERTH_SIGN_IDENTITY || '' }}
+          BERTH_NOTARY_PROFILE: ${{ steps.notary.outputs.notarize == 'true' && 'berth-ci' || '' }}
+        run: scripts/release.sh
+
+      - name: Upload the DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: berth-dmg
+          path: dist/Berth-*-arm64.dmg
+          if-no-files-found: error
+
+      - name: Attach the DMG to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/Berth-*-arm64.dmg \
+            --repo "$GITHUB_REPOSITORY" --title "Berth ${GITHUB_REF_NAME#v}" --draft --notes ""
+
+      - name: Remove the signing keychain
+        if: always() && steps.signing.outputs.signed == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/berth-release.keychain-db" || true

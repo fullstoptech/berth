@@ -4,12 +4,15 @@
 .projects-screen {
   /* The buttons in a row sit 8 px apart from 1200 px wide, 4 px below (the
      same breakpoint as the page gutter). The last track holds the buttons:
-     the labels and icons take 160 px (scaled) + 44 px, plus three gaps. */
+     the labels and icons take 160 px (scaled) + 44 px, plus three gaps. That
+     track is a minmax: Services (140-218 px) grows before a plain `1fr` does and
+     would leave the buttons less than they need, so the buttons' room is a
+     minimum Services cannot take. */
   --projects-actions-gap: var(--space-4);
   --projects-actions-w: calc(44px + 3 * var(--projects-actions-gap));
   /* Every track that holds text, numbers or buttons grows with the text size
      (--text-scale), so the wide layout is the 100 % layout zoomed. */
-  --projects-cols: calc(162px * var(--text-scale, 1)) calc(138px * var(--text-scale, 1)) calc(72px * var(--text-scale, 1)) calc(98px * var(--text-scale, 1)) minmax(calc(140px * var(--text-scale, 1)), calc(218px * var(--text-scale, 1))) calc(138px * var(--text-scale, 1)) calc(53px * var(--text-scale, 1)) calc(60px * var(--text-scale, 1)) 1fr;
+  --projects-cols: calc(162px * var(--text-scale, 1)) calc(138px * var(--text-scale, 1)) calc(72px * var(--text-scale, 1)) calc(168px * var(--text-scale, 1)) minmax(calc(140px * var(--text-scale, 1)), calc(218px * var(--text-scale, 1))) calc(138px * var(--text-scale, 1)) calc(53px * var(--text-scale, 1)) calc(60px * var(--text-scale, 1)) minmax(calc(160px * var(--text-scale, 1) + var(--projects-actions-w)), 1fr);
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -468,6 +471,19 @@
 .projects-empty-column .empty-state {
   padding: 0;
 }
+/* The engine is starting or its start failed (P10-T3): the empty state, then the run's
+   progress (or the failure) under it, in a column as wide as the empty block. */
+.projects-starting-column {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-16);
+  width: 400px;
+  max-width: 100%;
+}
+.projects-starting-column .empty-state {
+  padding: 0;
+}
 .drop-zone {
   display: flex;
   flex-direction: column;
@@ -494,10 +510,12 @@
 }
 
 /* The project row: the deployed commit (Branch cell) and the new-commit tag
-   (Name cell, beside the problem tag, since the 98 px Branch track cannot hold it).
-   Neither track holds its full content on one line at 1.0, so a cell that has
-   one of them wraps onto a second line (two lines of 16 + 18 px fit the row)
-   instead of squeezing the project or branch name to nothing. */
+   (Name cell, beside the problem tag). The 168 px Branch track holds the icon and
+   18 characters of a branch name (`feat/checkout-flow`), so the name never
+   ellipsises at the 1440 layout. A deployed commit follows the name on the same
+   line when it fits and wraps under it when it does not (two lines of 16 + 18 px
+   fit the row), instead of squeezing the name. The Name cell wraps the same way
+   for its tag. */
 .project-cell-name:has(.project-new-commits),
 .project-cell-branch:has(.project-commit) {
   flex-wrap: wrap;
@@ -512,11 +530,10 @@
   line-height: var(--text-label-line);
 }
 .project-cell-branch:has(.project-commit) .project-branch-text {
-  flex: 1 1 0;
+  flex: 0 1 auto;
 }
 .project-cell-branch:has(.project-commit) .project-commit {
   flex: none;
-  flex-basis: 100%;
   margin-left: 0;
 }
 .project-commit {

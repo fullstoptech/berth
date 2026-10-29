@@ -296,7 +296,8 @@ fn shell_status_bar_text_is_exactly_the_frames() {
     assert_eq!(
         engine_summary(
             &world.engines,
-            &EngineScope::One(engine_id("colima:default"))
+            &EngineScope::One(engine_id("colima:default")),
+            true
         ),
         "colima/default \u{b7} Docker 28.4.0 \u{b7} 4 CPU \u{b7} 8 GB \u{b7} 15 running"
     );
@@ -306,22 +307,27 @@ fn shell_status_bar_text_is_exactly_the_frames() {
 fn shell_status_bar_names_engines_that_are_not_running() {
     let world = mock_world();
     assert_eq!(
-        engine_summary(&world.engines, &EngineScope::One(engine_id("colima:work"))),
+        engine_summary(
+            &world.engines,
+            &EngineScope::One(engine_id("colima:work")),
+            true
+        ),
         "colima/work \u{b7} Stopped"
     );
     assert_eq!(
         engine_summary(
             &world.engines,
-            &EngineScope::One(engine_id("ssh:hetzner-1"))
+            &EngineScope::One(engine_id("ssh:hetzner-1")),
+            true
         ),
         "ssh/hetzner-1 \u{b7} Unreachable"
     );
     assert_eq!(
-        engine_summary(&world.engines, &EngineScope::All),
+        engine_summary(&world.engines, &EngineScope::All, true),
         "All engines \u{b7} 3 engines \u{b7} 15 running"
     );
     assert_eq!(
-        engine_summary(&[], &EngineScope::All),
+        engine_summary(&[], &EngineScope::All, false),
         "Looking for engines\u{2026}"
     );
 }
@@ -339,6 +345,7 @@ fn shell_status_bar_shows_colimas_whole_gib_as_gb() {
     let text = engine_summary(
         &world.engines,
         &EngineScope::One(engine_id("colima:default")),
+        true,
     );
     assert!(text.contains("\u{b7} 8 GB \u{b7}"), "{text}");
 }
@@ -447,21 +454,35 @@ fn default_engine_with(
 fn shell_connection_follows_the_scoped_engine() {
     let world = mock_world();
     let default = EngineScope::One(engine_id("colima:default"));
-    assert_eq!(connection(&world.engines, &default), Connection::Ready);
     assert_eq!(
-        connection(&world.engines, &EngineScope::All),
+        connection(&world.engines, &default, true),
         Connection::Ready
     );
-    assert_eq!(connection(&[], &default), Connection::Connecting);
+    assert_eq!(
+        connection(&world.engines, &EngineScope::All, true),
+        Connection::Ready
+    );
+    // Discovery still running: an empty list means "not looked yet".
+    assert_eq!(connection(&[], &default, false), Connection::Connecting);
+    // Discovery finished and found nothing: nothing is checking.
+    assert_eq!(connection(&[], &default, true), Connection::NoEngine);
+    assert_eq!(
+        connection(&[], &EngineScope::All, true),
+        Connection::NoEngine
+    );
     let (engines, scope) = default_engine_with(|e| e.docker_version = None);
-    assert_eq!(connection(&engines, &scope), Connection::Connecting);
+    assert_eq!(connection(&engines, &scope, true), Connection::Connecting);
     let (engines, scope) = default_engine_with(|e| e.state = berth_core::EngineState::Stopped);
-    assert_eq!(connection(&engines, &scope), Connection::EngineStopped);
+    assert_eq!(
+        connection(&engines, &scope, true),
+        Connection::EngineStopped
+    );
     // A stopped engine outside the scope does not change the chrome.
     assert_eq!(
         connection(
             &world.engines,
-            &EngineScope::One(engine_id("colima:default"))
+            &EngineScope::One(engine_id("colima:default")),
+            true
         ),
         Connection::Ready
     );
@@ -469,13 +490,53 @@ fn shell_connection_follows_the_scoped_engine() {
         e.state = berth_core::EngineState::Stopped;
         e.docker_version = None;
     });
-    assert_eq!(connection(&engines, &scope), Connection::EngineStopped);
     assert_eq!(
-        engine_summary(&engines, &scope),
+        connection(&engines, &scope, true),
+        Connection::EngineStopped
+    );
+    assert_eq!(
+        engine_summary(&engines, &scope, true),
         "colima/default \u{b7} Stopped"
     );
     let (engines, scope) = default_engine_with(|e| e.docker_version = None);
-    assert_eq!(engine_summary(&engines, &scope), "Connecting\u{2026}");
+    assert_eq!(engine_summary(&engines, &scope, true), "Connecting\u{2026}");
+}
+
+#[test]
+fn shell_no_engine_summary_stops_saying_looking() {
+    assert_eq!(
+        engine_summary(&[], &EngineScope::All, true),
+        "No engine found \u{b7} Finish setup"
+    );
+}
+
+#[test]
+fn shell_first_run_colima_missing_shows_no_engine_without_a_spinner() {
+    let html = scenes::render_scene_html("First run / colima missing / 1440").expect("scene");
+    let bar = titlebar_of(&html);
+    assert!(bar.contains("No engine"), "{bar}");
+    assert!(!bar.contains("Checking"), "{bar}");
+    assert!(!bar.contains("btn-spinner"), "no spinner: {bar}");
+    let status = statusbar_of(&html);
+    assert!(status.contains("No engine found"), "{status}");
+    assert!(!status.contains("Looking for engines"), "{status}");
+    assert!(!status.contains("Checking"), "{status}");
+    assert!(!status.contains("btn-spinner"), "no spinner: {status}");
+}
+
+#[test]
+fn shell_discovery_in_progress_still_checks() {
+    let html = render_shell(|state| {
+        state.engines.set(Vec::new());
+        state.engines_discovered.set(false);
+    });
+    let bar = titlebar_of(&html);
+    assert!(bar.contains("Checking\u{2026}"), "{bar}");
+    assert!(bar.contains("btn-spinner"), "{bar}");
+    assert!(
+        statusbar_of(&html).contains("Looking for engines"),
+        "{html}"
+    );
 }
 
 fn titlebar_of(html: &str) -> &str {
@@ -987,4 +1048,258 @@ fn shell_sidebar_projects_badge_does_not_count_the_unassigned_row() {
     assert_eq!(model.projects_total, 8);
     // Neither does its list.
     assert_eq!(model.projects.len(), 8);
+}
+
+// ---------- P10-T3: the Inspector toggle and the bottom panel's buttons ----------
+
+/// Every screen that opens an inspector, at a window too narrow to dock it:
+/// the controls row has the Inspector button, shown.
+#[test]
+fn shell_every_inspector_screen_offers_the_inspector_button_below_1200() {
+    for frame in [
+        "Containers / selected / 1024",
+        "Images / selected / 1024",
+        "Volumes / selected / 1024",
+        "Networks / selected / 1024",
+    ] {
+        let html = scenes::render_scene_html(frame).expect("the frame has a scene");
+        assert!(
+            html.contains("toggle-inspector toggle-inspector-on"),
+            "{frame}: the toggle is shown at 1024 px"
+        );
+        assert!(html.contains(">Inspector<"), "{frame}: its label");
+    }
+}
+
+/// Docked (1440 px) the same buttons are in the markup but not shown: the
+/// "on" class is the stylesheet's only switch.
+#[test]
+fn shell_inspector_button_is_not_shown_while_the_inspector_is_docked() {
+    for frame in [
+        "Containers / selected / 1440",
+        "Images / selected / 1440",
+        "Volumes / selected / 1440",
+        "Networks / selected / 1440",
+    ] {
+        let html = scenes::render_scene_html(frame).expect("the frame has a scene");
+        assert!(html.contains("class=\"toggle-inspector\""), "{frame}");
+        assert!(!html.contains("toggle-inspector-on"), "{frame}");
+    }
+    let css = include_str!("../../assets/css/shell.css");
+    let block = crate::screens::css_tracks::block;
+    assert!(block(css, "\n.toggle-inspector {").contains("display: none;"));
+    assert!(block(css, "\n.toggle-inspector.toggle-inspector-on {").contains("display: block;"));
+}
+
+thread_local! {
+    static TOGGLE_VIEW: std::cell::RefCell<Option<crate::screens::containers::ContainersView>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[component]
+fn ToggleHarness() -> Element {
+    let state = use_app_state();
+    use_context_provider(|| state);
+    let view = use_hook(|| provide_context(crate::screens::containers::ContainersView::new()));
+    use_hook(move || TOGGLE_VIEW.with(|slot| *slot.borrow_mut() = Some(view)));
+    rsx! { InspectorToggle {} }
+}
+
+/// Clicking the button runs the action Space and the View menu run: the
+/// shell's one inspector flag flips, whichever screen the button is on.
+#[test]
+fn shell_inspector_button_click_flips_the_inspector_flag() {
+    use dioxus::core::Mutation;
+    dioxus::html::set_event_converter(Box::new(dioxus::html::SerializedHtmlEventConverter));
+    let mut dom = VirtualDom::new(ToggleHarness);
+    let edits = dom.rebuild_to_vec().edits;
+    let click = edits
+        .iter()
+        .find_map(|edit| match edit {
+            Mutation::NewEventListener { name, id } if *name == "click" => Some(*id),
+            _ => None,
+        })
+        .expect("the button listens for clicks");
+    let view = TOGGLE_VIEW
+        .with(|slot| slot.borrow_mut().take())
+        .expect("harness captured the view");
+    let flag = |dom: &VirtualDom| dom.in_scope(ScopeId::APP, || *view.inspector_toggled.peek());
+    assert!(!flag(&dom));
+    for expected in [true, false] {
+        let data = std::rc::Rc::new(dioxus::html::PlatformEventData::new(Box::new(
+            dioxus::html::SerializedMouseData::default(),
+        )));
+        let event = Event::new(data as std::rc::Rc<dyn std::any::Any>, true);
+        dom.runtime().handle_event("click", event, click);
+        let _ = dom.render_immediate_to_vec();
+        assert_eq!(flag(&dom), expected);
+    }
+}
+
+/// `.bottom-panel button` used to strip the border, fill and padding from
+/// every button in the panel, so the Stop/Restart buttons of an inspector
+/// docked at the bottom looked flat. The reset now spares the shared Button.
+#[test]
+fn shell_bottom_panel_reset_spares_the_shared_button() {
+    let css = include_str!("../../assets/css/shell.css");
+    let mut resets = 0;
+    for selector in css
+        .split('{')
+        .map(|head| head.rsplit('}').next().unwrap_or(head))
+        .flat_map(|head| head.split(','))
+        .map(str::trim)
+        .filter(|s| s.contains(".bottom-panel button"))
+    {
+        resets += 1;
+        assert!(
+            selector.contains(":not(.btn)"),
+            "`{selector}` would restyle a `.btn` in the panel"
+        );
+    }
+    assert!(resets >= 2, "the reset and its focus ring: {resets}");
+    // The shared Button is what renders in the bottom-docked inspector.
+    let html = scenes::render_scene_html("Containers / inspector bottom / 1440").expect("a scene");
+    let bottom = &html[html.find("bottom-panel").expect("the panel")..];
+    assert!(bottom.contains("class=\"btn btn-"), "{bottom}");
+}
+
+/// The specificity (ids, classes and pseudo-classes, types) of one compound or
+/// complex selector. `:where()` counts for nothing; `:not()` and `:is()` count
+/// for their argument. Enough for the selectors in shell.css and ui.css.
+fn specificity(selector: &str) -> (u32, u32, u32) {
+    let mut total = (0, 0, 0);
+    let mut rest = selector.trim();
+    while !rest.is_empty() {
+        let ch = rest.chars().next().unwrap_or(' ');
+        if let Some(after) = rest.strip_prefix(":where(") {
+            rest = after_group(after);
+        } else if let Some(after) = rest
+            .strip_prefix(":not(")
+            .or_else(|| rest.strip_prefix(":is("))
+        {
+            let inner = &after[..after.len() - after_group(after).len() - 1];
+            let (a, b, c) = specificity(inner);
+            total = (total.0 + a, total.1 + b, total.2 + c);
+            rest = after_group(after);
+        } else if ch == '#' || ch == '.' || ch == '[' || ch == ':' {
+            let pseudo_element = rest.starts_with("::");
+            let skip = if pseudo_element { 2 } else { 1 };
+            let end = if ch == '[' {
+                rest.find(']').map_or(rest.len(), |i| i + 1)
+            } else {
+                rest[skip..]
+                    .find(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
+                    .map_or(rest.len(), |i| i + skip)
+            };
+            match ch {
+                '#' => total.0 += 1,
+                ':' if pseudo_element => total.2 += 1,
+                _ => total.1 += 1,
+            }
+            rest = &rest[end..];
+        } else if ch.is_alphabetic() {
+            let end = rest
+                .find(|c: char| !(c.is_alphanumeric() || c == '-'))
+                .unwrap_or(rest.len());
+            total.2 += 1;
+            rest = &rest[end..];
+        } else {
+            rest = &rest[ch.len_utf8()..];
+        }
+    }
+    total
+}
+
+/// The text after the `)` that closes the group whose body is `after`.
+fn after_group(after: &str) -> &str {
+    let mut depth = 1;
+    for (i, ch) in after.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &after[i + 1..];
+                }
+            }
+            _ => {}
+        }
+    }
+    ""
+}
+
+#[test]
+fn shell_specificity_helper_reads_where_not_and_classes() {
+    assert_eq!(specificity(".bottom-panel button:not(.btn)"), (0, 2, 1));
+    assert_eq!(
+        specificity(":where(.bottom-panel button:not(.btn))"),
+        (0, 0, 0)
+    );
+    assert_eq!(
+        specificity(":where(.bottom-panel button:not(.btn):focus-visible)"),
+        (0, 0, 0)
+    );
+    assert_eq!(specificity(".bottom-head .tab"), (0, 2, 0));
+    assert_eq!(specificity(".tab:hover"), (0, 2, 0));
+}
+
+/// The bottom panel's reset once outranked `.tab` (0,2,1 against 0,2,0), so the
+/// strip lost its padding and the active underline. The reset has no
+/// specificity: every component class in the panel beats it, in any order.
+#[test]
+fn shell_bottom_panel_reset_has_zero_specificity_so_tabs_keep_their_rules() {
+    let shell = include_str!("../../assets/css/shell.css");
+    let ui = include_str!("../../assets/css/ui.css");
+    let selectors = |css: &str| -> Vec<String> {
+        css.split('{')
+            .map(|head| head.rsplit('}').next().unwrap_or(head).to_string())
+            .flat_map(|head| {
+                head.split(',')
+                    .map(|s| s.trim().to_string())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    };
+    let resets: Vec<String> = selectors(shell)
+        .into_iter()
+        .filter(|s| s.contains(".bottom-panel button"))
+        .collect();
+    assert!(
+        resets.len() >= 2,
+        "the reset and its focus ring: {resets:?}"
+    );
+    for reset in &resets {
+        assert_eq!(
+            specificity(reset),
+            (0, 0, 0),
+            "`{reset}` must not outrank a component class"
+        );
+    }
+    // The tab rules that reach into the panel are heavier than any reset, and the
+    // shared `.tab` (one class) is too, so the padding and underline apply.
+    let tab_rules: Vec<String> = selectors(shell)
+        .into_iter()
+        .chain(selectors(ui))
+        .filter(|s| s == ".bottom-head .tab" || s == ".tab" || s == ".tab-close")
+        .collect();
+    assert!(tab_rules.len() >= 3, "{tab_rules:?}");
+    for tab in &tab_rules {
+        assert!(specificity(tab) > (0, 0, 0), "`{tab}`");
+    }
+    let tab_block = css_block(shell, ".bottom-head .tab {");
+    assert!(
+        tab_block.contains("padding: 0 var(--space-12);"),
+        "{tab_block}"
+    );
+    let underline = css_block(ui, ".tabs-underline .tab-selected {");
+    assert!(
+        underline.contains("border-bottom-color: var(--color-accent)"),
+        "{underline}"
+    );
+}
+
+/// The body of the first rule that starts with `head`.
+fn css_block<'a>(css: &'a str, head: &str) -> &'a str {
+    let start = css.find(head).map_or(0, |i| i + head.len());
+    css[start..].split('}').next().unwrap_or("")
 }

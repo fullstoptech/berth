@@ -1,7 +1,8 @@
 //! Finding installed plugins and validating their manifests.
 //!
 //! Plugins live in `<data dir>/plugins/<id>/` and, for the bundled Coolify
-//! plugin, next to the app binary (PLAN §6.10). [`discover`] takes the
+//! plugin, in the app bundle's `Contents/Resources/plugins/` (manifest) with
+//! the binary in `Contents/MacOS/` (PLAN §6.10, AD70). [`discover`] takes the
 //! roots to scan (the app builds them from `berth_sys::paths`); each root
 //! may itself be a plugin directory (the bundled case) and may hold plugin
 //! directories as immediate children.
@@ -14,6 +15,35 @@ use crate::{InstalledPlugin, PluginError, PluginState};
 
 /// The manifest file name inside a plugin directory.
 pub const MANIFEST_FILE: &str = "berth-plugin.json";
+
+/// The plugin root of an app bundle, given the directory of the running
+/// binary: `<bundle>/Contents/Resources/plugins` when `exe_dir` is
+/// `<bundle>/Contents/MacOS`, otherwise `None` (a `target/debug` run, a
+/// loose binary). Derived from the layout, never hardcoded.
+#[must_use]
+pub fn bundle_plugins_dir(exe_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let contents = exe_dir.parent()?;
+    if exe_dir.file_name()? != "MacOS" || contents.file_name()? != "Contents" {
+        return None;
+    }
+    Some(contents.join("Resources").join("plugins"))
+}
+
+/// For a plugin directory under a bundle's `Contents/Resources/plugins`,
+/// the bundle's `Contents/MacOS`, where its executable lives (Resources is
+/// sealed data; nothing is ever run from it). `None` for any other
+/// directory.
+#[must_use]
+pub fn bundle_macos_dir(plugin_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    plugin_dir.ancestors().find_map(|dir| {
+        let resources = dir.parent()?;
+        let contents = resources.parent()?;
+        let is_root = dir.file_name()? == "plugins"
+            && resources.file_name()? == "Resources"
+            && contents.file_name()? == "Contents";
+        is_root.then(|| contents.join("MacOS"))
+    })
+}
 
 /// Scan `dirs` for plugins, sorted by manifest id. A directory whose
 /// manifest fails to load or validate is skipped with a warning (the
@@ -277,6 +307,68 @@ mod tests {
         let found = discover(&[tmp.path().to_path_buf()]);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].manifest.id, "bundled");
+    }
+
+    #[test]
+    fn bundle_plugins_dir_is_derived_only_for_a_bundle_exe_dir() {
+        assert_eq!(
+            bundle_plugins_dir(std::path::Path::new("/Apps/Berth.app/Contents/MacOS")),
+            Some(std::path::PathBuf::from(
+                "/Apps/Berth.app/Contents/Resources/plugins"
+            ))
+        );
+        for loose in [
+            "/repo/target/debug",
+            "/Apps/Berth.app/Contents",
+            "/MacOS",
+            "/",
+        ] {
+            assert_eq!(
+                bundle_plugins_dir(std::path::Path::new(loose)),
+                None,
+                "{loose}"
+            );
+        }
+    }
+
+    #[test]
+    fn bundle_macos_dir_maps_a_resources_plugin_dir_to_contents_macos() {
+        let dir = std::path::Path::new("/Apps/Berth.app/Contents/Resources/plugins/coolify");
+        assert_eq!(
+            bundle_macos_dir(dir),
+            Some(std::path::PathBuf::from("/Apps/Berth.app/Contents/MacOS"))
+        );
+        assert_eq!(
+            bundle_macos_dir(std::path::Path::new(
+                "/Apps/Berth.app/Contents/Resources/plugins"
+            )),
+            Some(std::path::PathBuf::from("/Apps/Berth.app/Contents/MacOS"))
+        );
+        for other in [
+            "/data/plugins/coolify",
+            "/repo/plugins/coolify",
+            "/Apps/Berth.app/Contents/MacOS",
+            "/Apps/Berth.app/Contents/Resources/coolify",
+        ] {
+            assert_eq!(
+                bundle_macos_dir(std::path::Path::new(other)),
+                None,
+                "{other}"
+            );
+        }
+    }
+
+    #[test]
+    fn discover_finds_a_manifest_under_a_bundles_resources_plugins() {
+        let tmp = tempfile::tempdir().unwrap();
+        let exe_dir = tmp.path().join("Berth.app/Contents/MacOS");
+        std::fs::create_dir_all(&exe_dir).unwrap();
+        let root = bundle_plugins_dir(&exe_dir).unwrap();
+        write_plugin(&root, "coolify", &manifest("coolify"));
+        let found = discover(&[exe_dir, root.clone()]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].manifest.id, "coolify");
+        assert_eq!(found[0].dir, root.join("coolify"));
     }
 
     #[test]
